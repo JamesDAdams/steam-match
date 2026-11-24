@@ -1,13 +1,13 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { exchangeCode, isAdminId } from '../lib/discord.ts';
+import { exchangeCode, isAdminId } from '../../lib/discord.ts';
 import {
   COOKIE_NAME,
   createSession,
   parseCookies,
   buildStateCookie,
   clearStateCookie,
-} from '../lib/session.ts';
-import { upsertDiscordUser, isAllowed } from '../lib/access.ts';
+} from '../../lib/session.ts';
+import { upsertDiscordUser, isAllowed } from '../../lib/access.ts';
 import { getDb } from '../../db/index.ts';
 import { discordUsers } from '../../db/schema.ts';
 import { eq } from 'drizzle-orm';

@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getDb } from '../db/index.ts';
 import { gameCache, enrichQueue } from '../db/schema.ts';
 import { sql, and, eq, lte, lt } from 'drizzle-orm';
-import { getAppDetails, sleep } from './lib/steam.ts';
+import { getAppDetails, sleep } from '../lib/steam.ts';
 
 /**
  * POST /api/enrich

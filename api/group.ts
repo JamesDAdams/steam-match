@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getDb } from '../db/index.ts';
 import { users, gameCache, steamLinks, discordUsers } from '../db/schema.ts';
 import { sql, eq } from 'drizzle-orm';
-import { requireAccess } from './lib/access.ts';
+import { requireAccess } from '../lib/access.ts';
 
 /**
  * GET /api/group

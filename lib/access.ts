@@ -1,5 +1,5 @@
-import { getDb } from '../../db/index.ts';
-import { discordUsers, allowedDiscordIds, steamLinks, users } from '../../db/schema.ts';
+import { getDb } from '../db/index.ts';
+import { discordUsers, allowedDiscordIds, steamLinks, users } from '../db/schema.ts';
 import { eq } from 'drizzle-orm';
 import { COOKIE_NAME, parseCookies, readSession } from './session.ts';
 import { isAdminId } from './discord.ts';

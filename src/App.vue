@@ -13,7 +13,7 @@ const avatar = computed(
 const initial = computed(() => displayName.value.slice(0, 1).toUpperCase());
 
 async function logout() {
-  await apiPost('/api/auth/logout').catch(() => {});
+  await apiPost('/api/me').catch(() => {});
   me.value = { authenticated: false };
   location.href = '/';
 }

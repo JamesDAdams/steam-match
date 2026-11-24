@@ -2,18 +2,42 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getDb } from '../db/index.ts';
 import { discordUsers, allowedDiscordIds, steamLinks, users } from '../db/schema.ts';
 import { eq } from 'drizzle-orm';
-import { COOKIE_NAME, parseCookies, readSession } from './lib/session.ts';
-import { isAdminId } from './lib/discord.ts';
+import {
+  COOKIE_NAME,
+  parseCookies,
+  readSession,
+  destroySession,
+  clearCookie,
+} from '../lib/session.ts';
+import { isAdminId } from '../lib/discord.ts';
 
 /**
- * GET /api/me
- * État complet de la session, SANS jamais répondre 401/403 : le front a
- * besoin de distinguer « pas connecté », « connecté mais pas autorisé » et
- * « connecté et autorisé » pour afficher le bon écran.
+ * GET  /api/me  → état complet de la session
+ * POST /api/me  → déconnexion
+ *
+ * Le logout est fusionné ici volontairement : le plan Hobby de Vercel limite
+ * un déploiement à 12 fonctions serverless. Chaque fichier de /api en consomme
+ * une, donc on regroupe les routes de moindre importance.
+ *
+ * GET ne répond jamais 401/403 : le front doit distinguer « pas connecté »,
+ * « connecté mais pas autorisé » et « connecté et autorisé ».
  */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  const cookies = parseCookies(req.headers.cookie);
+
+  // ── Déconnexion ──────────────────────────────────────────────────────
+  if (req.method === 'POST') {
+    const raw = cookies[COOKIE_NAME];
+    if (raw) {
+      const token = raw.slice(0, raw.lastIndexOf('.'));
+      await destroySession(token).catch(() => {});
+    }
+    res.setHeader('Set-Cookie', clearCookie());
+    return res.status(200).json({ ok: true });
+  }
+
+  // ── État de la session ───────────────────────────────────────────────
   try {
-    const cookies = parseCookies(req.headers.cookie);
     const sess = await readSession(cookies[COOKIE_NAME]);
 
     if (!sess) {

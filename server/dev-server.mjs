@@ -42,12 +42,12 @@ const ROUTES = [
   // Liaison Steam (après Discord)
   ['GET', '/api/auth/steam', '/api/auth/steam.ts'],
   ['GET', '/api/auth/callback', '/api/auth/callback.ts'],
-  ['POST', '/api/auth/logout', '/api/auth/logout.ts'],
   // Administration
   ['GET', '/api/admin/users', '/api/admin/users.ts'],
   ['POST', '/api/admin/users', '/api/admin/users.ts'],
   ['DELETE', '/api/admin/users', '/api/admin/users.ts'],
   ['GET', '/api/me', '/api/me.ts'],
+  ['POST', '/api/me', '/api/me.ts'],
   ['GET', '/api/group', '/api/group.ts'],
   ['GET', '/api/common', '/api/common.ts'],
   ['POST', '/api/sync', '/api/sync.ts'],

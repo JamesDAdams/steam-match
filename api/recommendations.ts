@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getDb } from '../db/index.ts';
 import { ownedGames, gameCache, users } from '../db/schema.ts';
 import { sql } from 'drizzle-orm';
-import { requireAccess } from './lib/access.ts';
+import { requireAccess } from '../lib/access.ts';
 
 /**
  * GET /api/recommendations?excludeOwned=1&limit=20

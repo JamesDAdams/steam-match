@@ -63,6 +63,22 @@ curl -sI https://TON-PROJET.vercel.app/aide       # 200 (fallback SPA)
 
 Puis ouvre le site : connexion Discord, page Admin, liaison Steam, sync.
 
+## Limite du plan Hobby : 12 fonctions serverless
+
+Vercel compte **chaque fichier de `api/`** comme une fonction. Au-delà de 12,
+le déploiement échoue avec :
+
+> No more than 12 Serverless Functions can be added to a Deployment on the Hobby plan.
+
+Le projet en utilise **11**. Deux règles pour le rester :
+
+- **Ne jamais mettre de code partagé dans `api/`** : les modules communs vivent
+  dans `lib/` à la racine. Un fichier oublié dans `api/` consomme une fonction.
+- Pour ajouter une route au-delà de 11, **fusionne-la** dans un handler existant
+  via `req.method` (c'est le cas du logout, dans `POST /api/me`).
+
+Passer au plan Pro lèverait la limite.
+
 ## Notes
 
 - **La base est partagée** entre local et prod : même Neon. Les données de test
