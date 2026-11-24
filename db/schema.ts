@@ -1,0 +1,169 @@
+import {
+  pgTable,
+  text,
+  integer,
+  timestamp,
+  jsonb,
+  boolean,
+  index,
+  primaryKey,
+} from 'drizzle-orm/pg-core';
+
+/**
+ * MODÈLE D'IDENTITÉ
+ * -----------------
+ * Discord est la PORTE D'ENTRÉE du site. Steam n'est qu'une LIAISON
+ * facultative : quelqu'un peut se connecter avec Discord sans avoir encore
+ * relié son compte Steam.
+ *
+ *   discord_users  ──1:0..1──  steam_links  ──1:1──  users (Steam)
+ *          │
+ *          └── sessions
+ *
+ * L'accès est contrôlé par allowed_discord_ids (whitelist) + DISCORD_ADMIN_ID.
+ */
+
+/** Compte Discord ayant déjà ouvert le site au moins une fois. */
+export const discordUsers = pgTable('discord_users', {
+  discordId: text('discord_id').primaryKey(),
+  username: text('username').notNull(),
+  globalName: text('global_name'),
+  avatarUrl: text('avatar_url'),
+  isAdmin: boolean('is_admin').notNull().default(false),
+  lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * Whitelist administrée depuis la page admin.
+ * Un discord_id absent de cette table n'a pas accès au site
+ * (sauf s'il est dans DISCORD_ADMIN_ID).
+ */
+export const allowedDiscordIds = pgTable('allowed_discord_ids', {
+  discordId: text('discord_id').primaryKey(),
+  note: text('note'),
+  addedBy: text('added_by'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Table Steam (ludothèque). Remplie uniquement après liaison OpenID. */
+export const users = pgTable('users', {
+  steamid: text('steamid').primaryKey(),
+  personaName: text('persona_name').notNull(),
+  avatarUrl: text('avatar_url'),
+  profileUrl: text('profile_url'),
+
+  // Visibilité détectée lors du dernier sync.
+  profileVisible: boolean('profile_visible').notNull().default(false),
+  gamesVisible: boolean('games_visible').notNull().default(false),
+
+  lastSyncAt: timestamp('last_sync_at', { withTimezone: true }),
+  lastSyncError: text('last_sync_error'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * Association Discord ↔ Steam.
+ * steamid est UNIQUE : deux comptes Discord ne peuvent pas revendiquer
+ * le même compte Steam.
+ */
+export const steamLinks = pgTable(
+  'steam_links',
+  {
+    discordId: text('discord_id')
+      .primaryKey()
+      .references(() => discordUsers.discordId, { onDelete: 'cascade' }),
+    steamid: text('steamid')
+      .notNull()
+      .unique()
+      .references(() => users.steamid, { onDelete: 'cascade' }),
+    linkedAt: timestamp('linked_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    bySteam: index('steam_links_steam_idx').on(t.steamid),
+  }),
+);
+
+/**
+ * Sessions : Vercel est serverless, pas de session en mémoire.
+ * Le token opaque va dans un cookie httpOnly.
+ */
+export const sessions = pgTable(
+  'sessions',
+  {
+    token: text('token').primaryKey(),
+    discordId: text('discord_id')
+      .notNull()
+      .references(() => discordUsers.discordId, { onDelete: 'cascade' }),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    byUser: index('sessions_discord_idx').on(t.discordId),
+  }),
+);
+
+/**
+ * Ludothèque d'un utilisateur Steam.
+ * playtimeForever = minutes. Vaut 0 si « Détails du jeu » n'est pas public.
+ */
+export const ownedGames = pgTable(
+  'owned_games',
+  {
+    steamid: text('steamid')
+      .notNull()
+      .references(() => users.steamid, { onDelete: 'cascade' }),
+    appid: integer('appid').notNull(),
+    playtimeForever: integer('playtime_forever').notNull().default(0),
+    playtime2Weeks: integer('playtime_2weeks').notNull().default(0),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.steamid, t.appid] }),
+    byApp: index('owned_games_app_idx').on(t.appid),
+  }),
+);
+
+/**
+ * Cache partagé des métadonnées de jeu.
+ * GetOwnedGames ne renvoie PAS les genres : il faut appeler l'API du Store,
+ * lente et limitée (~200 req / 5 min). On enrichit donc chaque appid une fois.
+ */
+export const gameCache = pgTable(
+  'game_cache',
+  {
+    appid: integer('appid').primaryKey(),
+    name: text('name').notNull(),
+    headerImage: text('header_image'),
+    genres: jsonb('genres').$type<string[]>().notNull().default([]),
+    tags: jsonb('tags').$type<string[]>().notNull().default([]),
+    shortDescription: text('short_description'),
+    enrichedAt: timestamp('enriched_at', { withTimezone: true }),
+    enrichFailed: boolean('enrich_failed').notNull().default(false),
+    enrichAttempts: integer('enrich_attempts').notNull().default(0),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    byPending: index('game_cache_pending_idx').on(t.enrichedAt),
+  }),
+);
+
+/** File d'attente d'enrichissement. */
+export const enrichQueue = pgTable(
+  'enrich_queue',
+  {
+    appid: integer('appid').primaryKey(),
+    priority: integer('priority').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    byPriority: index('enrich_queue_prio_idx').on(t.priority, t.createdAt),
+  }),
+);
+
+export type DiscordUser = typeof discordUsers.$inferSelect;
+export type SteamLink = typeof steamLinks.$inferSelect;
+export type User = typeof users.$inferSelect;
+export type OwnedGame = typeof ownedGames.$inferSelect;
+export type GameCacheRow = typeof gameCache.$inferSelect;
+export type Session = typeof sessions.$inferSelect;

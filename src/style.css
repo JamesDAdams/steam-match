@@ -1,0 +1,52 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    font-family: 'Motiva Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI',
+      Roboto, Helvetica, Arial, sans-serif;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-lg border border-white/10 bg-steam-dark/80 p-4 shadow-lg;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded px-4 py-2 font-medium transition disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply btn bg-steam-navy text-steam-blue hover:bg-steam-navy/80;
+  }
+  .btn-ghost {
+    @apply btn border border-white/15 text-slate-300 hover:border-white/30 hover:text-white;
+  }
+  .chip {
+    @apply inline-flex items-center rounded-full border border-white/15 px-2.5 py-1 text-xs text-slate-300 transition hover:border-steam-blue hover:text-steam-blue;
+  }
+  .chip-active {
+    @apply border-steam-blue bg-steam-blue/15 text-steam-blue;
+  }
+  .badge {
+    @apply inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide;
+  }
+}
+
+/* Barre de progression de l'enrichissement */
+.stripes {
+  background-image: linear-gradient(
+    45deg,
+    rgba(102, 192, 244, 0.25) 25%,
+    transparent 25%,
+    transparent 50%,
+    rgba(102, 192, 244, 0.25) 50%,
+    rgba(102, 192, 244, 0.25) 75%,
+    transparent 75%,
+    transparent
+  );
+  background-size: 1rem 1rem;
+}

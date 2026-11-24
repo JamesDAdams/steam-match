@@ -1,0 +1,2 @@
+#!/usr/bin/env sh
+node scripts/scan-secrets.mjs || exit 1

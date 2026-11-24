@@ -1,0 +1,43 @@
+# Secrets
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Dépendances
+node_modules/
+.pnpm-store/
+
+# Build
+dist/
+dist-ssr/
+.vercel/
+.output/
+*.tsbuildinfo
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Éditeurs / OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+*.swo
+Thumbs.db
+
+# Tests / cache
+coverage/
+.cache/
+
+# Drizzle
+drizzle/
+
+# Cache npm local au projet (utilisé car le cache global est cassé)
+.npm-cache/

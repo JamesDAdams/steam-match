@@ -1,0 +1,12 @@
+# Fichiers inutiles au déploiement Vercel
+server/
+scripts/
+.npm-cache/
+.husky/
+*.md
+.env.example
+
+# Ne jamais envoyer de secrets (déjà couvert par .gitignore, ceinture + bretelles)
+.env
+.env.local
+.env.*.local
