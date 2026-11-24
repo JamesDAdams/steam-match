@@ -41,3 +41,4 @@ drizzle/
 
 # Cache npm local au projet (utilisé car le cache global est cassé)
 .npm-cache/
+.vercel
