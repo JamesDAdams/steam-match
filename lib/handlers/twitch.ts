@@ -50,7 +50,8 @@ export default async function handler(req: any, res: any) {
         .map((r) => {
           const state = states[r.login.toLowerCase()];
           return {
-            discordId: r.discordId,
+            // Pas d'identifiant Discord : la page est publique, inutile
+            // d'exposer un identifiant unique à des visiteurs anonymes.
             memberName: r.discordName || r.discordUsername || 'Membre',
             login: r.login,
             displayName: state?.displayName || r.displayName || r.login,

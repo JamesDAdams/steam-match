@@ -11,7 +11,6 @@ import { useAuth } from '../lib/auth';
  * qu'un live démarré pendant la visite apparaisse sans rechargement.
  */
 interface Streamer {
-  discordId: string;
   memberName: string;
   login: string;
   displayName: string;
