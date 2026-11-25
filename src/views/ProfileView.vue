@@ -7,6 +7,7 @@ import {
   steamStoreUrl,
   steamHeaderUrl,
   hideBrokenImage,
+  formatPrice,
 } from '../lib/api';
 import { useAuth } from '../lib/auth';
 
@@ -19,6 +20,9 @@ interface ProfileGame {
   enriched: boolean;
   playtime: number;
   playtime2Weeks: number;
+  cheapestPrice: number | null;
+  cheapestStore: string | null;
+  cheapestCurrency: string | null;
 }
 
 interface WishItem {
@@ -28,6 +32,9 @@ interface WishItem {
   genres: string[];
   playableNow: boolean;
   owners: string[];
+  cheapestPrice: number | null;
+  cheapestStore: string | null;
+  cheapestCurrency: string | null;
 }
 
 interface Stats {
@@ -48,9 +55,6 @@ const wishlist = ref<WishItem[]>([]);
 const loading = ref(true);
 const error = ref<string | null>(null);
 const syncing = ref(false);
-const enrichBusy = ref(false);
-const enrichDone = ref(0);
-const enrichRemaining = ref<number | null>(null);
 
 // Filtres
 const search = ref('');
@@ -148,45 +152,6 @@ async function sync() {
   }
 }
 
-/**
- * Enrichissement des métadonnées (nom, image, genres).
- *
- * L'API du Store Steam est limitée (~200 requêtes / 5 min) et chaque appel
- * coûte ~250 ms : un seul lot de 15 ne suffit pas pour une ludothèque de
- * 177 jeux + 293 envies. On boucle donc, avec un plafond pour ne pas marteler
- * Steam, et on affiche la progression.
- *
- * Tant qu'un jeu n'est pas enrichi, il s'affiche « App <id> » : c'est
- * exactement ce que corrige cette fonction.
- */
-async function enrich() {
-  enrichBusy.value = true;
-  enrichDone.value = 0;
-  try {
-    // Plafond : 12 lots de 15 = 180 jeux par clic, soit ~45 s d'appels.
-    for (let i = 0; i < 12; i++) {
-      const r = await apiPost<{
-        ok: boolean;
-        enriched?: number;
-        deferred?: number;
-        remaining?: number;
-        processed?: number;
-      }>('/api/enrich');
-
-      enrichDone.value += r.enriched ?? 0;
-      enrichRemaining.value = r.remaining ?? null;
-
-      // File vide, ou plus rien de traitable (throttle Steam) : on s'arrête.
-      if (!r.remaining || r.remaining === 0) break;
-      if ((r.enriched ?? 0) === 0) break;
-    }
-    await load();
-  } catch {
-  } finally {
-    enrichBusy.value = false;
-  }
-}
-
 onMounted(load);
 </script>
 
@@ -226,13 +191,6 @@ onMounted(load);
         </div>
 
         <div class="ml-auto flex gap-2">
-          <button class="btn-ghost text-sm" :disabled="enrichBusy" @click="enrich">
-            <template v-if="enrichBusy">
-              Enrichissement… {{ enrichDone }}
-              <template v-if="enrichRemaining !== null">({{ enrichRemaining }} restants)</template>
-            </template>
-            <template v-else>Enrichir les métadonnées</template>
-          </button>
           <button class="btn-primary text-sm" :disabled="syncing" @click="sync">
             {{ syncing ? 'Synchronisation…' : 'Synchroniser' }}
           </button>
@@ -310,13 +268,13 @@ onMounted(load);
         </div>
       </section>
 
-      <!-- Jeux sans métadonnées -->
-      <div v-if="unidentifiedCount > 0" class="alert alert-warn mb-4">
+      <!-- Jeux en cours d'identification -->
+      <div v-if="unidentifiedCount > 0" class="alert alert-info mb-4">
         <p class="text-xs">
-          <strong>{{ unidentifiedCount }} jeu(x)</strong> n'ont pas encore de nom ni de
-          genres — ils apparaissent sous la forme « App 12345 ». Lance
-          l'enrichissement : les métadonnées viennent de l'API du Store Steam,
-          limitée en débit, donc ça se remplit par lots.
+          <strong>{{ unidentifiedCount }} jeu(x)</strong> sont en cours d'identification
+          et s'affichent provisoirement sous la forme « App 12345 ». Les noms,
+          genres et prix se remplissent automatiquement en arrière-plan — rien
+          à faire de ton côté, reviens un peu plus tard.
         </p>
       </div>
 
@@ -399,6 +357,10 @@ onMounted(load);
                 déjà possédé par {{ w.owners.slice(0, 2).join(', ') }}<template v-if="w.owners.length > 2"> +{{ w.owners.length - 2 }}</template>
               </p>
               <p v-else class="text-xs text-fg-faint">personne du groupe ne l'a encore</p>
+              <p v-if="w.cheapestPrice" class="mt-0.5 text-xs text-gold">
+                dès {{ formatPrice(w.cheapestPrice, w.cheapestCurrency ?? 'EUR') }}
+                <span v-if="w.cheapestStore" class="text-fg-faint">· {{ w.cheapestStore }}</span>
+              </p>
             </div>
           </a>
         </div>

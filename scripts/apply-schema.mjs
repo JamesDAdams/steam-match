@@ -82,6 +82,12 @@ const statements = [
    )`,
   `CREATE INDEX IF NOT EXISTS discord_events_start_idx ON discord_events (scheduled_start_at)`,
 
+  // ── Prix des jeux (colonnes ajoutées après coup) ───────────────────
+  `ALTER TABLE game_cache ADD COLUMN IF NOT EXISTS cheapest_price integer`,
+  `ALTER TABLE game_cache ADD COLUMN IF NOT EXISTS cheapest_store text`,
+  `ALTER TABLE game_cache ADD COLUMN IF NOT EXISTS price_updated_at timestamp with time zone`,
+  `ALTER TABLE game_cache ADD COLUMN IF NOT EXISTS cheapest_currency text`,
+
   // ── Sessions ─────────────────────────────────────────────��─────────
   // NON destructif : on ne supprime jamais la table, sinon tous les membres
   // connectés seraient déconnectés à chaque migration.

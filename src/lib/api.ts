@@ -84,6 +84,18 @@ export function steamHeaderUrl(appid: number) {
   return `https://cdn.cloudflare.steamstatic.com/steam/apps/${appid}/header.jpg`;
 }
 
+/** Formate un prix stocké en centimes. */
+export function formatPrice(priceCents: number, currency = 'EUR'): string {
+  try {
+    return new Intl.NumberFormat('fr-FR', {
+      style: 'currency',
+      currency,
+    }).format(priceCents / 100);
+  } catch {
+    return `${(priceCents / 100).toFixed(2)} €`;
+  }
+}
+
 /** Masque une image dont le chargement a échoué (jaquette absente). */
 export function hideBrokenImage(event: Event) {
   const img = event.target as HTMLImageElement;

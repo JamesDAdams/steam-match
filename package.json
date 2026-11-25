@@ -23,7 +23,8 @@
     "db:schema": "node scripts/apply-schema.mjs",
     "db:inspect": "node scripts/inspect-db.mjs",
     "test:netlify": "node scripts/test-netlify.mjs",
-    "test:discord": "node scripts/test-discord-events.mjs"
+    "test:discord": "node scripts/test-discord-events.mjs",
+    "test:enrich": "node scripts/test-enrich.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.10.4",

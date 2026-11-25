@@ -199,6 +199,15 @@ export const gameCache = pgTable(
     genres: jsonb('genres').$type<string[]>().notNull().default([]),
     tags: jsonb('tags').$type<string[]>().notNull().default([]),
     shortDescription: text('short_description'),
+
+    // Prix de la clé la moins chère (comparateur CheapShark ou GG.deals).
+    // Stocké en CENTIMES pour éviter les flottants. null = pas encore récupéré.
+    cheapestPrice: integer('cheapest_price'),
+    cheapestStore: text('cheapest_store'),
+    // Devise du prix : EUR via GG.deals, USD via CheapShark. Sans elle on
+    // risquerait d'afficher un montant en dollars avec un symbole euro.
+    cheapestCurrency: text('cheapest_currency'),
+    priceUpdatedAt: timestamp('price_updated_at', { withTimezone: true }),
     enrichedAt: timestamp('enriched_at', { withTimezone: true }),
     enrichFailed: boolean('enrich_failed').notNull().default(false),
     enrichAttempts: integer('enrich_attempts').notNull().default(0),

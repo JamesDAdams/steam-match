@@ -7,6 +7,7 @@ import {
   steamStoreUrl,
   steamHeaderUrl,
   hideBrokenImage,
+  formatPrice,
 } from '../lib/api';
 
 interface Game {
@@ -26,6 +27,9 @@ interface Game {
   ownerCount?: number;
   owners?: string[];
   playableNow?: boolean;
+  cheapestPrice?: number | null;
+  cheapestStore?: string | null;
+  cheapestCurrency?: string | null;
 }
 
 const games = ref<Game[]>([]);
@@ -38,7 +42,6 @@ const error = ref<string | null>(null);
 // Synchronisation
 const syncing = ref(false);
 const syncResult = ref<any>(null);
-const enriching = ref(false);
 const cacheState = ref<{ total: number; enriched: number; pending: number } | null>(null);
 
 // Mode : jeux possédés en commun, ou wishlist croisée
@@ -118,8 +121,6 @@ async function sync() {
   try {
     const r = await apiPost('/api/sync');
     syncResult.value = r;
-    // Enchaîne un peu d'enrichissement juste après le sync.
-    await enrich();
     await load();
     await loadGroup();
   } catch (e: any) {
@@ -129,16 +130,6 @@ async function sync() {
   }
 }
 
-async function enrich() {
-  enriching.value = true;
-  try {
-    await apiPost('/api/enrich');
-    await loadGroup();
-  } catch {
-  } finally {
-    enriching.value = false;
-  }
-}
 
 function toggleGenre(g: string) {
   const i = selectedGenres.value.indexOf(g);
@@ -198,10 +189,6 @@ onMounted(async () => {
       </div>
 
       <div class="ml-auto flex gap-2">
-        <button class="btn-ghost text-sm" :disabled="enriching" @click="enrich">
-          <span v-if="enriching">Enrichissement…</span>
-          <span v-else>Enrichir les genres</span>
-        </button>
         <button class="btn-primary text-sm" :disabled="syncing" @click="sync">
           <span v-if="syncing">Synchronisation…</span>
           <span v-else>Synchroniser mon Steam</span>
@@ -254,9 +241,8 @@ onMounted(async () => {
         <div class="stripes h-full rounded bg-brand/60 transition-all" :style="{ width: enrichmentPct + '%' }"></div>
       </div>
       <p class="mt-2 text-xs text-fg-faint">
-        Les genres viennent de l'API du Store Steam, limitée à ~200 requêtes
-        par 5 min. Les filtres se remplissent donc progressivement. Les jeux
-        non enrichis ne matchent aucun filtre de genre.
+        Les métadonnées (noms, genres, prix) se remplissent automatiquement en
+        arrière-plan. Rien à faire : les filtres se complètent au fil des minutes.
       </p>
     </div>
 
@@ -404,6 +390,13 @@ onMounted(async () => {
                   possédé par {{ (g.owners ?? []).slice(0, 2).join(', ') }}<template v-if="(g.ownerCount ?? 0) > 2"> +{{ (g.ownerCount ?? 0) - 2 }}</template>
                 </template>
                 <template v-else>personne ne l'a encore</template>
+              </span>
+              <span
+                v-if="mode === 'wishlist' && g.cheapestPrice"
+                class="text-gold"
+                :title="g.cheapestStore ?? undefined"
+              >
+                dès {{ formatPrice(g.cheapestPrice, g.cheapestCurrency ?? 'EUR') }}
               </span>
               <span v-else class="truncate" :title="g.players.join(', ')">
                 {{ g.players.slice(0, 2).join(', ') }}<template v-if="g.players.length > 2"> +{{ g.players.length - 2 }}</template>

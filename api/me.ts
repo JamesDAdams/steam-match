@@ -126,6 +126,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           genres: gameCache.genres,
           tags: gameCache.tags,
           enrichedAt: gameCache.enrichedAt,
+          cheapestPrice: gameCache.cheapestPrice,
+          cheapestStore: gameCache.cheapestStore,
+          cheapestCurrency: gameCache.cheapestCurrency,
         })
         .from(ownedGames)
         .leftJoin(gameCache, eq(gameCache.appid, ownedGames.appid))
@@ -141,6 +144,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         enriched: Boolean(r.enrichedAt),
         playtime: r.playtimeForever ?? 0,
         playtime2Weeks: r.playtime2Weeks ?? 0,
+        cheapestPrice: r.cheapestPrice ?? null,
+        cheapestStore: r.cheapestStore ?? null,
+        cheapestCurrency: r.cheapestCurrency ?? null,
       }));
 
       stats = buildStats(games);
@@ -156,6 +162,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           headerImage: gameCache.headerImage,
           genres: gameCache.genres,
           enrichedAt: gameCache.enrichedAt,
+          cheapestPrice: gameCache.cheapestPrice,
+          cheapestStore: gameCache.cheapestStore,
+          cheapestCurrency: gameCache.cheapestCurrency,
         })
         .from(wishlistItems)
         .leftJoin(gameCache, eq(gameCache.appid, wishlistItems.appid))
@@ -208,6 +217,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             genres: w.genres ?? [],
             playableNow: owners.length > 0,
             owners,
+            cheapestPrice: w.cheapestPrice ?? null,
+            cheapestStore: w.cheapestStore ?? null,
+            cheapestCurrency: w.cheapestCurrency ?? null,
           };
         });
       }

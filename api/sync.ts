@@ -144,7 +144,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           )})
       `);
 
-      // Les jeux souhaités méritent aussi des métadonnées (nom, image, genres).
+      // Les jeux souhaités méritent aussi des métadonnées (nom, image, genres,
+      // prix). Il FAUT une ligne game_cache : le worker d'enrichissement fait
+      // une jointure enrich_queue ↔ game_cache, donc sans elle le jeu serait
+      // en file mais jamais traité.
+      // Le nom provisoire « App <id> » est écrasé à l'enrichissement.
+      await db
+        .insert(gameCache)
+        .values(
+          wishlist.items.map((w) => ({
+            appid: w.appid,
+            name: `App ${w.appid}`,
+          })),
+        )
+        .onConflictDoNothing();
+
       await db
         .insert(enrichQueue)
         .values(wishlist.items.map((w) => ({ appid: w.appid, priority: 2 })))
