@@ -247,6 +247,8 @@ export interface CreateScheduledEventInput {
   entityType: 2 | 3;
   channelId?: string | null;
   location?: string | null;
+  /** Bannière : data URI (data:image/jpeg;base64,…). Discord exige ce format. */
+  image?: string | null;
 }
 
 /**
@@ -274,6 +276,8 @@ export async function createScheduledEvent(
     body.entity_metadata = { location: input.location };
   }
 
+  if (input.image) body.image = input.image;
+
   await assertGuildAccessible();
 
   const res = await discordFetch(`/guilds/${guildId()}/scheduled-events`, {
@@ -282,13 +286,7 @@ export async function createScheduledEvent(
   });
 
   if (res.status === 403) {
-    throw new Error(
-      'Le bot n’a pas la permission de créer des événements (403). ' +
-        'Sur Discord : Paramètres du serveur → Rôles → rôle du bot → active ' +
-        '« Créer des événements » (et « Gérer les événements »). ' +
-        'La permission cochée au moment de l’invitation ne suffit pas si elle ' +
-        'a été retirée ensuite.',
-    );
+    throw new Error(await explainCreateRefusal(input));
   }
   if (res.status === 400) {
     const text = await res.text().catch(() => '');
@@ -310,13 +308,171 @@ export async function createScheduledEvent(
 
 /** Traduit les erreurs de validation Discord en une phrase lisible. */
 function explainDiscordError(raw: string): string {
+  const { code, message, errors } = parseDiscordError(raw);
+  const detail = errors ? JSON.stringify(errors) : '';
+  const suffix = detail ? ` (${detail})` : '';
+  return `${message ?? 'requête invalide'}${code ? ` [code ${code}]` : ''}${suffix}`;
+}
+
+function parseDiscordError(raw: string): {
+  code?: number;
+  message?: string;
+  errors?: unknown;
+} {
   try {
-    const parsed = JSON.parse(raw) as { message?: string; errors?: any };
-    const detail = parsed.errors ? JSON.stringify(parsed.errors) : '';
-    return `${parsed.message ?? 'requête invalide'}${detail ? ` (${detail})` : ''}`;
+    const parsed = JSON.parse(raw) as {
+      code?: number;
+      message?: string;
+      errors?: unknown;
+    };
+    return parsed ?? {};
   } catch {
-    return raw.slice(0, 200) || 'requête invalide';
+    return { message: raw.slice(0, 200) || undefined };
   }
+}
+
+/**
+ * Construit un message utile pour un refus 403 à la création.
+ *
+ * Un 403 a plusieurs causes très différentes, et le message générique
+ * « permission manquante » envoie l'admin sur une fausse piste quand c'est en
+ * réalité un AUTRE bot qui répond (jeton différent entre local et production)
+ * ou une permission de salon. On interroge donc Discord pour nommer le bot
+ * réellement utilisé et l'état de ses permissions.
+ */
+async function explainCreateRefusal(
+  input: CreateScheduledEventInput,
+): Promise<string> {
+  const [identity, perms] = await Promise.all([
+    getBotIdentity().catch(() => null),
+    // On force la relecture : si l'admin vient d'accorder la permission, un
+    // cache de 5 minutes afficherait encore « manquante » et l'enverrait sur
+    // une fausse piste.
+    getBotPermissions({ force: true }).catch(() => null),
+  ]);
+
+  const who = identity
+    ? `Bot utilisé par le site : « ${identity.username} » (id ${identity.id}). `
+    : '';
+
+  if (perms && !perms.createEvents) {
+    return (
+      `Discord a refusé la création (403). ${who}` +
+      'La permission « Créer des événements » manque sur le rôle de ce bot. ' +
+      'Paramètres du serveur → Rôles → rôle du bot → active-la. ' +
+      'Attention : « Gérer les événements » ne suffit pas, Discord exige les deux.'
+    );
+  }
+
+  if (input.entityType === 2) {
+    return (
+      `Discord a refusé la création (403). ${who}` +
+      'Le bot a les permissions serveur, mais pas l’accès au salon choisi. ' +
+      'Vérifie que le bot peut voir et rejoindre ce salon vocal ' +
+      '(Permissions du salon → le bot → « Voir le salon » et « Se connecter »).'
+    );
+  }
+
+  return (
+    `Discord a refusé la création (403). ${who}` +
+    `Serveur ciblé : ${guildId()}. ` +
+    'Vérifie les permissions du bot sur ce serveur et que cet identifiant est ' +
+    'bien celui de ton serveur (DISCORD_GUILD_ID). Si l’identifiant du bot ' +
+    'ci-dessus ne correspond pas à celui que tu as configuré, le jeton de ' +
+    'production appartient à une autre application Discord.'
+  );
+}
+
+/* ─────────────────── Identité et permissions du bot ─────────────────── */
+
+const IDENTITY_TTL_MS = 10 * 60_000;
+
+let identityCache: { id: string; username: string; at: number } | null = null;
+
+/** Nom et identifiant du bot réellement utilisé (mis en cache). */
+export async function getBotIdentity(): Promise<{ id: string; username: string }> {
+  if (identityCache && Date.now() - identityCache.at < IDENTITY_TTL_MS) {
+    return { id: identityCache.id, username: identityCache.username };
+  }
+
+  const res = await discordFetch('/users/@me');
+  if (!res.ok) {
+    throw new Error(`Impossible de lire l’identité du bot (HTTP ${res.status}).`);
+  }
+
+  const data = (await res.json()) as { id: string; username: string };
+  identityCache = { id: data.id, username: data.username, at: Date.now() };
+  return { id: data.id, username: data.username };
+}
+
+export interface BotPermissions {
+  administrator: boolean;
+  manageEvents: boolean;
+  createEvents: boolean;
+}
+
+const PERMS_TTL_MS = 5 * 60_000;
+let permsCache: { value: BotPermissions; at: number } | null = null;
+
+/** Bits Discord utiles ici. */
+const PERM_ADMINISTRATOR = 3n;
+const PERM_MANAGE_EVENTS = 33n;
+const PERM_CREATE_EVENTS = 44n;
+
+/**
+ * Permissions EFFECTIVES du bot sur le serveur.
+ *
+ * La permission passée dans le lien d'invitation n'est qu'une suggestion : ce
+ * sont les rôles du serveur qui décident. On agrège donc @everyone et les
+ * rôles du bot, comme le fait Discord.
+ */
+export async function getBotPermissions(
+  opts: { force?: boolean } = {},
+): Promise<BotPermissions> {
+  if (!opts.force && permsCache && Date.now() - permsCache.at < PERMS_TTL_MS) {
+    return permsCache.value;
+  }
+
+  const bot = await getBotIdentity();
+  await assertGuildAccessible();
+
+  const [guildRes, memberRes] = await Promise.all([
+    discordFetch(`/guilds/${guildId()}`),
+    discordFetch(`/guilds/${guildId()}/members/${bot.id}`),
+  ]);
+
+  if (!guildRes.ok) {
+    throw new Error(`Discord a répondu HTTP ${guildRes.status} sur le serveur.`);
+  }
+
+  const guild = (await guildRes.json()) as {
+    id: string;
+    roles?: { id: string; permissions: string }[];
+  };
+  const member = memberRes.ok
+    ? ((await memberRes.json()) as { roles?: string[] })
+    : { roles: [] as string[] };
+
+  const roles = Array.isArray(guild.roles) ? guild.roles : [];
+  const everyone = roles.find((r) => r.id === guild.id);
+
+  let bits = BigInt(everyone?.permissions ?? '0');
+  for (const roleId of member.roles ?? []) {
+    const role = roles.find((r) => r.id === roleId);
+    if (role) bits |= BigInt(role.permissions);
+  }
+
+  const has = (bit: bigint) => (bits & (1n << bit)) !== 0n;
+  const administrator = has(PERM_ADMINISTRATOR);
+
+  const value: BotPermissions = {
+    administrator,
+    manageEvents: administrator || has(PERM_MANAGE_EVENTS),
+    createEvents: administrator || has(PERM_CREATE_EVENTS),
+  };
+
+  permsCache = { value, at: Date.now() };
+  return value;
 }
 
 /** Construit l'URL publique de la bannière d'un événement. */

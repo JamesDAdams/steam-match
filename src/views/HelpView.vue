@@ -64,8 +64,9 @@ function since(d: string | Date | null) {
         Discord. Un administrateur peut aussi en
         <strong class="text-fg">créer directement depuis le site</strong> :
         bouton « Créer un événement » en haut de la page Événements, puis un
-        formulaire (nom, date, durée, salon vocal ou lieu externe). L'événement
-        est créé sur Discord et apparaît aussitôt ici.
+        formulaire (nom, description, date, durée, salon vocal ou lieu externe,
+        et bannière facultative recadrée en 16:9). L'événement est créé sur
+        Discord et apparaît aussitôt ici.
       </p>
 
       <p class="mt-3 text-sm font-semibold text-fg-strong">Configuration (administrateur)</p>

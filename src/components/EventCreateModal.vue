@@ -20,6 +20,13 @@ interface Channel {
   type: number;
 }
 
+interface BotInfo {
+  id: string;
+  username: string;
+  canCreateEvents: boolean;
+  canManageEvents: boolean;
+}
+
 const emit = defineEmits<{
   (e: 'close'): void;
   (e: 'created', payload: { name: string }): void;
@@ -42,6 +49,13 @@ const channels = ref<Channel[]>([]);
 const channelsError = ref<string | null>(null);
 const loadingChannels = ref(true);
 const botConfigured = ref(true);
+// Identité et permissions du bot réellement utilisé par le site : un 403
+// s'explique presque toujours par un jeton qui ne correspond pas au bot
+// autorisé sur le serveur, d'où l'affichage explicite.
+const bot = ref<BotInfo | null>(null);
+const guildId = ref<string | null>(null);
+
+const permissionBlocked = computed(() => bot.value !== null && !bot.value.canCreateEvents);
 
 async function loadChannels() {
   loadingChannels.value = true;
@@ -49,13 +63,17 @@ async function loadChannels() {
   try {
     const r = await apiGet<{
       configured: boolean;
+      guildId: string | null;
       channels: Channel[];
+      bot: BotInfo | null;
       error: string | null;
     }>('/api/events/channels');
 
     botConfigured.value = r.configured;
     channels.value = r.channels ?? [];
     channelsError.value = r.error ?? null;
+    bot.value = r.bot ?? null;
+    guildId.value = r.guildId ?? null;
 
     if (channels.value.length > 0 && !channelId.value) {
       channelId.value = channels.value[0].id;
@@ -69,6 +87,94 @@ async function loadChannels() {
   } finally {
     loadingChannels.value = false;
   }
+}
+
+/* ── Bannière ───────────────────────────────────────────────────────── */
+
+const imageData = ref<string | null>(null);
+const imageError = ref<string | null>(null);
+const processingImage = ref(false);
+const fileInput = ref<HTMLInputElement | null>(null);
+
+/**
+ * Redimensionne et réencode la bannière dans le navigateur.
+ *
+ * Discord refuse les images non carrées mal cadrées selon les cas, et sa
+ * limite de taille est basse : on cadre donc en 16:9 (1280×720) et on encode
+ * en JPEG. Envoyer le fichier d'origine tel quel produirait un 400 opaque.
+ */
+function toCoverDataUri(file: File): Promise<string> {
+  const W = 1280;
+  const H = 720;
+
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = W;
+        canvas.height = H;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('Canvas indisponible');
+
+        // Cadrage « cover » : on remplit le 16:9 en centrant, sans déformer.
+        const scale = Math.max(W / img.width, H / img.height);
+        const dw = img.width * scale;
+        const dh = img.height * scale;
+
+        ctx.fillStyle = '#0b0d1a';
+        ctx.fillRect(0, 0, W, H);
+        ctx.drawImage(img, (W - dw) / 2, (H - dh) / 2, dw, dh);
+
+        resolve(canvas.toDataURL('image/jpeg', 0.85));
+      } catch (err) {
+        reject(err);
+      }
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Image illisible'));
+    };
+
+    img.src = url;
+  });
+}
+
+async function onFile(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  // On vide la sélection pour pouvoir rechoisir le même fichier ensuite.
+  input.value = '';
+  if (!file) return;
+
+  imageError.value = null;
+
+  if (!file.type.startsWith('image/')) {
+    imageError.value = 'Choisis un fichier image (PNG, JPEG ou WebP).';
+    return;
+  }
+  if (file.size > 8_000_000) {
+    imageError.value = 'Image trop lourde (8 Mo maximum avant compression).';
+    return;
+  }
+
+  processingImage.value = true;
+  try {
+    imageData.value = await toCoverDataUri(file);
+  } catch {
+    imageError.value = 'Impossible de lire cette image.';
+  } finally {
+    processingImage.value = false;
+  }
+}
+
+function removeImage() {
+  imageData.value = null;
+  imageError.value = null;
 }
 
 /* ── Dates ──────────────────────────────────────────────────────────── */
@@ -94,6 +200,8 @@ function resetForm() {
   date.value = dateInputValue(tomorrow);
   time.value = '20:30';
   duration.value = 120;
+  imageData.value = null;
+  imageError.value = null;
   error.value = null;
   attempted.value = false;
 }
@@ -143,7 +251,9 @@ const localError = computed<string | null>(() => {
   return null;
 });
 
-const canSubmit = computed(() => !localError.value && !sending.value);
+const canSubmit = computed(
+  () => !localError.value && !sending.value && !permissionBlocked.value && !processingImage.value,
+);
 
 /* ── Aperçu lisible ─────────────────────────────────────────────────── */
 
@@ -187,6 +297,7 @@ async function submit() {
       entityType: kind.value === 'voice' ? 2 : 3,
       channelId: kind.value === 'voice' ? channelId.value : null,
       location: kind.value === 'external' ? location.value.trim() : null,
+      image: imageData.value,
     });
 
     emit('created', r.event);
@@ -289,6 +400,70 @@ onBeforeUnmount(() => {
               placeholder="On se retrouve pour une session détendue, micro conseillé."
               class="input resize-none"
             ></textarea>
+          </div>
+
+          <!-- Bannière -->
+          <div>
+            <span class="mb-1 block text-xs font-medium text-fg-muted">
+              Bannière <span class="text-fg-faint">(facultatif)</span>
+            </span>
+
+            <div
+              v-if="imageData"
+              class="relative overflow-hidden rounded-lg border border-line"
+            >
+              <img
+                :src="imageData"
+                alt="Aperçu de la bannière"
+                class="aspect-video w-full object-cover"
+              />
+              <div
+                class="absolute inset-x-0 bottom-0 flex justify-end gap-2 bg-gradient-to-t from-black/75 to-transparent p-2"
+              >
+                <button
+                  type="button"
+                  class="rounded-md border border-white/30 bg-black/40 px-2 py-1 text-[11px] text-white transition hover:bg-black/60"
+                  @click="fileInput?.click()"
+                >
+                  Remplacer
+                </button>
+                <button
+                  type="button"
+                  class="rounded-md border border-white/30 bg-black/40 px-2 py-1 text-[11px] text-white transition hover:bg-black/60"
+                  @click="removeImage"
+                >
+                  Retirer
+                </button>
+              </div>
+            </div>
+
+            <button
+              v-else
+              type="button"
+              class="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-line-strong px-3 py-4 text-xs text-fg-muted transition hover:border-brand hover:text-fg-strong disabled:opacity-50"
+              :disabled="processingImage"
+              @click="fileInput?.click()"
+            >
+              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <rect x="3" y="4" width="18" height="16" rx="2" />
+                <circle cx="8.5" cy="9.5" r="1.5" />
+                <path d="m21 15-4.5-4.5L7 20" />
+              </svg>
+              {{ processingImage ? 'Traitement…' : 'Choisir une image (16:9)' }}
+            </button>
+
+            <input
+              ref="fileInput"
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              class="hidden"
+              @change="onFile"
+            />
+
+            <p v-if="imageError" class="mt-1 text-xs text-danger">{{ imageError }}</p>
+            <p v-else class="mt-1 text-[11px] text-fg-faint">
+              Recadrée en 1280×720 et compressée automatiquement.
+            </p>
           </div>
 
           <!-- Type -->
@@ -413,8 +588,36 @@ onBeforeUnmount(() => {
             Renseigne <code>DISCORD_BOT_TOKEN</code> et <code>DISCORD_GUILD_ID</code>.
           </div>
 
+          <!-- Le bot réellement utilisé n'a pas le droit de créer -->
+          <div v-else-if="permissionBlocked" class="alert alert-error text-xs">
+            <p class="font-semibold">Le bot ne peut pas créer d'événements</p>
+            <p class="mt-1">
+              Bot utilisé par le site :
+              <strong>{{ bot?.username }}</strong>
+              <span class="text-fg-faint">(id {{ bot?.id }})</span>
+              sur le serveur
+              <code class="text-fg">{{ guildId }}</code
+              >. Il lui manque la permission « Créer des événements ».
+            </p>
+            <p class="mt-1">
+              Paramètres du serveur → Rôles → rôle de ce bot → active
+              « Créer des événements », puis recharge la page.
+            </p>
+            <p v-if="bot?.canManageEvents" class="mt-1 text-fg-faint">
+              « Gérer les événements » est déjà accordée : Discord exige les deux.
+            </p>
+            <p class="mt-1 text-fg-faint">
+              Si l'identifiant du bot ci-dessus n'est pas celui que tu as
+              autorisé sur ton serveur, le jeton de production appartient à une
+              autre application Discord.
+            </p>
+          </div>
+
           <!-- Actions -->
           <div class="flex flex-wrap items-center justify-end gap-2 border-t border-line pt-4">
+            <span v-if="bot" class="mr-auto text-[11px] text-fg-faint">
+              via {{ bot.username }}
+            </span>
             <button type="button" class="btn-ghost text-sm" @click="close">Annuler</button>
             <button type="submit" class="btn-primary text-sm" :disabled="!canSubmit">
               {{ sending ? 'Création…' : 'Créer sur Discord' }}

@@ -17,11 +17,19 @@ process.env.DISCORD_BOT_TOKEN = 'jeton-de-test';
 process.env.DISCORD_GUILD_ID = '111111111111111111';
 
 const GUILD = '111111111111111111';
+const BOT_ID = '1574874920289050777';
+
+const MANAGE_EVENTS = 1n << 33n;
+const CREATE_EVENTS = 1n << 44n;
 
 /** Requêtes interceptées : { method, path, body }. */
 const calls = [];
 
 let failChannels = false;
+/** true = le POST de création renvoie 403 (permission retirée). */
+let denyCreate = false;
+/** Rôles du bot renvoyés par /members/@me. */
+let botRoles = ['role-create'];
 
 globalThis.fetch = async (url, init = {}) => {
   const u = new URL(String(url));
@@ -40,17 +48,34 @@ globalThis.fetch = async (url, init = {}) => {
       headers: { 'content-type': 'application/json' },
     });
 
-  if (method === 'GET' && path === `/guilds/${GUILD}`) return json(200, { id: GUILD });
+  // Identité du bot (servie en cache par le module).
+  if (method === 'GET' && path === '/users/@me') {
+    return json(200, { id: BOT_ID, username: 'steam-match' });
+  }
+
+  // Le serveur, avec ses rôles (nécessaire au calcul des permissions).
+  if (method === 'GET' && path === `/guilds/${GUILD}`) {
+    return json(200, {
+      id: GUILD,
+      name: 'Serveur de test',
+      roles: [
+        { id: GUILD, permissions: String(MANAGE_EVENTS) },
+        { id: 'role-create', permissions: String(CREATE_EVENTS) },
+        { id: 'role-sans-droit', permissions: '0' },
+      ],
+    });
+  }
 
   if (method === 'GET' && path.startsWith(`/guilds/${GUILD}/members/`)) {
     const id = path.split('/').pop();
+    if (id === BOT_ID) return json(200, { user: { id }, roles: botRoles });
     // 404 = pas membre (le bot, lui, voit bien le serveur).
-    if (id === '222222222222222222') return json(200, { user: { id } });
+    if (id === '222222222222222222') return json(200, { user: { id }, roles: [] });
     return json(404, { code: 10007, message: 'Unknown Member' });
   }
 
   if (method === 'GET' && path === `/guilds/${GUILD}/channels`) {
-    if (failChannels) return json(403, { message: 'Missing Access' });
+    if (failChannels) return json(403, { message: 'Missing Access', code: 50001 });
     return json(200, [
       { id: '3', name: 'Salon texte', type: 0, position: 0 },
       { id: '2', name: 'Vocal B', type: 2, position: 2 },
@@ -60,6 +85,9 @@ globalThis.fetch = async (url, init = {}) => {
   }
 
   if (method === 'POST' && path === `/guilds/${GUILD}/scheduled-events`) {
+    if (denyCreate) {
+      return json(403, { message: 'Missing Permissions', code: 50013 });
+    }
     const body = JSON.parse(String(init.body));
     return json(201, {
       id: '999',
@@ -71,6 +99,7 @@ globalThis.fetch = async (url, init = {}) => {
       status: 1,
       entity_type: body.entity_type,
       entity_metadata: body.entity_metadata ?? null,
+      image: body.image ?? null,
     });
   }
 
@@ -83,7 +112,14 @@ const vite = await createServer({
   logLevel: 'error',
 });
 
-const mod = await vite.ssrLoadModule('/lib/discord-bot.ts');
+/** Instance de module neuve : les caches (identité, permissions) sont isolés. */
+let instances = 0;
+async function freshModule() {
+  instances++;
+  return vite.ssrLoadModule(`/lib/discord-bot.ts?i=${instances}`);
+}
+
+const mod = await freshModule();
 
 let failures = 0;
 
@@ -128,12 +164,27 @@ try {
 check('erreur 403 des salons remontée', Boolean(channelError), String(channelError));
 failChannels = false;
 
-// ── 3. Création d'un événement vocal ──────────────────────────────────
+// ── 3. Permissions effectives ─────────────────────────────────────────
+console.log('  — Permissions du bot —');
+const perms = await mod.getBotPermissions({ force: true });
+check('Créer des événements détecté', perms.createEvents === true);
+check('Gérer les événements détecté', perms.manageEvents === true);
+check('administrateur non accordé', perms.administrator === false);
+
+// Un bot sans le rôle adéquat : la permission doit être vue comme absente.
+const modSansDroit = await freshModule();
+botRoles = ['role-sans-droit'];
+const perms2 = await modSansDroit.getBotPermissions({ force: true });
+check('permission absente détectée', perms2.createEvents === false && perms2.manageEvents === true);
+botRoles = ['role-create'];
+
+// ── 4. Création d'un événement vocal ──────────────────────────────────
 console.log('  — Création (vocal) —');
 calls.length = 0;
 
 const start = new Date('2026-03-14T20:30:00.000Z');
 const end = new Date('2026-03-14T22:30:00.000Z');
+const cover = 'data:image/jpeg;base64,/9j/AAAA';
 
 const created = await mod.createScheduledEvent({
   name: 'Soirée survie',
@@ -142,6 +193,7 @@ const created = await mod.createScheduledEvent({
   endAt: end,
   entityType: 2,
   channelId: '1',
+  image: cover,
 });
 
 const vocal = calls.find((c) => c.method === 'POST')?.body;
@@ -154,8 +206,9 @@ check('aucun entity_metadata en vocal', vocal?.entity_metadata === undefined);
 check('début en ISO UTC', vocal?.scheduled_start_time === start.toISOString());
 check('fin en ISO UTC', vocal?.scheduled_end_time === end.toISOString());
 check('nom et description transmis', vocal?.name === 'Soirée survie' && vocal?.description === 'On joue à Valheim');
+check('bannière transmise en data URI', vocal?.image === cover);
 
-// ── 4. Création d'un événement externe ────────────────────────────────
+// ── 5. Création d'un événement externe ────────────────────────────────
 console.log('  — Création (lieu externe) —');
 calls.length = 0;
 
@@ -176,8 +229,57 @@ check(
 check('aucun channel_id en externe', externe?.channel_id === undefined);
 check('fin omise quand absente', externe?.scheduled_end_time === undefined);
 check('description omise quand vide', externe?.description === undefined);
+check('bannière omise quand absente', externe?.image === undefined);
 
-// ── 5. Bot hors du serveur : erreur explicite, pas « pas membre » ─────
+// ── 6. Refus 403 : le message doit nommer le bot et la permission ─────
+console.log('  — Refus 403 (permission retirée) —');
+denyCreate = true;
+botRoles = ['role-sans-droit'];
+
+const modDenied = await freshModule();
+let refusal = null;
+try {
+  await modDenied.createScheduledEvent({
+    name: 'Test refus',
+    startAt: start,
+    entityType: 3,
+    location: 'Test',
+  });
+} catch (e) {
+  refusal = e.message;
+}
+
+check('refus explicite', Boolean(refusal), String(refusal));
+check('nomme le bot réellement utilisé', /steam-match/.test(refusal ?? ''), String(refusal));
+check(
+  'identifie la permission manquante',
+  /Créer des événements/.test(refusal ?? ''),
+  String(refusal),
+);
+
+// Cas où les permissions sont bonnes mais Discord refuse quand même :
+// le message doit alors orienter vers DISCORD_GUILD_ID / le jeton.
+botRoles = ['role-create'];
+const modRefusMystere = await freshModule();
+let refusal2 = null;
+try {
+  await modRefusMystere.createScheduledEvent({
+    name: 'Test refus 2',
+    startAt: start,
+    entityType: 3,
+    location: 'Test',
+  });
+} catch (e) {
+  refusal2 = e.message;
+}
+check(
+  'oriente vers DISCORD_GUILD_ID / le jeton',
+  /DISCORD_GUILD_ID/.test(refusal2 ?? ''),
+  String(refusal2),
+);
+denyCreate = false;
+
+// ── 7. Bot hors du serveur : erreur explicite, pas « pas membre » ─────
 console.log('  — Bot absent du serveur —');
 const savedFetch = globalThis.fetch;
 globalThis.fetch = async (url, init = {}) => {
@@ -188,8 +290,7 @@ globalThis.fetch = async (url, init = {}) => {
   return savedFetch(url, init);
 };
 
-// Nouvelle instance de module : la sonde a son propre cache.
-const mod2 = await vite.ssrLoadModule('/lib/discord-bot.ts?probe=absent');
+const mod2 = await freshModule();
 let guildError = null;
 try {
   await mod2.getGuildMember('222222222222222222');

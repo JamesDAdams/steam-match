@@ -54,6 +54,34 @@ export default async function handler(req: any, res: any) {
     return res.status(400).json({ error: 'La description ne peut pas dépasser 1000 caractères.' });
   }
 
+  // ── Bannière (data URI) ──────────────────────────────────────────────
+  // Discord n'accepte pas un upload multipart : l'image doit arriver en
+  // data URI base64 dans le JSON. Le navigateur la redimensionne déjà en
+  // 1280×720 JPEG avant l'envoi ; on vérifie quand même ici, parce qu'un
+  // appel direct à l'API ne passe pas par le formulaire.
+  let image: string | null = null;
+  if (typeof body.image === 'string' && body.image.trim() !== '') {
+    const match = /^data:image\/(png|jpe?g|webp);base64,([A-Za-z0-9+/=]+)$/.exec(
+      body.image.trim(),
+    );
+    if (!match) {
+      return res.status(400).json({
+        error: 'Bannière invalide : utilise une image PNG, JPEG ou WebP.',
+      });
+    }
+
+    const bytes = Math.floor((match[2].length * 3) / 4);
+    if (bytes > 2_000_000) {
+      return res.status(400).json({
+        error: 'Bannière trop lourde (2 Mo maximum après compression).',
+      });
+    }
+
+    image = body.image.trim();
+  } else if (body.image != null && body.image !== '') {
+    return res.status(400).json({ error: 'Bannière invalide.' });
+  }
+
   // ── Dates ────────────────────────────────────────────────────────────
   const startAt = new Date(String(body.startAt ?? ''));
   if (Number.isNaN(startAt.getTime())) {
@@ -130,6 +158,7 @@ export default async function handler(req: any, res: any) {
       entityType,
       channelId,
       location,
+      image,
     });
 
     // On recopie immédiatement en base pour que la page se rafraîchisse sans
