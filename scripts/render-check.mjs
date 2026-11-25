@@ -19,6 +19,7 @@ import { createRouter, createMemoryHistory } from 'vue-router';
 const FILES = [
   '/src/App.vue',
   '/src/views/LoginView.vue',
+  '/src/views/ProfileView.vue',
   '/src/views/CommonView.vue',
   '/src/views/RecommendView.vue',
   '/src/views/HelpView.vue',

@@ -1,7 +1,14 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getDb } from '../db/index.ts';
-import { discordUsers, allowedDiscordIds, steamLinks, users } from '../db/schema.ts';
-import { eq } from 'drizzle-orm';
+import {
+  discordUsers,
+  allowedDiscordIds,
+  steamLinks,
+  users,
+  ownedGames,
+  gameCache,
+} from '../db/schema.ts';
+import { eq, desc } from 'drizzle-orm';
 import {
   COOKIE_NAME,
   parseCookies,
@@ -100,6 +107,43 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
+    // ── Jeux et temps de jeu (page profil) ─────────────────────────────
+    // Chargé uniquement sur demande (?games=1) : la requête peut renvoyer
+    // plusieurs centaines de lignes, inutile de l'imposer à chaque appel.
+    let games: any[] | null = null;
+    let stats: any | null = null;
+
+    if (req.query.games === '1' && steam) {
+      const rows = await db
+        .select({
+          appid: ownedGames.appid,
+          playtimeForever: ownedGames.playtimeForever,
+          playtime2Weeks: ownedGames.playtime2Weeks,
+          name: gameCache.name,
+          headerImage: gameCache.headerImage,
+          genres: gameCache.genres,
+          tags: gameCache.tags,
+          enrichedAt: gameCache.enrichedAt,
+        })
+        .from(ownedGames)
+        .leftJoin(gameCache, eq(gameCache.appid, ownedGames.appid))
+        .where(eq(ownedGames.steamid, steam.steamid))
+        .orderBy(desc(ownedGames.playtimeForever));
+
+      games = rows.map((r) => ({
+        appid: r.appid,
+        name: r.name ?? `App ${r.appid}`,
+        headerImage: r.headerImage ?? null,
+        genres: r.genres ?? [],
+        tags: r.tags ?? [],
+        enriched: Boolean(r.enrichedAt),
+        playtime: r.playtimeForever ?? 0,
+        playtime2Weeks: r.playtime2Weeks ?? 0,
+      }));
+
+      stats = buildStats(games);
+    }
+
     return res.status(200).json({
       ok: true,
       authenticated: true,
@@ -112,9 +156,57 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         avatarUrl: du.avatarUrl,
       },
       steam,
+      games,
+      stats,
     });
   } catch (err: any) {
     console.error('[me]', err);
     return res.status(500).json({ error: err.message });
   }
+}
+
+
+/**
+ * Statistiques de profil.
+ *
+ * La répartition par genre est PONDÉRÉE PAR LE TEMPS DE JEU, pas par le
+ * nombre de jeux : posséder 40 jeux de survie jamais lancés ne dit rien,
+ * alors que 300 h dessus est un vrai signal.
+ */
+function buildStats(games: {
+  playtime: number;
+  genres: string[];
+  name: string;
+}[]) {
+  let totalMinutes = 0;
+  let playedGames = 0;
+  const genreMinutes = new Map<string, { minutes: number; games: number }>();
+
+  for (const g of games) {
+    const minutes = g.playtime || 0;
+    totalMinutes += minutes;
+    if (minutes > 0) playedGames++;
+
+    for (const genre of g.genres) {
+      const entry = genreMinutes.get(genre) ?? { minutes: 0, games: 0 };
+      entry.minutes += minutes;
+      entry.games += 1;
+      genreMinutes.set(genre, entry);
+    }
+  }
+
+  const topGenres = [...genreMinutes.entries()]
+    .map(([name, v]) => ({ name, minutes: v.minutes, games: v.games }))
+    .sort((a, b) => b.minutes - a.minutes || b.games - a.games)
+    .slice(0, 8);
+
+  return {
+    totalGames: games.length,
+    playedGames,
+    neverPlayed: games.length - playedGames,
+    totalMinutes,
+    averageMinutes: playedGames > 0 ? Math.round(totalMinutes / playedGames) : 0,
+    enrichedGames: games.filter((g: any) => g.enriched).length,
+    topGenres,
+  };
 }

@@ -4,6 +4,7 @@ import App from './App.vue';
 import './style.css';
 
 import LoginView from './views/LoginView.vue';
+import ProfileView from './views/ProfileView.vue';
 import CommonView from './views/CommonView.vue';
 import RecommendView from './views/RecommendView.vue';
 import HelpView from './views/HelpView.vue';
@@ -13,6 +14,12 @@ import { refreshAuth } from './lib/guard.ts';
 
 const routes = [
   { path: '/', name: 'login', component: LoginView },
+  {
+    path: '/profil',
+    name: 'profile',
+    component: ProfileView,
+    meta: { requiresAccess: true },
+  },
   { path: '/commun', name: 'common', component: CommonView, meta: { requiresAccess: true } },
   {
     path: '/recommandations',

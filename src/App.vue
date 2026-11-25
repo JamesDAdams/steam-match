@@ -29,6 +29,13 @@ async function logout() {
 
         <nav v-if="canUseSite" class="flex items-center gap-1 text-sm">
           <router-link
+            to="/profil"
+            class="rounded px-3 py-1.5 text-slate-300 transition hover:bg-white/5 hover:text-white"
+            active-class="bg-steam-blue/15 text-steam-blue"
+          >
+            Mon profil
+          </router-link>
+          <router-link
             to="/commun"
             class="rounded px-3 py-1.5 text-slate-300 transition hover:bg-white/5 hover:text-white"
             active-class="bg-steam-blue/15 text-steam-blue"
