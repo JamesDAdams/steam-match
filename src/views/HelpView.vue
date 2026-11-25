@@ -68,6 +68,12 @@ function since(d: string | Date | null) {
         et bannière facultative recadrée en 16:9). L'événement est créé sur
         Discord et apparaît aussitôt ici.
       </p>
+      <p class="mt-2 text-sm text-fg-muted">
+        La <strong class="text-fg">suppression</strong> se fait aussi depuis le
+        site : icône corbeille sur la carte de l'événement (à venir ou passé).
+        Une confirmation est demandée, car l'événement est également supprimé
+        du serveur Discord — pour tout le monde.
+      </p>
 
       <p class="mt-3 text-sm font-semibold text-fg-strong">Configuration (administrateur)</p>
       <ol class="mt-2 space-y-2 text-sm text-fg-muted">

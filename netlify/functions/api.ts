@@ -28,6 +28,7 @@ import authDiscordCallbackHandler from '../../api/auth/discord-callback.ts';
 import adminUsersHandler from '../../api/admin/users.ts';
 import eventsHandler from '../../lib/handlers/events.ts';
 import eventsCreateHandler from '../../lib/handlers/events-create.ts';
+import eventsDeleteHandler from '../../lib/handlers/events-delete.ts';
 import eventsChannelsHandler from '../../lib/handlers/events-channels.ts';
 
 interface Route {
@@ -55,6 +56,7 @@ const ROUTES: Record<string, Route> = {
   '/admin/users': { methods: ['GET', 'POST', 'DELETE'], module: adminUsersHandler },
   '/events': { methods: ['GET', 'POST'], module: eventsHandler },
   '/events/create': { methods: ['POST'], module: eventsCreateHandler },
+  '/events/delete': { methods: ['POST'], module: eventsDeleteHandler },
   '/events/channels': { methods: ['GET'], module: eventsChannelsHandler },
 };
 

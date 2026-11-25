@@ -40,6 +40,8 @@ const cases = [
   ['GET', 'http://localhost/api/events', null, 401],
   ['GET', 'http://localhost/api/events/channels', null, 401],
   ['POST', 'http://localhost/api/events/create', null, 401],
+  ['POST', 'http://localhost/api/events/delete', null, 401],
+  ['GET', 'http://localhost/api/events/delete', null, 405],
   ['GET', 'http://localhost/api/events/create', null, 405],
   ['GET', 'http://localhost/api/auth/steam', null, 302],
   ['GET', 'http://localhost/api/inexistant', null, 404],

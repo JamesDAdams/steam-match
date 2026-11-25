@@ -31,6 +31,8 @@ const calls = [];
 let failChannels = false;
 /** true = le POST de création renvoie 403 (permission retirée). */
 let denyCreate = false;
+/** true = le DELETE de suppression renvoie 403. */
+let denyDelete = false;
 /** Rôles du bot renvoyés par /members/@me. */
 let botRoles = ['role-create'];
 
@@ -85,6 +87,17 @@ globalThis.fetch = async (url, init = {}) => {
       { id: '1', name: 'Vocal A', type: 2, position: 1 },
       { id: '4', name: 'Scène', type: 13, position: 3 },
     ]);
+  }
+
+  if (method === 'DELETE' && path.startsWith(`/guilds/${GUILD}/scheduled-events/`)) {
+    if (denyDelete) {
+      return json(403, { message: 'Missing Permissions', code: 50013 });
+    }
+    // 404 = événement déjà supprimé côté Discord.
+    if (path.endsWith('999999999999999999')) {
+      return new Response(null, { status: 404 });
+    }
+    return new Response(null, { status: 204 });
   }
 
   if (method === 'POST' && path === `/guilds/${GUILD}/scheduled-events`) {
@@ -282,7 +295,48 @@ check(
 );
 denyCreate = false;
 
-// ── 7. Bot hors du serveur : erreur explicite, pas « pas membre » ─────
+// ── 7. Suppression ────────────────────────────────────────────────────
+console.log('  — Suppression —');
+calls.length = 0;
+denyDelete = false;
+
+await mod.deleteScheduledEvent('123456789012345678');
+const del = calls.find((c) => c.method === 'DELETE');
+check('requête DELETE envoyée', Boolean(del), JSON.stringify(calls.map((c) => c.method)));
+check(
+  'chemin de l’événement correct',
+  del?.path === `/guilds/${GUILD}/scheduled-events/123456789012345678`,
+  String(del?.path),
+);
+
+// Un 404 signifie « déjà supprimé » : ce n'est pas une erreur pour l'appelant.
+const modMissing = await freshModule();
+let missingError = null;
+try {
+  await modMissing.deleteScheduledEvent('999999999999999999');
+} catch (e) {
+  missingError = e.message;
+}
+check('404 toléré (déjà supprimé)', missingError === null, String(missingError));
+
+// Un 403 doit être explicite et nommer la permission manquante.
+denyDelete = true;
+const modForbidden = await freshModule();
+let forbidden = null;
+try {
+  await modForbidden.deleteScheduledEvent('123456789012345678');
+} catch (e) {
+  forbidden = e.message;
+}
+check('403 explicite', Boolean(forbidden), String(forbidden));
+check(
+  '403 nomme « Gérer les événements »',
+  /Gérer les événements/.test(forbidden ?? ''),
+  String(forbidden),
+);
+denyDelete = false;
+
+// ── 8. Bot hors du serveur : erreur explicite, pas « pas membre » ─────
 console.log('  — Bot absent du serveur —');
 const savedFetch = globalThis.fetch;
 globalThis.fetch = async (url, init = {}) => {

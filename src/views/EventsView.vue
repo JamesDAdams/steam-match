@@ -79,6 +79,48 @@ function onCreated(evt: { name: string }) {
   load();
 }
 
+/* ── Suppression (admin) ───────────────────────────────────── */
+
+const pendingDelete = ref<DiscordEvent | null>(null);
+const deleteBusy = ref(false);
+const deleteError = ref<string | null>(null);
+
+function askDelete(e: DiscordEvent) {
+  if (!me.value.isAdmin) return;
+  deleteError.value = null;
+  pendingDelete.value = e;
+}
+
+function cancelDelete() {
+  if (deleteBusy.value) return;
+  pendingDelete.value = null;
+  deleteError.value = null;
+}
+
+async function confirmDelete() {
+  const target = pendingDelete.value;
+  if (!target || deleteBusy.value) return;
+
+  deleteBusy.value = true;
+  deleteError.value = null;
+  try {
+    await apiPost('/api/events/delete', { id: target.id });
+
+    // Retrait local immédiat : la liste doit se mettre à jour à chaud, sans
+    // attendre une synchronisation Discord.
+    upcoming.value = upcoming.value.filter((x) => x.id !== target.id);
+    past.value = past.value.filter((x) => x.id !== target.id);
+
+    createMessage.value = null;
+    syncMessage.value = `Événement « ${target.name} » supprimé.`;
+    pendingDelete.value = null;
+  } catch (e: any) {
+    deleteError.value = e.message;
+  } finally {
+    deleteBusy.value = false;
+  }
+}
+
 /* ── Formatage ─────────────────────────────────────────────── */
 const dateFmt = new Intl.DateTimeFormat('fr-FR', {
   weekday: 'long',
@@ -265,6 +307,17 @@ onMounted(load);
                 >
                   Voir sur Discord ↗
                 </a>
+                <button
+                  v-if="me.isAdmin && configured"
+                  class="ml-auto inline-flex items-center gap-1 rounded px-1.5 py-1 text-danger transition hover:bg-danger-soft"
+                  title="Supprimer cet événement sur Discord et sur le site"
+                  @click="askDelete(nextEvent)"
+                >
+                  <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                    <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6" />
+                  </svg>
+                  Supprimer
+                </button>
               </div>
             </div>
           </div>
@@ -279,8 +332,19 @@ onMounted(load);
             <article
               v-for="e in upcoming.slice(1)"
               :key="e.id"
-              class="card flex gap-4 p-3"
+              class="card relative flex gap-4 p-3"
             >
+              <button
+                v-if="me.isAdmin && configured"
+                class="absolute right-1.5 top-1.5 flex h-7 w-7 items-center justify-center rounded-md text-fg-faint transition hover:bg-danger-soft hover:text-danger"
+                title="Supprimer cet événement"
+                aria-label="Supprimer cet événement"
+                @click="askDelete(e)"
+              >
+                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6" />
+                </svg>
+              </button>
               <div class="h-20 w-28 shrink-0 overflow-hidden rounded-lg bg-app-surface2">
                 <img
                   v-if="e.coverImage"
@@ -291,7 +355,7 @@ onMounted(load);
                 />
                 <div v-else class="flex h-full items-center justify-center text-xl">🎮</div>
               </div>
-              <div class="min-w-0 flex-1">
+              <div class="min-w-0 flex-1 pr-7">
                 <p class="text-xs text-gold">{{ relative(e.startAt) }}</p>
                 <h3 class="truncate font-semibold text-fg-strong">{{ e.name }}</h3>
                 <p class="mt-0.5 text-xs text-fg-muted">
@@ -330,10 +394,56 @@ onMounted(load);
             >
               {{ e.statusLabel }}
             </span>
+            <button
+              v-if="me.isAdmin && configured"
+              class="text-xs text-fg-faint transition hover:text-danger hover:underline"
+              @click="askDelete(e)"
+            >
+              Supprimer
+            </button>
           </div>
         </div>
       </section>
     </template>
+
+    <!-- Confirmation de suppression (admin) -->
+    <Teleport to="body">
+      <div
+        v-if="pendingDelete"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+        @click.self="cancelDelete"
+      >
+        <div
+          class="card w-full max-w-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="evt-delete-title"
+        >
+          <h2 id="evt-delete-title" class="font-display text-lg font-bold text-fg-strong">
+            Supprimer cet événement ?
+          </h2>
+          <p class="mt-2 text-sm font-medium text-fg">{{ pendingDelete.name }}</p>
+          <p class="mt-1 text-xs text-fg-muted">
+            {{ formatDate(pendingDelete.startAt) }} · {{ formatTime(pendingDelete.startAt) }}
+          </p>
+          <p class="mt-3 text-sm text-fg-muted">
+            Il sera supprimé du serveur Discord <strong class="text-fg">et</strong> du
+            site. Cette action est définitive.
+          </p>
+
+          <div v-if="deleteError" class="alert alert-error mt-3 text-xs">{{ deleteError }}</div>
+
+          <div class="mt-4 flex justify-end gap-2">
+            <button class="btn-ghost text-sm" :disabled="deleteBusy" @click="cancelDelete">
+              Annuler
+            </button>
+            <button class="btn-danger text-sm" :disabled="deleteBusy" @click="confirmDelete">
+              {{ deleteBusy ? 'Suppression…' : 'Supprimer' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
 
     <!-- Modal de création : monté uniquement à l'ouverture -->
     <EventCreateModal v-if="showCreate" @close="showCreate = false" @created="onCreated" />

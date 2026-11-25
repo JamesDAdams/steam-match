@@ -58,6 +58,7 @@ const ROUTES = [
   ['GET', '/api/events', '/lib/handlers/events.ts'],
   ['POST', '/api/events', '/lib/handlers/events.ts'],
   ['POST', '/api/events/create', '/lib/handlers/events-create.ts'],
+  ['POST', '/api/events/delete', '/lib/handlers/events-delete.ts'],
   ['GET', '/api/events/channels', '/lib/handlers/events-channels.ts'],
 ];
 

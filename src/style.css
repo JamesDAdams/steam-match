@@ -161,6 +161,15 @@ html.light {
     background-color: var(--brand-strong);
   }
 
+  /* Action destructive : suppression, révocation… */
+  .btn-danger {
+    @apply btn text-white;
+    background-color: var(--danger);
+  }
+  .btn-danger:hover:not(:disabled) {
+    filter: brightness(0.88);
+  }
+
   .btn-gold {
     @apply btn font-semibold;
     background-color: var(--gold);

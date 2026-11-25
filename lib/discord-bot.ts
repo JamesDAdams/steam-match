@@ -306,6 +306,61 @@ export async function createScheduledEvent(
   return (await res.json()) as DiscordScheduledEvent;
 }
 
+/**
+ * Supprime un événement programmé sur le serveur.
+ *
+ * Un 404 est traité comme un succès : l'événement a déjà disparu côté Discord
+ * (supprimé à la main, par exemple). Renvoyer une erreur laisserait une ligne
+ * fantôme en base alors que le résultat attendu est atteint.
+ */
+export async function deleteScheduledEvent(eventId: string): Promise<void> {
+  await assertGuildAccessible();
+
+  const res = await discordFetch(
+    `/guilds/${guildId()}/scheduled-events/${encodeURIComponent(eventId)}`,
+    { method: 'DELETE' },
+  );
+
+  if (res.ok || res.status === 404) return;
+
+  if (res.status === 403) {
+    const [identity, perms] = await Promise.all([
+      getBotIdentity().catch(() => null),
+      getBotPermissions({ force: true }).catch(() => null),
+    ]);
+
+    const who = identity
+      ? `Bot utilisé par le site : « ${identity.username} » (id ${identity.id}). `
+      : '';
+
+    if (perms && !perms.manageEvents) {
+      throw new Error(
+        `Discord a refusé la suppression (403). ${who}` +
+          'La permission « Gérer les événements » manque sur le rôle de ce bot. ' +
+          'Paramètres du serveur → Rôles → rôle du bot → active-la.',
+      );
+    }
+
+    throw new Error(
+      `Discord a refusé la suppression (403). ${who}` +
+        'Vérifie que le bot a toujours accès au serveur et la permission ' +
+        '« Gérer les événements ».',
+    );
+  }
+
+  if (res.status === 401) {
+    throw new Error(
+      'Jeton du bot Discord refusé (401) : impossible de supprimer l’événement. ' +
+        'Vérifie DISCORD_BOT_TOKEN.',
+    );
+  }
+
+  const text = await res.text().catch(() => '');
+  throw new Error(
+    `Discord a refusé la suppression (HTTP ${res.status}). ${text.slice(0, 200)}`.trim(),
+  );
+}
+
 /** Traduit les erreurs de validation Discord en une phrase lisible. */
 function explainDiscordError(raw: string): string {
   const { code, message, errors } = parseDiscordError(raw);
@@ -475,8 +530,7 @@ export async function getBotPermissions(
   return value;
 }
 
-/** Construit l'URL publique de la bannière d'un événement. */
-export function eventCoverUrl(
+/** Construit l'URL publique de la bannière d'un événement. */export function eventCoverUrl(
   eventId: string,
   imageHash: string | null | undefined,
 ): string | null {
