@@ -551,9 +551,10 @@ onBeforeUnmount(() => {
               class="mt-1 text-xs text-warn"
             >
               ⚠ {{ blockedChannels.length }} salon(s) où le bot n'a pas « Se connecter ».
-              Discord exige cette permission pour un événement vocal : la création
-              risque d'être refusée. Autorise-la sur le salon (Permissions du salon →
-              rôle du bot), puis
+              Discord exige cette permission <strong>sur le salon</strong> pour un
+              événement vocal. Dans le salon : Permissions → « Ajouter des membres ou
+              des rôles » → choisir le rôle <strong>Robots</strong> (ou steam-match) →
+              cocher <strong>Se connecter</strong> → Enregistrer. Puis
               <button type="button" class="underline hover:no-underline" @click="loadChannels">
                 actualise la liste
               </button>. « Lieu externe » fonctionne sans cette permission.
