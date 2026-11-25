@@ -1,8 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { verifyOpenIdResponse, getPlayerSummaries } from '../../lib/steam';
-import { COOKIE_NAME, parseCookies, readSession } from '../../lib/session';
-import { getDb } from '../../db/index';
-import { users, steamLinks } from '../../db/schema';
+import { verifyOpenIdResponse, getPlayerSummaries } from '../../lib/steam.ts';
+import { COOKIE_NAME, parseCookies, readSession } from '../../lib/session.ts';
+import { getDb } from '../../db/index.ts';
+import { users, steamLinks } from '../../db/schema.ts';
 import { eq } from 'drizzle-orm';
 
 /**

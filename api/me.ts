@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getDb } from '../db/index';
-import { discordUsers, allowedDiscordIds, steamLinks, users } from '../db/schema';
+import { getDb } from '../db/index.ts';
+import { discordUsers, allowedDiscordIds, steamLinks, users } from '../db/schema.ts';
 import { eq } from 'drizzle-orm';
 import {
   COOKIE_NAME,
@@ -8,8 +8,8 @@ import {
   readSession,
   destroySession,
   clearCookie,
-} from '../lib/session';
-import { isAdminId } from '../lib/discord';
+} from '../lib/session.ts';
+import { isAdminId } from '../lib/discord.ts';
 
 /**
  * GET  /api/me  → état complet de la session

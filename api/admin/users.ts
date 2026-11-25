@@ -1,9 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getDb } from '../../db/index';
-import { discordUsers, allowedDiscordIds, steamLinks, users } from '../../db/schema';
+import { getDb } from '../../db/index.ts';
+import { discordUsers, allowedDiscordIds, steamLinks, users } from '../../db/schema.ts';
 import { desc, eq, sql } from 'drizzle-orm';
-import { requireAdmin } from '../lib/access';
-import { adminIds } from '../lib/discord';
+import { requireAdmin } from '../lib/access.ts';
+import { adminIds } from '../lib/discord.ts';
 
 /**
  * /api/admin/users — gestion de la whitelist Discord.

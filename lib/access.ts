@@ -1,9 +1,9 @@
-import { getDb } from '../db/index';
-import { discordUsers, allowedDiscordIds, steamLinks, users } from '../db/schema';
+import { getDb } from '../db/index.ts';
+import { discordUsers, allowedDiscordIds, steamLinks, users } from '../db/schema.ts';
 import { eq } from 'drizzle-orm';
-import { COOKIE_NAME, parseCookies, readSession } from './session';
-import { isAdminId } from './discord';
-import type { DiscordProfile } from './discord';
+import { COOKIE_NAME, parseCookies, readSession } from './session.ts';
+import { isAdminId } from './discord.ts';
+import type { DiscordProfile } from './discord.ts';
 
 /**
  * Contrôle d'accès du site.

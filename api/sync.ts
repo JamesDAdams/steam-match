@@ -1,9 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getDb } from '../db/index';
-import { users, ownedGames, gameCache, enrichQueue } from '../db/schema';
+import { getDb } from '../db/index.ts';
+import { users, ownedGames, gameCache, enrichQueue } from '../db/schema.ts';
 import { eq, sql } from 'drizzle-orm';
-import { requireSteam } from '../lib/access';
-import { getOwnedGames, getPlayerSummaries } from '../lib/steam';
+import { requireSteam } from '../lib/access.ts';
+import { getOwnedGames, getPlayerSummaries } from '../lib/steam.ts';
 
 /**
  * POST /api/sync

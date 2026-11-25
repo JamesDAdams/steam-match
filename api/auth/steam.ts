@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { buildLoginUrl } from '../../lib/steam';
-import { COOKIE_NAME, parseCookies, readSession } from '../../lib/session';
+import { buildLoginUrl } from '../../lib/steam.ts';
+import { COOKIE_NAME, parseCookies, readSession } from '../../lib/session.ts';
 
 /**
  * GET /api/auth/steam
