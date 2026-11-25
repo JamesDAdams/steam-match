@@ -4,6 +4,7 @@ import { discordUsers, allowedDiscordIds, steamLinks, users } from '../../db/sch
 import { desc, eq, sql } from 'drizzle-orm';
 import { requireAdmin } from '../../lib/access.ts';
 import { adminIds } from '../../lib/discord.ts';
+import { guildId, inviteUrl, isBotConfigured } from '../../lib/discord-bot.ts';
 
 /**
  * /api/admin/users — gestion de la whitelist Discord.
@@ -47,6 +48,9 @@ async function list(req: VercelRequest, res: VercelResponse) {
       globalName: discordUsers.globalName,
       avatarUrl: discordUsers.avatarUrl,
       lastLoginAt: discordUsers.lastLoginAt,
+      // Appartenance au serveur : c'est le critère d'accès automatique.
+      isMember: discordUsers.isMember,
+      memberCheckedAt: discordUsers.memberCheckedAt,
       isAllowed: sql<boolean>`exists (
         select 1 from ${allowedDiscordIds}
         where ${allowedDiscordIds.discordId} = ${discordUsers.discordId}
@@ -76,6 +80,11 @@ async function list(req: VercelRequest, res: VercelResponse) {
   return res.status(200).json({
     ok: true,
     admins: adminIds(),
+    // État de la vérification d'appartenance : sans bot, l'accès automatique
+    // des membres du serveur est désactivé.
+    botConfigured: isBotConfigured(),
+    guildId: isBotConfigured() ? guildId() : null,
+    inviteUrl: inviteUrl(),
     allowed,
     known: known.map((k) => ({
       ...k,

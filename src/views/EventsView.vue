@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { apiGet, apiPost } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import EventCreateModal from '../components/EventCreateModal.vue';
 
 interface DiscordEvent {
   id: string;
@@ -30,6 +31,9 @@ const syncing = ref(false);
 const syncMessage = ref<string | null>(null);
 const configured = ref(true);
 const lastSyncAt = ref<string | null>(null);
+// Modal de création (admin uniquement).
+const showCreate = ref(false);
+const createMessage = ref<string | null>(null);
 
 async function load() {
   loading.value = true;
@@ -68,8 +72,14 @@ async function sync() {
   }
 }
 
-/* ── Formatage ─────────────────────────────────────────────── */
+/** Retour du modal : l'événement existe sur Discord, on rafraîchit la liste. */
+function onCreated(evt: { name: string }) {
+  syncMessage.value = null;
+  createMessage.value = `Événement « ${evt.name} » créé sur Discord.`;
+  load();
+}
 
+/* ── Formatage ─────────────────────────────────────────────── */
 const dateFmt = new Intl.DateTimeFormat('fr-FR', {
   weekday: 'long',
   day: 'numeric',
@@ -134,6 +144,16 @@ onMounted(load);
           Synchronisé {{ relative(lastSyncAt) }}
         </span>
         <button
+          v-if="me.isAdmin && configured"
+          class="btn-primary text-sm"
+          @click="showCreate = true"
+        >
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+          Créer un événement
+        </button>
+        <button
           v-if="me.isAdmin"
           class="btn-ghost text-sm"
           :disabled="syncing"
@@ -148,6 +168,7 @@ onMounted(load);
     </div>
 
     <!-- Messages -->
+    <div v-if="createMessage" class="alert alert-ok mb-4">{{ createMessage }}</div>
     <div v-if="syncMessage" class="alert alert-ok mb-4">{{ syncMessage }}</div>
     <div v-if="error" class="alert alert-error mb-4">{{ error }}</div>
 
@@ -171,12 +192,22 @@ onMounted(load);
       <div v-if="upcoming.length === 0" class="card py-14 text-center">
         <p class="text-lg font-semibold text-fg-strong">Aucun événement à venir</p>
         <p class="mx-auto mt-2 max-w-md text-sm text-fg-muted">
-          Les événements créés sur le serveur Discord apparaîtront ici après une
-          synchronisation.
+          <template v-if="me.isAdmin">
+            Crée le premier rendez-vous depuis le site, ou synchronise les
+            événements déjà programmés sur le serveur Discord.
+          </template>
+          <template v-else>
+            Les prochains rendez-vous du serveur Discord apparaîtront ici.
+          </template>
         </p>
-        <button v-if="me.isAdmin" class="btn-primary mt-5 text-sm" :disabled="syncing" @click="sync">
-          Synchroniser depuis Discord
-        </button>
+        <div v-if="me.isAdmin" class="mt-5 flex flex-wrap justify-center gap-2">
+          <button v-if="configured" class="btn-primary text-sm" @click="showCreate = true">
+            Créer un événement
+          </button>
+          <button class="btn-ghost text-sm" :disabled="syncing" @click="sync">
+            {{ syncing ? 'Synchronisation…' : 'Synchroniser depuis Discord' }}
+          </button>
+        </div>
       </div>
 
       <template v-else>
@@ -303,5 +334,8 @@ onMounted(load);
         </div>
       </section>
     </template>
+
+    <!-- Modal de création : monté uniquement à l'ouverture -->
+    <EventCreateModal v-if="showCreate" @close="showCreate = false" @created="onCreated" />
   </div>
 </template>

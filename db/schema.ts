@@ -30,6 +30,16 @@ export const discordUsers = pgTable('discord_users', {
   globalName: text('global_name'),
   avatarUrl: text('avatar_url'),
   isAdmin: boolean('is_admin').notNull().default(false),
+  /**
+   * Appartenance au serveur Discord, vérifiée via le bot.
+   *
+   * C'est le second critère d'accès : un membre du serveur entre sans
+   * autorisation manuelle. `memberCheckedAt` sert de cache (l'appel Discord
+   * n'est refait qu'après quelques minutes) et de trace de la dernière
+   * vérification réussie.
+   */
+  isMember: boolean('is_member').notNull().default(false),
+  memberCheckedAt: timestamp('member_checked_at', { withTimezone: true }),
   lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });

@@ -36,6 +36,10 @@ const statements = [
      created_at   timestamp with time zone NOT NULL DEFAULT now()
    )`,
 
+  // Appartenance au serveur Discord (vérifiée via le bot).
+  `ALTER TABLE discord_users ADD COLUMN IF NOT EXISTS is_member boolean NOT NULL DEFAULT false`,
+  `ALTER TABLE discord_users ADD COLUMN IF NOT EXISTS member_checked_at timestamp with time zone`,
+
   // ── Whitelist ──────────────────────────────────────────────────────
   `CREATE TABLE IF NOT EXISTS allowed_discord_ids (
      discord_id text PRIMARY KEY NOT NULL,

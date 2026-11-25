@@ -31,6 +31,9 @@ Preview et Development pour chacune).
 | `DISCORD_CLIENT_ID` | portail Discord → OAuth2 |
 | `DISCORD_CLIENT_SECRET` | portail Discord → OAuth2 → Reset Secret |
 | `DISCORD_ADMIN_ID` | ton ID Discord |
+| `DISCORD_BOT_TOKEN` | portail Discord → **Bot** → Reset Token (le bot doit être invité sur le serveur) |
+| `DISCORD_GUILD_ID` | Discord → clic droit sur le serveur → Copier l'identifiant |
+| `DISCORD_INVITE_URL` | facultatif — lien d'invitation du serveur, affiché aux comptes refusés |
 
 ## 3. Redirection Discord
 
@@ -78,6 +81,31 @@ Le projet en utilise **11**. Deux règles pour le rester :
   via `req.method` (c'est le cas du logout, dans `POST /api/me`).
 
 Passer au plan Pro lèverait la limite.
+
+## 6. Contrôle d'accès
+
+Trois portes, dans cet ordre :
+
+1. **Administrateur** — `DISCORD_ADMIN_ID`. Toujours autorisé.
+2. **Membre du serveur Discord** — vérifié via le bot à chaque connexion
+   (`GET /guilds/{id}/members/{user}`), résultat mémorisé 10 minutes.
+3. **Exception** — ajoutée depuis la page **Administration**, pour les
+   personnes qui ne sont pas sur le serveur.
+
+Points importants :
+
+- Si `DISCORD_BOT_TOKEN` ou `DISCORD_GUILD_ID` manque, l'étape 2 est
+  désactivée : **seules les exceptions peuvent se connecter**, et la page
+  Administration l'indique en rouge. Une configuration incomplète ne doit
+  jamais enfermer tout le monde dehors.
+- Le bot doit être **membre du serveur** avec *Créer des événements* **et**
+  *Gérer les événements*. Discord sépare ces deux permissions : « Gérer » ne
+  permet pas de créer, d'où un 403 déroutant si elle est seule. Vérifie avec
+  `npm run test:discord`, qui affiche les permissions effectives du bot.
+  Aucune intention privilégiée n'est nécessaire (API REST uniquement).
+- Un bot sans accès au serveur ne fait pas passer les membres pour des
+  intrus : le site teste d'abord l'accès au serveur, et refuse seulement s'il
+  peut conclure « pas membre ».
 
 ## Notes
 

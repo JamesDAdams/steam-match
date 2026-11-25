@@ -1,20 +1,21 @@
 import { getDb } from '../../db/index.ts';
 import { discordEvents } from '../../db/schema.ts';
-import { desc, eq, sql } from 'drizzle-orm';
+import { desc } from 'drizzle-orm';
 import { requireAccess, requireAdmin } from '../access.ts';
-import {
-  getScheduledEvents,
-  eventCoverUrl,
-  guildId,
-} from '../discord-bot.ts';
+import { isBotConfigured, inviteUrl } from '../discord-bot.ts';
+import { syncDiscordEvents } from '../events-sync.ts';
 
 /**
  * GET  /api/events  → événements à venir et passés (membres autorisés)
  * POST /api/events  → synchronise depuis Discord (admin uniquement)
  *
- * Ce handler vit dans lib/handlers/ et non dans api/ : le plan Hobby de Vercel
- * plafonne à 12 fonctions, et api/ en compte déjà 12. Le routeur Netlify
- * l'expose via la fonction catch-all, sans consommer de place.
+ * La CRÉATION d'un événement depuis le site vit dans events-create.ts, et la
+ * liste des salons vocaux dans events-channels.ts : autant de routes distinctes
+ * pour garder chaque handler lisible.
+ *
+ * Ces handlers vivent dans lib/handlers/ et non dans api/ : le plan Hobby de
+ * Vercel plafonne à 12 fonctions, et api/ en compte déjà 12. Le routeur Netlify
+ * les expose via la fonction catch-all, sans consommer de place.
  */
 
 /** Statuts Discord : 1 programmé, 2 en cours, 3 terminé, 4 annulé. */
@@ -51,7 +52,7 @@ export default async function handler(req: any, res: any) {
       .from(discordEvents)
       .orderBy(desc(discordEvents.scheduledStartAt));
 
-    const toDto = (e: typeof rows[number]) => ({
+    const toDto = (e: (typeof rows)[number]) => ({
       id: e.id,
       name: e.name,
       description: e.description,
@@ -76,6 +77,8 @@ export default async function handler(req: any, res: any) {
       .orderBy(desc(discordEvents.syncedAt))
       .limit(1);
 
+    const configured = isBotConfigured();
+
     return res.status(200).json({
       ok: true,
       // À venir : triés du plus proche au plus lointain.
@@ -87,7 +90,11 @@ export default async function handler(req: any, res: any) {
       total: all.length,
       lastSyncAt: lastSyncRow?.syncedAt ?? null,
       isAdmin: ctx.isAdmin,
-      configured: Boolean(process.env.DISCORD_BOT_TOKEN && process.env.DISCORD_GUILD_ID),
+      // Le bouton « Créer un événement » n'a de sens que pour un admin avec
+      // un bot configuré.
+      canCreate: ctx.isAdmin && configured,
+      configured,
+      inviteUrl: inviteUrl(),
     });
   } catch (err: any) {
     console.error('[events]', err);
@@ -100,72 +107,20 @@ async function sync(req: any, res: any) {
   const ctx = await requireAdmin(req, res);
   if (!ctx) return;
 
-  try {
-    const events = await getScheduledEvents();
-    const db = getDb();
-    const now = new Date();
-
-    for (const e of events) {
-      const start = new Date(e.scheduled_start_time);
-      if (Number.isNaN(start.getTime())) continue;
-
-      const values = {
-        id: e.id,
-        guildId: e.guild_id ?? guildId(),
-        name: e.name,
-        description: e.description ?? null,
-        status: e.status ?? 1,
-        entityType: e.entity_type ?? 3,
-        location: e.entity_metadata?.location ?? null,
-        coverImage: eventCoverUrl(e.id, e.image),
-        interestedCount: e.user_count ?? 0,
-        scheduledStartAt: start,
-        scheduledEndAt: e.scheduled_end_time ? new Date(e.scheduled_end_time) : null,
-        syncedAt: now,
-      };
-
-      await db
-        .insert(discordEvents)
-        .values(values)
-        .onConflictDoUpdate({
-          target: discordEvents.id,
-          set: {
-            name: values.name,
-            description: values.description,
-            status: values.status,
-            entityType: values.entityType,
-            location: values.location,
-            coverImage: values.coverImage,
-            interestedCount: values.interestedCount,
-            scheduledStartAt: values.scheduledStartAt,
-            scheduledEndAt: values.scheduledEndAt,
-            syncedAt: now,
-          },
-        });
-    }
-
-    // Retire les événements supprimés côté Discord.
-    if (events.length > 0) {
-      const keep = events.map((e) => e.id);
-      await db.execute(sql`
-        DELETE FROM discord_events
-        WHERE id NOT IN (${sql.join(
-          keep.map((id) => sql`${id}`),
-          sql`, `,
-        )})
-      `);
-    } else {
-      // Aucun événement renvoyé : on ne supprime rien, ça peut être un
-      // serveur sans événement ou un problème de permission transitoire.
-    }
-
-    return res.status(200).json({
-      ok: true,
-      synced: events.length,
-      syncedAt: now,
+  if (!isBotConfigured()) {
+    return res.status(503).json({
+      error:
+        'Le bot Discord n’est pas configuré. Renseigne DISCORD_BOT_TOKEN et ' +
+        'DISCORD_GUILD_ID, puis redéploie.',
+      code: 'BOT_NOT_CONFIGURED',
     });
+  }
+
+  try {
+    const { synced, syncedAt } = await syncDiscordEvents();
+    return res.status(200).json({ ok: true, synced, syncedAt });
   } catch (err: any) {
     console.error('[events/sync]', err);
-    return res.status(500).json({ error: err.message });
+    return res.status(502).json({ error: err.message });
   }
 }

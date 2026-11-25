@@ -107,6 +107,60 @@ try {
   const g = await guildRes.json();
   console.log(`  ✓ Le bot est membre de « ${g.name} »`);
 
+  // ── Permissions réelles du bot ──
+  // La permission passée dans le lien d'invitation n'est qu'une suggestion :
+  // ce sont les rôles du serveur qui décident. On calcule donc le bitfield
+  // effectif, pour savoir si la création d'événement depuis le site marchera.
+  console.log('\n=== PERMISSIONS DU BOT ===');
+  try {
+    const memberRes = await fetch(
+      `https://discord.com/api/v10/guilds/${guild}/members/${bot.id}`,
+      { headers: { Authorization: `Bot ${token}` } },
+    );
+    if (memberRes.ok) {
+      const member = await memberRes.json();
+      const roles = Array.isArray(g.roles) ? g.roles : [];
+      const everyone = roles.find((r) => r.id === g.id);
+
+      let bits = BigInt(everyone?.permissions ?? '0');
+      for (const rid of member.roles ?? []) {
+        const role = roles.find((r) => r.id === rid);
+        if (role) bits |= BigInt(role.permissions);
+      }
+
+      const has = (bit) => (bits & (1n << BigInt(bit))) !== 0n;
+      const administrator = has(3); // ADMINISTRATOR
+      const manageEvents = administrator || has(33); // MANAGE_EVENTS
+      const createEvents = administrator || has(44); // CREATE_EVENTS
+
+      console.log(`  administrateur           : ${administrator ? '✓' : '—'}`);
+      console.log(`  gérer les événements     : ${manageEvents ? '✓' : '✗ MANQUANT'}`);
+      console.log(`  créer des événements     : ${createEvents ? '✓' : '✗ MANQUANT'}`);
+
+      if (!manageEvents) {
+        console.log(
+          '\n  → Sans « Gérer les événements », le bot ne peut ni modifier ni supprimer.',
+        );
+      }
+      if (!createEvents) {
+        console.log(
+          '\n  → Sans « Créer des événements » (permission distincte, ajoutée par',
+        );
+        console.log(
+          '    Discord), la CRÉATION depuis le site renverra 403, même avec',
+        );
+        console.log(
+          '    « Gérer les événements ». Donne-la au rôle du bot :',
+        );
+        console.log(
+          '    Paramètres du serveur → Rôles → (rôle du bot) → « Créer des événements ».',
+        );
+      }
+    }
+  } catch {
+    console.log('  (permissions illisibles)');
+  }
+
   console.log('\n=== EVENEMENTS ===');
   const events = await mod.getScheduledEvents();
 
@@ -130,6 +184,20 @@ try {
       console.log(`      intéressés : ${e.user_count ?? 0}`);
       console.log(`      image   : ${e.image ? 'oui' : 'non'}`);
     }
+  }
+
+  console.log('\n=== SALONS UTILISABLES POUR UN EVENEMENT ===');
+  try {
+    const channels = await mod.listEventChannels();
+    if (channels.length === 0) {
+      console.log('  Aucun salon vocal ni scène. Le modal proposera « lieu externe ».');
+    } else {
+      for (const c of channels) {
+        console.log(`  • ${c.name}  (${c.type === 13 ? 'scène' : 'vocal'}, id ${c.id})`);
+      }
+    }
+  } catch (err) {
+    console.error(`  ✗ Lecture des salons impossible : ${err.message}`);
   }
 
   console.log('\n  ✓ Configuration Discord valide.');

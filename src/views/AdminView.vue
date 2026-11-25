@@ -17,6 +17,8 @@ interface Known {
   lastLoginAt: string | null;
   isAllowed: boolean;
   isAdmin: boolean;
+  isMember: boolean;
+  memberCheckedAt: string | null;
   hasSteam: boolean;
   steam: { steamid: string; personaName: string | null } | null;
 }
@@ -27,6 +29,10 @@ const admins = ref<string[]>([]);
 const loading = ref(true);
 const error = ref<string | null>(null);
 const success = ref<string | null>(null);
+// Vérification d'appartenance au serveur : nécessite le bot Discord.
+const botConfigured = ref(true);
+const guildId = ref<string | null>(null);
+const inviteUrl = ref<string | null>(null);
 
 // Formulaire d'ajout
 const input = ref('');
@@ -60,10 +66,16 @@ async function load() {
       allowed: Allowed[];
       known: Known[];
       admins: string[];
+      botConfigured: boolean;
+      guildId: string | null;
+      inviteUrl: string | null;
     }>('/api/admin/users');
     allowed.value = data.allowed ?? [];
     known.value = data.known ?? [];
     admins.value = data.admins ?? [];
+    botConfigured.value = data.botConfigured !== false;
+    guildId.value = data.guildId ?? null;
+    inviteUrl.value = data.inviteUrl ?? null;
   } catch (e: any) {
     error.value = e.message;
   } finally {
@@ -139,7 +151,8 @@ onMounted(load);
     <div class="mb-6">
       <h1 class="text-2xl font-bold text-fg-strong">Administration</h1>
       <p class="mt-1 text-sm text-fg-muted">
-        Gère les comptes Discord autorisés à accéder au site.
+        Les membres du serveur Discord entrent automatiquement. Cette page sert
+        aux exceptions : les comptes qui ne sont pas sur le serveur.
       </p>
     </div>
 
@@ -151,13 +164,35 @@ onMounted(load);
       {{ success }}
     </div>
 
+    <!-- État de la vérification d'appartenance -->
+    <div v-if="!botConfigured" class="alert alert-warn mb-4">
+      <p class="font-semibold">Vérification d'appartenance désactivée</p>
+      <p class="mt-1 text-xs">
+        <code class="text-warn">DISCORD_BOT_TOKEN</code> ou
+        <code class="text-warn">DISCORD_GUILD_ID</code> manquant : les membres du
+        serveur ne sont pas reconnus automatiquement. Seuls les comptes listés
+        ci-dessous peuvent se connecter. Renseigne ces deux variables, redéploie,
+        puis reconnecte-toi pour activer la vérification.
+      </p>
+    </div>
+    <div v-else class="alert alert-info mb-4 text-xs">
+      Les membres du serveur Discord
+      <code v-if="guildId" class="text-brand">{{ guildId }}</code>
+      sont reconnus à chaque connexion. La liste ci-dessous ajoute des personnes
+      qui n'y sont pas.
+      <a v-if="inviteUrl" :href="inviteUrl" target="_blank" rel="noopener" class="ml-1 underline">
+        Lien d'invitation du serveur ↗
+      </a>
+    </div>
+
     <!-- Ajout -->
     <section class="card mb-6">
-      <h2 class="font-semibold text-fg-strong">Autoriser un ou plusieurs comptes</h2>
+      <h2 class="font-semibold text-fg-strong">Autoriser un compte hors serveur</h2>
       <p class="mt-1 text-xs text-fg-faint">
-        Un ID Discord = 17 à 20 chiffres. Sur Discord : clic droit sur le pseudo →
-        <em>Copier l'identifiant</em>. Tu peux coller plusieurs IDs séparés par
-        des espaces ou des virgules.
+        Ces comptes peuvent se connecter même s'ils ne sont pas membres du
+        serveur Discord. Un ID Discord = 17 à 20 chiffres. Sur Discord : clic
+        droit sur le pseudo → <em>Copier l'identifiant</em>. Tu peux coller
+        plusieurs IDs séparés par des espaces ou des virgules.
       </p>
 
       <div class="mt-3 grid gap-3 sm:grid-cols-[1fr_auto]">
@@ -204,7 +239,7 @@ onMounted(load);
     <!-- Liste des autorisés -->
     <section class="card mb-6">
       <h2 class="font-semibold text-fg-strong">
-        Autorisations actives
+        Exceptions autorisées
         <span class="ml-1 text-sm font-normal text-fg-faint">({{ allowed.length }})</span>
       </h2>
 
@@ -277,7 +312,15 @@ onMounted(load);
               v-else-if="k.isAllowed"
               class="badge bg-ok-soft text-ok"
             >autorisé</span>
+            <span v-else-if="k.isMember" class="badge bg-ok-soft text-ok">membre</span>
             <span v-else class="badge bg-danger-soft text-danger">refusé</span>
+
+            <!-- Statut d'appartenance au serveur (vérifié via le bot) -->
+            <span v-if="k.isMember" class="badge bg-app-surface2 text-ok">sur le serveur</span>
+            <span v-else-if="k.memberCheckedAt" class="badge bg-app-surface2 text-fg-muted">
+              hors serveur
+            </span>
+            <span v-else class="badge bg-app-surface2 text-fg-faint">non vérifié</span>
 
             <span
               v-if="k.hasSteam"
@@ -288,7 +331,7 @@ onMounted(load);
             <span class="text-[10px] text-fg-faint">{{ since(k.lastLoginAt) }}</span>
 
             <button
-              v-if="!k.isAllowed && !k.isAdmin"
+              v-if="!k.isAllowed && !k.isAdmin && !k.isMember"
               class="ml-2 text-xs text-brand hover:underline"
               @click="addKnown(k.discordId)"
             >

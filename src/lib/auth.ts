@@ -13,6 +13,18 @@ export interface MeState {
   authenticated: boolean;
   allowed?: boolean;
   isAdmin?: boolean;
+  /** Pourquoi l'accès est accordé : admin, membre du serveur, ou exception. */
+  accessSource?: 'admin' | 'member' | 'whitelist' | null;
+  /** Pourquoi il est refusé, le cas échéant. */
+  accessReason?: 'NOT_MEMBER' | 'MEMBERSHIP_UNVERIFIED' | null;
+  /** Membre du serveur Discord (dernière vérification connue). */
+  isMember?: boolean;
+  membershipCheckedAt?: string | null;
+  membershipCheck?: 'ok' | 'error' | 'disabled';
+  membershipError?: string | null;
+  botConfigured?: boolean;
+  /** Lien d'invitation au serveur, si l'admin l'a renseigné. */
+  guildInviteUrl?: string | null;
   discord?: {
     id: string;
     username: string;

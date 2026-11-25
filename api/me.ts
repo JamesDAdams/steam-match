@@ -2,14 +2,13 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getDb } from '../db/index.ts';
 import {
   discordUsers,
-  allowedDiscordIds,
   steamLinks,
   users,
   ownedGames,
   gameCache,
   wishlistItems,
 } from '../db/schema.ts';
-import { eq, desc, sql, inArray } from 'drizzle-orm';
+import { eq, desc, inArray } from 'drizzle-orm';
 import {
   COOKIE_NAME,
   parseCookies,
@@ -18,6 +17,8 @@ import {
   clearCookie,
 } from '../lib/session.ts';
 import { isAdminId } from '../lib/discord.ts';
+import { resolveAccess } from '../lib/access.ts';
+import { inviteUrl, isBotConfigured } from '../lib/discord-bot.ts';
 
 /**
  * GET  /api/me  → état complet de la session
@@ -49,7 +50,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const sess = await readSession(cookies[COOKIE_NAME]);
 
     if (!sess) {
-      return res.status(200).json({ ok: true, authenticated: false });
+      return res.status(200).json({
+        ok: true,
+        authenticated: false,
+        // Infos publiques utiles à la page de connexion (lien du serveur).
+        guildInviteUrl: inviteUrl(),
+        botConfigured: isBotConfigured(),
+      });
     }
 
     const db = getDb();
@@ -60,21 +67,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .limit(1);
 
     if (!du) {
-      return res.status(200).json({ ok: true, authenticated: false });
+      return res.status(200).json({
+        ok: true,
+        authenticated: false,
+        guildInviteUrl: inviteUrl(),
+        botConfigured: isBotConfigured(),
+      });
     }
 
     const admin = isAdminId(du.discordId);
 
-    // Autorisation : admin (env) ou whitelist (DB).
-    let allowed = admin;
-    if (!allowed) {
-      const [row] = await db
-        .select({ id: allowedDiscordIds.discordId })
-        .from(allowedDiscordIds)
-        .where(eq(allowedDiscordIds.discordId, du.discordId))
-        .limit(1);
-      allowed = Boolean(row);
-    }
+    // Autorisation : admin (env), membre du serveur Discord, ou exception
+    // ajoutée depuis la page admin. Même fonction que requireAccess(), pour
+    // que l'affichage et la sécurité ne puissent pas diverger.
+    const decision = await resolveAccess(du.discordId);
+    const allowed = decision.allowed;
 
     // Liaison Steam.
     let steam: null | {
@@ -266,6 +273,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       authenticated: true,
       allowed,
       isAdmin: admin,
+      // Pourquoi l'accès est accordé (ou refusé) : la page de connexion et la
+      // page admin s'en servent pour expliquer la situation.
+      accessSource: decision.source,
+      accessReason: decision.reason,
+      isMember: decision.membership.state === 'member',
+      membershipCheckedAt: decision.membership.checkedAt,
+      membershipCheck: decision.membership.configured
+        ? decision.membership.error
+          ? 'error'
+          : 'ok'
+        : 'disabled',
+      membershipError: decision.membership.error,
+      botConfigured: isBotConfigured(),
+      guildInviteUrl: inviteUrl(),
       discord: {
         id: du.discordId,
         username: du.username,

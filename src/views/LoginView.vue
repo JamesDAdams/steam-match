@@ -23,6 +23,19 @@ const deniedId = computed(() =>
 const deniedName = computed(() =>
   typeof route.query.name === 'string' ? route.query.name : '',
 );
+/**
+ * Motif du refus :
+ *  - not_member  : le compte n'est pas sur le serveur Discord
+ *  - unverified  : impossible de vérifier (bot absent ou Discord en panne)
+ *  - sinon       : refus générique (ancien lien)
+ */
+const deniedReason = computed<'not_member' | 'unverified' | 'other'>(() => {
+  const r = route.query.reason;
+  if (r === 'not_member') return 'not_member';
+  if (r === 'unverified') return 'unverified';
+  return 'other';
+});
+const inviteUrl = computed(() => me.value.guildInviteUrl ?? null);
 
 const copied = ref(false);
 
@@ -99,24 +112,82 @@ onMounted(refresh);
   <div>
     <!-- ══════════ Accès refusé ══════════ -->
     <section v-if="denied" class="card mx-auto max-w-xl border-danger/40">
-      <h1 class="font-display text-xl font-bold text-fg-strong">Accès non autorisé</h1>
-      <p class="mt-2 text-sm text-fg">
-        Ton compte Discord
-        <strong v-if="deniedName">« {{ deniedName }} »</strong>
-        ne figure pas dans la liste des membres autorisés.
-      </p>
-      <p class="mt-3 text-sm text-fg-muted">
-        Transmets cet identifiant à un administrateur :
-      </p>
-      <div class="mt-2 flex items-center gap-2">
-        <code class="flex-1 rounded border border-line bg-app-elevated px-3 py-2 font-mono text-sm text-brand">
-          {{ deniedId }}
-        </code>
-        <button class="btn-ghost text-xs" @click="copyId">
-          {{ copied ? 'Copié !' : 'Copier' }}
-        </button>
+      <h1 class="font-display text-xl font-bold text-fg-strong">
+        <template v-if="deniedReason === 'not_member'">Compte hors du serveur</template>
+        <template v-else-if="deniedReason === 'unverified'">Vérification impossible</template>
+        <template v-else>Accès non autorisé</template>
+      </h1>
+
+      <!-- Cas 1 : le compte n'est pas sur le serveur Discord -->
+      <template v-if="deniedReason === 'not_member'">
+        <p class="mt-2 text-sm text-fg">
+          Le compte Discord
+          <strong v-if="deniedName">« {{ deniedName }} »</strong>
+          n'est pas membre du serveur Discord.
+        </p>
+        <p class="mt-2 text-sm text-fg-muted">
+          L'accès au site est réservé aux membres du serveur. Rejoins-le, puis
+          reconnecte-toi : ton accès sera validé automatiquement.
+        </p>
+        <div class="mt-4 flex flex-wrap gap-2">
+          <a
+            v-if="inviteUrl"
+            :href="inviteUrl"
+            target="_blank"
+            rel="noopener"
+            class="btn-primary text-sm"
+          >
+            Rejoindre le serveur Discord
+          </a>
+          <a href="/api/auth/discord" class="btn-ghost text-sm">
+            J'ai rejoint — me reconnecter
+          </a>
+        </div>
+      </template>
+
+      <!-- Cas 2 : impossible de vérifier l'appartenance -->
+      <template v-else-if="deniedReason === 'unverified'">
+        <p class="mt-2 text-sm text-fg">
+          Impossible de vérifier que ton compte fait partie du serveur Discord :
+          le bot n'est pas configuré, ou Discord est momentanément injoignable.
+        </p>
+        <p class="mt-2 text-sm text-fg-muted">
+          Réessaie dans un instant. Si le problème persiste, demande à un
+          administrateur de t'autoriser manuellement.
+        </p>
+        <a href="/api/auth/discord" class="btn-primary mt-4 text-sm">Réessayer</a>
+      </template>
+
+      <!-- Cas 3 : refus générique -->
+      <template v-else>
+        <p class="mt-2 text-sm text-fg">
+          Ton compte Discord
+          <strong v-if="deniedName">« {{ deniedName }} »</strong>
+          n'a pas accès au site.
+        </p>
+        <p class="mt-2 text-sm text-fg-muted">
+          L'accès est réservé aux membres du serveur Discord. Si tu en fais
+          partie, reconnecte-toi ; sinon, demande à un administrateur de
+          t'autoriser.
+        </p>
+        <a href="/api/auth/discord" class="btn-primary mt-4 text-sm">Réessayer</a>
+      </template>
+
+      <!-- Autorisation manuelle : toujours possible, quel que soit le motif -->
+      <div class="mt-5 rounded-lg border border-line bg-app-elevated p-3">
+        <p class="text-xs text-fg-muted">
+          Un administrateur peut t'autoriser manuellement. Transmets-lui cet
+          identifiant Discord :
+        </p>
+        <div class="mt-2 flex items-center gap-2">
+          <code class="flex-1 rounded border border-line bg-app-bg px-3 py-2 font-mono text-sm text-brand">
+            {{ deniedId }}
+          </code>
+          <button class="btn-ghost text-xs" @click="copyId">
+            {{ copied ? 'Copié !' : 'Copier' }}
+          </button>
+        </div>
       </div>
-      <a href="/api/auth/discord" class="btn-primary mt-4 text-sm">Réessayer</a>
     </section>
 
     <!-- ══════════ Erreur de connexion ══════════ -->
@@ -213,6 +284,35 @@ onMounted(refresh);
 
       <!-- ══════════ Page publique ══════════ -->
       <section v-else>
+        <!-- Connecté mais accès révoqué : membership perdue depuis la connexion -->
+        <div v-if="me.authenticated" class="alert alert-warn mb-6">
+          <p class="font-semibold">Accès suspendu</p>
+          <p class="mt-1 text-xs">
+            <template v-if="me.accessReason === 'NOT_MEMBER'">
+              Ton compte Discord n'est plus membre du serveur, l'accès au site
+              est donc fermé. Rejoins le serveur (ou demande une autorisation à
+              un administrateur), puis reconnecte-toi.
+            </template>
+            <template v-else>
+              L'appartenance au serveur n'a pas pu être vérifiée (bot Discord
+              indisponible). Réessaie dans un instant, ou demande à un
+              administrateur de t'autoriser.
+            </template>
+          </p>
+          <div class="mt-3 flex flex-wrap gap-2">
+            <a
+              v-if="inviteUrl"
+              :href="inviteUrl"
+              target="_blank"
+              rel="noopener"
+              class="btn-ghost text-xs"
+            >
+              Rejoindre le serveur
+            </a>
+            <a href="/api/auth/discord" class="btn-primary text-xs">Se reconnecter</a>
+          </div>
+        </div>
+
         <!-- Hero -->
         <div class="hero-glow relative -mx-4 px-4 pb-16 pt-12 text-center sm:pt-20">
           <span class="chip mx-auto mb-5 !border-gold/40 !text-gold">

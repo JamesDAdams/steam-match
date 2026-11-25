@@ -1,0 +1,209 @@
+/**
+ * Vérifie la construction des requêtes envoyées à l'API Discord.
+ *
+ * POURQUOI CE TEST : un champ mal nommé (`entity_type` au lieu de
+ * `entityType`, `privacy_level` oublié, date non ISO) ne casse rien au
+ * build — Discord répond juste 400, en anglais, au moment où l'admin clique
+ * sur « Créer ». On intercepte donc `fetch` et on inspecte le corps envoyé.
+ *
+ * Le test ne contacte AUCUN serveur : tout est simulé.
+ *
+ * Usage : node scripts/test-discord-bot.mjs
+ */
+import { createServer } from 'vite';
+
+// Le module lit ces variables au moment de l'appel.
+process.env.DISCORD_BOT_TOKEN = 'jeton-de-test';
+process.env.DISCORD_GUILD_ID = '111111111111111111';
+
+const GUILD = '111111111111111111';
+
+/** Requêtes interceptées : { method, path, body }. */
+const calls = [];
+
+let failChannels = false;
+
+globalThis.fetch = async (url, init = {}) => {
+  const u = new URL(String(url));
+  const path = u.pathname.replace('/api/v10', '');
+  const method = (init.method || 'GET').toUpperCase();
+
+  calls.push({
+    method,
+    path,
+    body: init.body ? JSON.parse(String(init.body)) : null,
+  });
+
+  const json = (status, data) =>
+    new Response(JSON.stringify(data), {
+      status,
+      headers: { 'content-type': 'application/json' },
+    });
+
+  if (method === 'GET' && path === `/guilds/${GUILD}`) return json(200, { id: GUILD });
+
+  if (method === 'GET' && path.startsWith(`/guilds/${GUILD}/members/`)) {
+    const id = path.split('/').pop();
+    // 404 = pas membre (le bot, lui, voit bien le serveur).
+    if (id === '222222222222222222') return json(200, { user: { id } });
+    return json(404, { code: 10007, message: 'Unknown Member' });
+  }
+
+  if (method === 'GET' && path === `/guilds/${GUILD}/channels`) {
+    if (failChannels) return json(403, { message: 'Missing Access' });
+    return json(200, [
+      { id: '3', name: 'Salon texte', type: 0, position: 0 },
+      { id: '2', name: 'Vocal B', type: 2, position: 2 },
+      { id: '1', name: 'Vocal A', type: 2, position: 1 },
+      { id: '4', name: 'Scène', type: 13, position: 3 },
+    ]);
+  }
+
+  if (method === 'POST' && path === `/guilds/${GUILD}/scheduled-events`) {
+    const body = JSON.parse(String(init.body));
+    return json(201, {
+      id: '999',
+      guild_id: GUILD,
+      name: body.name,
+      description: body.description ?? null,
+      scheduled_start_time: body.scheduled_start_time,
+      scheduled_end_time: body.scheduled_end_time ?? null,
+      status: 1,
+      entity_type: body.entity_type,
+      entity_metadata: body.entity_metadata ?? null,
+    });
+  }
+
+  return json(500, { message: `Route simulée inconnue : ${method} ${path}` });
+};
+
+const vite = await createServer({
+  server: { middlewareMode: true },
+  appType: 'custom',
+  logLevel: 'error',
+});
+
+const mod = await vite.ssrLoadModule('/lib/discord-bot.ts');
+
+let failures = 0;
+
+function check(label, ok, detail = '') {
+  if (!ok) failures++;
+  console.log(`  ${ok ? '✓' : '✗'} ${label}${ok || !detail ? '' : ` → ${detail}`}`);
+}
+
+// ── 1. Appartenance au serveur ────────────────────────────────────────
+console.log('  — Appartenance au serveur —');
+const member = await mod.getGuildMember('222222222222222222');
+check('membre reconnu', member?.user?.id === '222222222222222222');
+
+const absent = await mod.getGuildMember('333333333333333333');
+check('non-membre → null (404)', absent === null);
+
+// La sonde du serveur a bien été faite une fois, pas à chaque appel.
+const probes = calls.filter((c) => c.path === `/guilds/${GUILD}`).length;
+check('sonde du serveur mise en cache (1 appel)', probes === 1, `${probes} appels`);
+
+// ── 2. Salons ─────────────────────────────────────────────────────────
+console.log('  — Salons —');
+const channels = await mod.listEventChannels();
+check(
+  'seuls les vocaux et scènes sont gardés',
+  channels.length === 3 && channels.every((c) => c.type === 2 || c.type === 13),
+  JSON.stringify(channels.map((c) => c.name)),
+);
+check(
+  'tri par position',
+  channels.map((c) => c.name).join(',') === 'Vocal A,Vocal B,Scène',
+  channels.map((c) => c.name).join(','),
+);
+
+failChannels = true;
+let channelError = null;
+try {
+  await mod.listEventChannels();
+} catch (e) {
+  channelError = e.message;
+}
+check('erreur 403 des salons remontée', Boolean(channelError), String(channelError));
+failChannels = false;
+
+// ── 3. Création d'un événement vocal ──────────────────────────────────
+console.log('  — Création (vocal) —');
+calls.length = 0;
+
+const start = new Date('2026-03-14T20:30:00.000Z');
+const end = new Date('2026-03-14T22:30:00.000Z');
+
+const created = await mod.createScheduledEvent({
+  name: 'Soirée survie',
+  description: 'On joue à Valheim',
+  startAt: start,
+  endAt: end,
+  entityType: 2,
+  channelId: '1',
+});
+
+const vocal = calls.find((c) => c.method === 'POST')?.body;
+
+check('événement renvoyé par Discord', created?.id === '999');
+check('privacy_level = 2 (visible par le serveur)', vocal?.privacy_level === 2);
+check('entity_type = 2 (vocal)', vocal?.entity_type === 2);
+check('channel_id transmis', vocal?.channel_id === '1');
+check('aucun entity_metadata en vocal', vocal?.entity_metadata === undefined);
+check('début en ISO UTC', vocal?.scheduled_start_time === start.toISOString());
+check('fin en ISO UTC', vocal?.scheduled_end_time === end.toISOString());
+check('nom et description transmis', vocal?.name === 'Soirée survie' && vocal?.description === 'On joue à Valheim');
+
+// ── 4. Création d'un événement externe ────────────────────────────────
+console.log('  — Création (lieu externe) —');
+calls.length = 0;
+
+await mod.createScheduledEvent({
+  name: 'Tournoi en salle',
+  startAt: start,
+  entityType: 3,
+  location: 'Bar Le D20, Lyon',
+});
+
+const externe = calls.find((c) => c.method === 'POST')?.body;
+
+check('entity_type = 3 (externe)', externe?.entity_type === 3);
+check(
+  'lieu dans entity_metadata',
+  externe?.entity_metadata?.location === 'Bar Le D20, Lyon',
+);
+check('aucun channel_id en externe', externe?.channel_id === undefined);
+check('fin omise quand absente', externe?.scheduled_end_time === undefined);
+check('description omise quand vide', externe?.description === undefined);
+
+// ── 5. Bot hors du serveur : erreur explicite, pas « pas membre » ─────
+console.log('  — Bot absent du serveur —');
+const savedFetch = globalThis.fetch;
+globalThis.fetch = async (url, init = {}) => {
+  const u = new URL(String(url));
+  if (u.pathname.endsWith(`/guilds/${GUILD}`)) {
+    return new Response(JSON.stringify({ message: 'Unknown Guild' }), { status: 404 });
+  }
+  return savedFetch(url, init);
+};
+
+// Nouvelle instance de module : la sonde a son propre cache.
+const mod2 = await vite.ssrLoadModule('/lib/discord-bot.ts?probe=absent');
+let guildError = null;
+try {
+  await mod2.getGuildMember('222222222222222222');
+} catch (e) {
+  guildError = e.message;
+}
+check(
+  '404 sur le serveur → exception (et non « pas membre »)',
+  Boolean(guildError) && /bot n’est pas membre/.test(guildError),
+  String(guildError),
+);
+
+globalThis.fetch = savedFetch;
+
+await vite.close();
+console.log(failures === 0 ? '\nAPI Discord : OK' : `\n${failures} échec(s)`);
+process.exit(failures === 0 ? 0 : 1);

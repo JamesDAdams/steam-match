@@ -24,6 +24,7 @@
     "db:inspect": "node scripts/inspect-db.mjs",
     "test:netlify": "node scripts/test-netlify.mjs",
     "test:discord": "node scripts/test-discord-events.mjs",
+    "test:bot": "node scripts/test-discord-bot.mjs",
     "test:enrich": "node scripts/test-enrich.mjs"
   },
   "dependencies": {

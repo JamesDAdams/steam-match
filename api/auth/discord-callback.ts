@@ -1,28 +1,29 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { exchangeCode, isAdminId } from '../../lib/discord.ts';
+import { exchangeCode } from '../../lib/discord.ts';
 import {
-  COOKIE_NAME,
   createSession,
   parseCookies,
-  buildStateCookie,
   clearStateCookie,
 } from '../../lib/session.ts';
-import { upsertDiscordUser, isAllowed } from '../../lib/access.ts';
-import { getDb } from '../../db/index.ts';
-import { discordUsers } from '../../db/schema.ts';
-import { eq } from 'drizzle-orm';
+import { upsertDiscordUser, resolveAccess } from '../../lib/access.ts';
 
 /**
  * GET /api/auth/discord-callback
  *
  * Retour du consentement Discord. On vérifie le `state`, on échange le code
- * contre une identité, puis on n'accorde une session QUE si le compte est
- * autorisé (whitelist ou admin défini dans l'env).
+ * contre une identité, puis on n'accorde une session QUE si :
+ *   - le compte est administrateur, ou
+ *   - il est MEMBRE du serveur Discord (vérifié à chaque connexion), ou
+ *   - il a été autorisé manuellement depuis la page admin (exception).
  *
- * Si le compte n'est pas autorisé, on enregistre quand même son passage en
- * base et on redirige avec son discord_id en clair : c'est ce que la personne
- * doit communiquer à l'admin pour être ajoutée. Sans ça, l'admin n'aurait
- * aucun moyen simple de connaître l'ID.
+ * L'appartenance au serveur est revérifiée ici en FORÇANT l'appel : c'est le
+ * moment où l'on veut la réponse la plus fraîche. Le résultat est mémorisé
+ * pour quelques minutes, ce qui évite d'interroger Discord à chaque requête.
+ *
+ * Si l'accès est refusé, on enregistre quand même le passage en base et on
+ * redirige avec le discord_id en clair : c'est ce que la personne doit
+ * communiquer à l'admin pour être ajoutée. Sans ça, l'admin n'aurait aucun
+ * moyen simple de connaître l'ID.
  */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const q = req.query as Record<string, string>;
@@ -56,31 +57,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // 4. Trace en base (utile à l'admin même si l'accès est refusé).
     await upsertDiscordUser(profile);
 
-    const db = getDb();
-    const [du] = await db
-      .select()
-      .from(discordUsers)
-      .where(eq(discordUsers.discordId, profile.id))
-      .limit(1);
-
-    const admin = isAdminId(profile.id);
-    const allowed = admin || (await isAllowed(profile.id));
+    // 5. Décision d'accès, avec vérification fraîche de l'appartenance.
+    const decision = await resolveAccess(profile.id, { forceMembership: true });
 
     // Le state a servi : on le supprime dans tous les cas.
     const cookiesOut = [clearStateCookie()];
 
-    // 5. Accès refusé : pas de session, mais on affiche l'ID à transmettre.
-    if (!allowed) {
+    // 6. Accès refusé : pas de session, mais on affiche l'ID à transmettre.
+    if (!decision.allowed) {
+      const reason = decision.reason === 'NOT_MEMBER' ? 'not_member' : 'unverified';
       res.setHeader('Set-Cookie', cookiesOut);
       return res.redirect(
         302,
-        `/?denied=1&id=${encodeURIComponent(profile.id)}&name=${encodeURIComponent(
-          du?.globalName || profile.username,
-        )}`,
+        `/?denied=1&reason=${reason}&id=${encodeURIComponent(
+          profile.id,
+        )}&name=${encodeURIComponent(profile.globalName || profile.username)}`,
       );
     }
 
-    // 6. Session accordée.
+    // 7. Session accordée.
     const { cookie } = await createSession(profile.id);
     cookiesOut.push(cookie);
     res.setHeader('Set-Cookie', cookiesOut);

@@ -35,22 +35,24 @@ function since(d: string | Date | null) {
     <section class="card mt-6">
       <h2 class="text-lg font-semibold text-fg-strong">0. Accès au site</h2>
       <p class="mt-2 text-sm text-fg-muted">
-        Le site est fermé : seuls les comptes Discord autorisés par
-        l'administrateur peuvent y entrer. La connexion se fait via Discord,
-        puis on relie son compte Steam.
+        L'accès est réservé aux <strong class="text-fg">membres du serveur
+        Discord</strong>. À chaque connexion, le site vérifie via le bot que ton
+        compte fait bien partie du serveur : si c'est le cas, tu entres
+        directement, sans autorisation à demander.
       </p>
       <p class="mt-2 text-sm text-fg-muted">
-        La <strong class="text-fg">wishlist</strong> est lue avec les mêmes
-        restrictions : elle doit être publique pour être synchronisée.
+        Des exceptions peuvent être ajoutées par un administrateur depuis la page
+        Administration, pour les personnes qui ne sont pas sur le serveur.
       </p>
       <p class="mt-2 text-sm text-fg-muted">
-        Si tu tombes sur « Accès non autorisé », la page t'affiche ton
-        identifiant Discord : transmets-le à l'administrateur, qui l'ajoutera
-        depuis la page d'administration.
+        Si tu tombes sur « Compte hors du serveur », la page propose de rejoindre
+        le serveur puis de te reconnecter. Si tu penses être membre, réessaie :
+        la vérification peut échouer momentanément si Discord est injoignable.
       </p>
       <p class="mt-2 text-xs text-fg-faint">
         Comment trouver ton ID : Discord → Paramètres → Avancés → active le
         Mode développeur, puis clic droit sur ton pseudo → Copier l'identifiant.
+        Il sert uniquement si un administrateur doit t'autoriser manuellement.
       </p>
     </section>
 
@@ -58,9 +60,12 @@ function since(d: string | Date | null) {
     <section class="card mt-6">
       <h2 class="font-display text-lg font-semibold text-fg-strong">Événements du serveur Discord</h2>
       <p class="mt-2 text-sm text-fg-muted">
-        Les événements affichés sur le site sont ceux créés sur le serveur Discord.
-        Discord reste la source de vérité : on ne crée rien depuis le site, on
-        recopie ce que le serveur expose.
+        Les événements affichés sur le site sont ceux créés sur le serveur
+        Discord. Un administrateur peut aussi en
+        <strong class="text-fg">créer directement depuis le site</strong> :
+        bouton « Créer un événement » en haut de la page Événements, puis un
+        formulaire (nom, date, durée, salon vocal ou lieu externe). L'événement
+        est créé sur Discord et apparaît aussitôt ici.
       </p>
 
       <p class="mt-3 text-sm font-semibold text-fg-strong">Configuration (administrateur)</p>
@@ -77,7 +82,11 @@ function since(d: string | Date | null) {
         <li>
           <span class="text-gold">3.</span> Dans l'onglet <strong class="text-fg">Installation</strong>,
           assure-toi que le scope <code class="text-brand">bot</code> est inclus, puis
-          invite le bot sur ton serveur avec la permission <em>Gérer les événements</em>.
+          invite le bot sur ton serveur avec les permissions <em>Créer des
+          événements</em> et <em>Gérer les événements</em>. Attention : la
+          seconde ne suffit pas pour créer un événement, Discord exige les deux.
+          Si le bot est déjà invité, active-les sur son rôle :
+          Paramètres du serveur → Rôles → rôle du bot.
         </li>
         <li>
           <span class="text-gold">4.</span> Récupère l'identifiant du serveur : active le
@@ -99,9 +108,16 @@ function since(d: string | Date | null) {
         sa présence dans <em>Paramètres du serveur → Intégrations</em>.
       </p>
       <p class="mt-3 text-xs text-fg-faint">
-        Erreur 403 ? L'intention GUILD_SCHEDULED_EVENTS n'est pas autorisée ou le
-        bot n'est pas sur le serveur. Erreur 401 ? Le jeton est invalide ou a été
-        régénéré.
+        Erreur 403 ? Le bot n'a pas la permission « Créer des événements »
+        (distincte de « Gérer les événements »), ou il n'est pas sur le serveur.
+        Erreur 401 ? Le jeton est invalide ou a été régénéré. Erreur 404 sur la
+        vérification des membres ? Le bot n'est pas membre du serveur : c'est la
+        même cause que pour les événements.
+      </p>
+      <p class="mt-3 text-xs text-fg-muted">
+        <strong class="text-fg">Le même bot</strong> sert à vérifier que chaque
+        visiteur est bien membre du serveur. Tant qu'il n'est pas configuré,
+        seules les exceptions de la page Administration peuvent se connecter.
       </p>
     </section>
 
