@@ -77,8 +77,24 @@ const PRICE_CONCURRENCY = 4;
 const META_ESTIMATE_MS = 600;
 const PRICE_ESTIMATE_MS = 1500;
 
-/** Durée de validité d'une réclamation, si un worker meurt en route. */
-const CLAIM_TTL_MINUTES = 3;
+/**
+ * Durée de validité d'une réclamation, si un worker meurt en route.
+ *
+ * Courte volontairement : un passage dure moins de 10 s. Si la fonction est
+ * tuée avant de libérer ses réservations, elles doivent redevenir disponibles
+ * au passage suivant (une minute plus tard), pas trois.
+ */
+const CLAIM_TTL_MINUTES = 1;
+
+/**
+ * Nombre de jeux réservés par phase.
+ *
+ * Il doit rester proche de ce qu'un passage peut réellement traiter : réserver
+ * 400 lignes pour n'en traiter que 10 bloquait tout le reste jusqu'à
+ * l'expiration de la réservation.
+ */
+const META_CLAIM = 80;
+const PRICE_CLAIM = 24;
 
 /**
  * Réserve des appids à traiter, atomiquement.
@@ -276,7 +292,7 @@ export async function runEnrich(opts: EnrichOptions = {}): Promise<EnrichResult>
 
   try {
     const metaDeadline = started + Math.round(budget * (withPrices ? 0.55 : 1));
-    const metaIds = await claimPending('meta', 400);
+    const metaIds = await claimPending('meta', META_CLAIM);
     track(metaIds);
 
     await runPool(metaIds, metaDeadline, META_CONCURRENCY, META_ESTIMATE_MS, async (appid) => {
@@ -291,7 +307,7 @@ export async function runEnrich(opts: EnrichOptions = {}): Promise<EnrichResult>
     });
 
     if (withPrices) {
-      const priceIds = await claimPending('price', 400);
+      const priceIds = await claimPending('price', PRICE_CLAIM);
       track(priceIds);
 
       await runPool(

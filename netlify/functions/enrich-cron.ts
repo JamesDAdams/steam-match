@@ -15,7 +15,7 @@ import { runEnrich } from '../../lib/enrich-worker.ts';
  * main en quelques centaines de ms : le coût d'un intervalle court est
  * négligeable, alors que le gain est réel tant qu'il reste des jeux.
  *
- * POURQUOI 9 SECONDES :
+ * POURQUOI 8 SECONDES :
  * les fonctions planifiées sont tuées à 10 s sur les plans sans marge
  * d'exécution. Un budget plus long n'apportait rien et laissait des
  * réclamations orphelines à chaque passage.
@@ -24,7 +24,7 @@ export default async () => {
   const started = Date.now();
 
   try {
-    const result = await runEnrich({ budgetMs: 9_000, withPrices: true });
+    const result = await runEnrich({ budgetMs: 8_000, withPrices: true });
 
     console.log('[cron enrich]', {
       ...result,
