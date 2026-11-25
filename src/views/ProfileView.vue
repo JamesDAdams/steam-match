@@ -458,6 +458,15 @@ function startPolling() {
     // Plus rien à identifier NI à enrichir : la boucle a rempli son rôle.
     if (unidentifiedCount.value === 0 && enrichProgress.value.pending === 0) {
       stopPolling();
+      return;
+    }
+
+    // La pompe s'arrête au bout de PUMP_MAX_CALLS : si du travail reste, on la
+    // relance au lieu de laisser l'affichage figé jusqu'au prochain passage du
+    // cron (qui peut mettre plusieurs minutes).
+    if (!pumpTimer) {
+      pumpCalls = 0;
+      startPump();
     }
   }, POLL_MS);
 }

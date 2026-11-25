@@ -56,6 +56,13 @@ export interface EnrichOptions {
 }
 
 const MAX_ATTEMPTS = 3;
+/**
+ * Un jeu peut échouer définitivement sur les genres/prix (délisté, région…),
+ * mais on ne veut PAS abandonner son NOM : un « App 12345 » qui ne progresse
+ * plus restait affiché indéfiniment comme « en cours d'identification ».
+ * Ces lignes gardent donc une marge de tentatives plus large.
+ */
+const MAX_ATTEMPTS_UNNAMED = 10;
 
 /**
  * Version courante du schéma d'enrichissement.
@@ -116,6 +123,14 @@ async function claimPending(
           `gc2.enriched_at IS NOT NULL AND gc2.enrich_version < ${ENRICH_VERSION}`,
         );
 
+  // Les lignes encore sans nom gardent une marge de tentatives plus large.
+  const attemptsOk =
+    kind === 'meta'
+      ? sql.raw(
+          `(gc2.enrich_attempts < ${MAX_ATTEMPTS} OR (gc2.name ~ '^App [0-9]+$' AND gc2.enrich_attempts < ${MAX_ATTEMPTS_UNNAMED}))`,
+        )
+      : sql.raw(`gc2.enrich_attempts < ${MAX_ATTEMPTS}`);
+
   const result = await db.execute(sql`
     UPDATE game_cache AS gc
     SET enrich_claimed_at = now()
@@ -124,7 +139,7 @@ async function claimPending(
       FROM game_cache AS gc2
       LEFT JOIN enrich_queue AS eq ON eq.appid = gc2.appid
       WHERE ${pending}
-        AND gc2.enrich_attempts < ${MAX_ATTEMPTS}
+        AND ${attemptsOk}
         AND (
           gc2.enrich_claimed_at IS NULL
           OR gc2.enrich_claimed_at < now() - interval '${sql.raw(String(CLAIM_TTL_MINUTES))} minutes'
@@ -333,11 +348,25 @@ export async function runEnrich(opts: EnrichOptions = {}): Promise<EnrichResult>
     if (claimed.size > 0) await releaseClaims([...claimed]).catch(() => {});
   }
 
+  // Hygiène : la file accumulait des jeux déjà enrichis (553 lignes de la
+  // veille), que le worker re-scannait à chaque passage pour rien.
+  await getDb()
+    .execute(sql`
+      DELETE FROM enrich_queue q
+      USING game_cache c
+      WHERE c.appid = q.appid AND c.enriched_at IS NOT NULL
+    `)
+    .catch(() => undefined);
+
   const [counts] = (
     await getDb().execute(sql`
       SELECT
         (SELECT count(*)::int FROM game_cache
-          WHERE enriched_at IS NULL AND enrich_attempts < ${MAX_ATTEMPTS}) AS meta_pending,
+          WHERE enriched_at IS NULL
+            AND (
+              enrich_attempts < ${MAX_ATTEMPTS}
+              OR (name ~ '^App [0-9]+$' AND enrich_attempts < ${MAX_ATTEMPTS_UNNAMED})
+            )) AS meta_pending,
         (SELECT count(*)::int FROM game_cache
           WHERE enriched_at IS NOT NULL
             AND enrich_version < ${ENRICH_VERSION}
