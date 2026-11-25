@@ -21,7 +21,8 @@
     "dev:vercel": "concurrently -n api,web -c cyan,magenta \"npm:dev:api\" \"npm:dev:web\"",
     "check:vues": "node scripts/render-check.mjs",
     "db:schema": "node scripts/apply-schema.mjs",
-    "db:inspect": "node scripts/inspect-db.mjs"
+    "db:inspect": "node scripts/inspect-db.mjs",
+    "test:netlify": "node scripts/test-netlify.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.10.4",
@@ -30,6 +31,7 @@
     "vue-router": "^4.5.0"
   },
   "devDependencies": {
+    "@netlify/functions": "^6.1.2",
     "@types/node": "^26.6.6",
     "@vercel/node": "^32.0.0",
     "@vitejs/plugin-vue": "^5.2.1",

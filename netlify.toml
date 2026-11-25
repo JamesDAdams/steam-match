@@ -1,0 +1,37 @@
+# Configuration Netlify
+#
+# Le front est un build Vite statique ; l'API est servie par UNE fonction
+# catch-all (netlify/functions/api.ts) qui route vers les handlers existants.
+# Le bundler esbuild de Netlify empaquette db/ et lib/ automatiquement, ce qui
+# évite les contraintes rencontrées sur Vercel (12 fonctions, includeFiles).
+
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+[functions.api]
+  # L'enrichissement traite 15 jeux (~4 s) : 26 s laisse de la marge.
+  # Netlify plafonne à 10 s sur les fonctions synchrones du plan gratuit,
+  # 26 s dès que le site est sur un plan payant.
+  included_files = ["db/**", "lib/**"]
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/api"
+  status = 200
+  force = true
+
+# Fallback SPA : toute route non trouvée renvoie l'application Vue.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[[headers]]
+  for = "/api/*"
+  [headers.values]
+    Cache-Control = "no-store"
