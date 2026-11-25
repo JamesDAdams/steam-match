@@ -92,6 +92,15 @@ const statements = [
      events_synced_at  timestamp with time zone
    )`,
 
+  // ── Réglages de l'application ──────────────────────────────────────
+  `CREATE TABLE IF NOT EXISTS app_settings (
+     id                        text PRIMARY KEY NOT NULL,
+     steam_sync_enabled        boolean NOT NULL DEFAULT true,
+     steam_sync_interval_hours integer NOT NULL DEFAULT 1,
+     last_steam_sync_at        timestamp with time zone,
+     last_steam_sync_result    text
+   )`,
+
   // ── Comptes Steam supplémentaires (secondaire / famille) ───────────
   `CREATE TABLE IF NOT EXISTS steam_accounts (
      owner_steamid  text NOT NULL REFERENCES users(steamid) ON DELETE CASCADE,

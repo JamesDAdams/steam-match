@@ -324,6 +324,24 @@ export const gameCache = pgTable(
 );
 
 /**
+ * Réglages de l'application (une seule ligne).
+ *
+ * La tâche qui rafraîchit les ludothèques Steam tourne toutes les 15 minutes
+ * côté Netlify, mais ne travaille que si l'intervalle configuré ici est écoulé :
+ * c'est ce qui rend la fréquence réglable depuis la page admin.
+ */
+export const appSettings = pgTable('app_settings', {
+  id: text('id').primaryKey(),
+  /** Rafraîchissement automatique des ludothèques Steam. */
+  steamSyncEnabled: boolean('steam_sync_enabled').notNull().default(true),
+  /** Intervalle en heures entre deux passages réels (1 à 168). */
+  steamSyncIntervalHours: integer('steam_sync_interval_hours').notNull().default(1),
+  lastSteamSyncAt: timestamp('last_steam_sync_at', { withTimezone: true }),
+  /** Résumé lisible du dernier passage (comptes traités, erreurs). */
+  lastSteamSyncResult: text('last_steam_sync_result'),
+});
+
+/**
  * État des synchronisations périodiques.
  *
  * Une ligne unique : elle porte la date de la dernière synchronisation des

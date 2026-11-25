@@ -21,6 +21,8 @@ const FILES = [
   'lib/handlers/events-game-search.ts',
   'lib/handlers/events-game-info.ts',
   'lib/handlers/steam-accounts.ts',
+  'lib/handlers/admin-settings.ts',
+  'netlify/functions/steam-sync-cron.ts',
 ];
 
 let failures = 0;

@@ -1,13 +1,9 @@
 import { requireSteam } from '../access.ts';
 import { getDb } from '../../db/index.ts';
-import {
-  ownedGames,
-  gameCache,
-  steamAccounts,
-  enrichQueue,
-} from '../../db/schema.ts';
+import { ownedGames, steamAccounts } from '../../db/schema.ts';
 import { and, eq, sql } from 'drizzle-orm';
-import { getOwnedGames, getPlayerSummaries } from '../steam.ts';
+import { getPlayerSummaries } from '../steam.ts';
+import { absorbLibrary } from '../steam-library.ts';
 
 /**
  * /api/steam-accounts — comptes Steam secondaires et familiaux d'un membre.
@@ -62,95 +58,6 @@ async function resolveVanity(vanity: string): Promise<string | null> {
   } catch {
     return null;
   }
-}
-
-/**
- * Aspire la ludothèque d'un compte lié et l'enregistre sous le compte du
- * membre, avec l'origine du jeu.
- */
-async function absorbLibrary(
-  ownerSteamid: string,
-  linkSteamid: string,
-  kind: 'secondary' | 'family',
-): Promise<{ count: number }> {
-  const db = getDb();
-  const { games, gamesVisible } = await getOwnedGames(linkSteamid);
-
-  if (!gamesVisible) {
-    throw new Error(
-      'Ce profil Steam est privé : rends la liste de jeux publique (Profil → ' +
-        'Modifier le profil → Confidentialité) pour pouvoir l’importer.',
-    );
-  }
-
-  const now = new Date();
-  /** Taille des lots d'écriture : une requête par jeu expirerait la fonction. */
-  const BATCH = 200;
-
-  // On remplace uniquement les jeux venus de CE compte : ceux du compte
-  // principal ou d'un autre compte lié restent intacts.
-  await db
-    .delete(ownedGames)
-    .where(
-      and(
-        eq(ownedGames.steamid, ownerSteamid),
-        eq(ownedGames.sourceSteamid, linkSteamid),
-      ),
-    );
-
-  const valid = games.filter((g) => Number.isInteger(g.appid) && g.appid > 0);
-
-  if (valid.length > 0) {
-    // Insertion par lots : une ludothèque familiale peut compter des
-    // centaines de jeux, et une requête par jeu mettrait la fonction à genoux.
-    for (let i = 0; i < valid.length; i += BATCH) {
-      const slice = valid.slice(i, i + BATCH);
-      await db
-        .insert(ownedGames)
-        .values(
-          slice.map((g) => ({
-            steamid: ownerSteamid,
-            appid: g.appid,
-            playtimeForever: g.playtime_forever ?? 0,
-            playtime2Weeks: g.playtime_2weeks ?? 0,
-            source: kind,
-            sourceSteamid: linkSteamid,
-            updatedAt: now,
-          })),
-        )
-        .onConflictDoUpdate({
-          target: [ownedGames.steamid, ownedGames.appid],
-          set: {
-            // Un jeu réellement possédé le reste : on ne le dégrade pas.
-            source: sql`CASE WHEN owned_games.source = 'owned' THEN 'owned' ELSE excluded.source END`,
-            sourceSteamid: sql`CASE WHEN owned_games.source = 'owned' THEN NULL ELSE excluded.source_steamid END`,
-            updatedAt: now,
-          },
-        });
-    }
-
-    // Cache de noms/jaquettes pour les jeux inconnus du groupe. Par lots : une
-    // requête par jeu ferait expirer la fonction sur une grosse bibliothèque.
-    const named = valid.filter((g) => Boolean(g.name));
-    for (let i = 0; i < named.length; i += BATCH) {
-      const slice = named.slice(i, i + BATCH);
-      await db
-        .insert(gameCache)
-        .values(slice.map((g) => ({ appid: g.appid, name: g.name as string })))
-        .onConflictDoNothing();
-    }
-
-    // Enrichissement (genres, prix) : le worker s'en charge en tâche de fond.
-    for (let i = 0; i < valid.length; i += BATCH) {
-      const slice = valid.slice(i, i + BATCH);
-      await db
-        .insert(enrichQueue)
-        .values(slice.map((g) => ({ appid: g.appid, priority: 3 })))
-        .onConflictDoNothing();
-    }
-  }
-
-  return { count: valid.length };
 }
 
 export default async function handler(req: any, res: any) {

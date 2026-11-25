@@ -207,7 +207,12 @@ async function handleWishlist(req: VercelRequest, res: VercelResponse, db: any) 
     .select()
     .from(gameCache)
     .where(inArray(gameCache.appid, appids));
-  const metaById = new Map(metas.map((m: any) => [m.appid, m]));
+  // Type explicite : sans lui, le contenu de la Map était inféré `{}` et
+  // toutes les propriétés de métadonnées devenaient des erreurs de typage.
+  type GameMeta = typeof gameCache.$inferSelect;
+  const metaById = new Map<number, GameMeta>(
+    metas.map((m: GameMeta) => [m.appid, m] as const),
+  );
 
   const ownedRows = await db.execute(sql`
     SELECT og.appid AS appid,

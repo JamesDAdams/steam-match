@@ -1,9 +1,10 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getDb } from '../db/index.ts';
-import { users, ownedGames, gameCache, enrichQueue, wishlistItems } from '../db/schema.ts';
+import { users, gameCache, enrichQueue, wishlistItems } from '../db/schema.ts';
 import { eq, sql } from 'drizzle-orm';
 import { requireSteam } from '../lib/access.ts';
-import { getOwnedGames, getPlayerSummaries, getWishlist } from '../lib/steam.ts';
+import { getWishlist } from '../lib/steam.ts';
+import { syncOwnedLibrary } from '../lib/steam-library.ts';
 
 /**
  * POST /api/sync
@@ -14,6 +15,9 @@ import { getOwnedGames, getPlayerSummaries, getWishlist } from '../lib/steam.ts'
  *   - « Détails du jeu » en public → sinon ludothèque renvoyée mais
  *     playtime_forever = 0 partout, donc recommandations impossibles.
  * Ajouter la personne à un groupe Steam ne change rien : l'API est anonyme.
+ *
+ * La partie ludothèque vit dans lib/steam-library.ts : la tâche planifiée et
+ * l'ajout d'un compte lié utilisent exactement le même code.
  */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ctx = await requireSteam(req, res);
@@ -23,25 +27,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const db = getDb();
 
-    // Profil à jour (visibilité + pseudo).
-    const summaries = await getPlayerSummaries([steamid]);
-    const profile = summaries.get(steamid);
-    const profileVisible = (profile?.visibility ?? 1) === 3;
+    const result = await syncOwnedLibrary(steamid);
 
-    const { games, gamesVisible } = await getOwnedGames(steamid);
-
-    if (games.length === 0) {
-      await db
-        .update(users)
-        .set({
-          profileVisible,
-          gamesVisible: false,
-          lastSyncAt: new Date(),
-          lastSyncError:
-            'Aucun jeu renvoyé. Le profil est probablement privé — passe-le en public.',
-        })
-        .where(eq(users.steamid, steamid));
-
+    if (result.empty) {
       return res.status(200).json({
         ok: false,
         gamesCount: 0,
@@ -49,79 +37,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           'Ludothèque inaccessible. Passe ton profil Steam en public ' +
           '(Modifier le profil > Paramètres de confidentialité > Public), ' +
           'puis réessaie.',
-        profileVisible,
+        profileVisible: result.profileVisible,
         needsPublicProfile: true,
       });
     }
 
-    // 1. Upsert des jeux possédés.
+    const { gamesCount, gamesVisible, profileVisible } = result;
     const now = new Date();
-    await db
-      .insert(ownedGames)
-      .values(
-        games.map((g) => ({
-          steamid,
-          appid: g.appid,
-          playtimeForever: g.playtime_forever ?? 0,
-          playtime2Weeks: g.playtime_2weeks ?? 0,
-          updatedAt: now,
-        })),
-      )
-      .onConflictDoUpdate({
-        target: [ownedGames.steamid, ownedGames.appid],
-        set: {
-          playtimeForever: sql`excluded.playtime_forever`,
-          playtime2Weeks: sql`excluded.playtime_2weeks`,
-          // Le jeu est désormais réellement possédé : il n'est plus
-          // « secondaire » ni « famille », et n'est plus rattaché à un compte lié.
-          source: sql`'owned'`,
-          sourceSteamid: sql`NULL`,
-          updatedAt: now,
-        },
-      });
-
-    // 2. Supprime les jeux qui ne sont plus possédés (revendus/masqués).
-    const currentIds = games.map((g) => g.appid);
-    if (currentIds.length > 0) {
-      // `source = 'owned'` est indispensable : GetOwnedGames ne renvoie jamais
-      // les jeux de la famille Steam, qui seraient donc supprimés à chaque
-      // synchronisation alors qu'ils sont parfaitement jouables.
-      await db.execute(sql`
-        DELETE FROM owned_games
-        WHERE steamid = ${steamid}
-          AND source = 'owned'
-          AND appid NOT IN (${sql.join(
-            currentIds.map((id) => sql`${id}`),
-            sql`, `,
-          )})
-      `);
-    }
-
-    // 3. Métadonnées de base (nom + icône) depuis GetOwnedGames.
-    //    Les genres viendront plus tard via /api/enrich.
-    for (const g of games) {
-      if (!g.name) continue;
-      await db
-        .insert(gameCache)
-        .values({ appid: g.appid, name: g.name })
-        .onConflictDoNothing();
-    }
-
-    // 4. Met en file les appids jamais enrichis.
-    await db
-      .insert(enrichQueue)
-      .values(games.map((g) => ({ appid: g.appid, priority: 1 })))
-      .onConflictDoNothing();
-
-    await db
-      .update(users)
-      .set({
-        profileVisible,
-        gamesVisible,
-        lastSyncAt: now,
-        lastSyncError: null,
-      })
-      .where(eq(users.steamid, steamid));
 
     // 5. Wishlist : souhaitée, mais pas encore achetée.
     //    Servira à croiser les envies du groupe avec ce que les autres possèdent.
@@ -173,12 +95,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .onConflictDoNothing();
     }
 
-    const playedCount = games.filter((g) => (g.playtime_forever ?? 0) > 0).length;
-
     return res.status(200).json({
       ok: true,
-      gamesCount: games.length,
-      playedCount,
+      gamesCount,
       wishlistCount: wishlist.items.length,
       wishlistVisible: wishlist.wishlistVisible,
       gamesVisible,

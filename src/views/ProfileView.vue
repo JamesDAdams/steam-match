@@ -329,13 +329,6 @@ const filtered = computed(() => {
   return sorted;
 });
 
-/** Part du temps de jeu total représentée par un genre. */
-function genreShare(minutes: number) {
-  const total = stats.value?.totalMinutes ?? 0;
-  if (!total) return 0;
-  return Math.round((minutes / total) * 100);
-}
-
 async function sync() {
   syncing.value = true;
   error.value = null;
@@ -593,24 +586,19 @@ onUnmounted(() => {
           Pondéré par le temps de jeu : ce n'est pas le nombre de jeux possédés,
           mais le temps réellement passé.
         </p>
-        <div class="mt-4 space-y-2">
-          <div
-            v-for="g in stats.topGenres"
+        <!-- Classement simple : le temps de jeu suffit à comparer les styles.
+             Les barres n'apportaient rien (et restaient vides à l'écran). -->
+        <ol class="mt-4 space-y-1.5">
+          <li
+            v-for="(g, i) in stats.topGenres"
             :key="g.name"
-            class="flex items-center gap-3 text-sm"
+            class="flex items-baseline gap-3 text-sm"
           >
-            <span class="w-36 shrink-0 truncate text-fg">{{ g.name }}</span>
-            <div class="h-2 flex-1 overflow-hidden rounded bg-app-surface2">
-              <div
-                class="h-full rounded bg-brand/70"
-                :style="{ width: genreShare(g.minutes) + '%' }"
-              ></div>
-            </div>
-            <span class="w-20 shrink-0 text-right text-xs text-fg-faint">
-              {{ formatPlaytime(g.minutes) }}
-            </span>
-          </div>
-        </div>
+            <span class="w-5 shrink-0 text-right text-xs text-fg-faint">{{ i + 1 }}</span>
+            <span class="min-w-0 flex-1 truncate text-fg">{{ g.name }}</span>
+            <span class="shrink-0 text-xs text-fg-muted">{{ formatPlaytime(g.minutes) }}</span>
+          </li>
+        </ol>
       </section>
 
       <!-- Sélecteur : ludothèque / wishlist / famille -->

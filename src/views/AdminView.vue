@@ -57,6 +57,82 @@ const filteredKnown = computed(() => {
 // Les comptes jamais vus mais déjà autorisés doivent rester visibles.
 const knownIds = computed(() => new Set(known.value.map((k) => k.discordId)));
 
+/* ── Synchronisation Steam ──────────────────────────────────────────── */
+
+interface SteamSettings {
+  steamSyncEnabled: boolean;
+  steamSyncIntervalHours: number;
+  lastSteamSyncAt: string | null;
+  lastSteamSyncResult: string | null;
+}
+
+const steamSettings = ref<SteamSettings | null>(null);
+const steamAccountsCount = ref<{ main: number; linked: number }>({ main: 0, linked: 0 });
+const steamSaving = ref(false);
+const steamRunning = ref(false);
+const steamMessage = ref<string | null>(null);
+
+/** Intervalles proposés dans la liste déroulante (heures). */
+const STEAM_INTERVALS = [1, 3, 6, 12, 24, 48, 168];
+
+async function loadSteamSettings() {
+  try {
+    const r = await apiGet<{
+      settings: SteamSettings;
+      accounts: { main: number; linked: number };
+    }>('/api/admin/settings');
+    steamSettings.value = r.settings;
+    steamAccountsCount.value = r.accounts ?? { main: 0, linked: 0 };
+  } catch {
+    /* section secondaire : on n'empêche pas l'admin de travailler */
+  }
+}
+
+async function saveSteamSettings(patch: { enabled?: boolean; intervalHours?: number }) {
+  steamSaving.value = true;
+  steamMessage.value = null;
+  error.value = null;
+  try {
+    const r = await apiPost<{ settings: SteamSettings }>('/api/admin/settings', patch);
+    steamSettings.value = r.settings;
+    steamMessage.value = 'Réglage enregistré.';
+  } catch (e: any) {
+    error.value = e.message;
+  } finally {
+    steamSaving.value = false;
+  }
+}
+
+async function runSteamSyncNow() {
+  steamRunning.value = true;
+  steamMessage.value = null;
+  error.value = null;
+  try {
+    const r = await apiPost<{
+      report: { handled: number; failed: number; remaining: number };
+    }>('/api/admin/settings', { action: 'run' });
+    const rep = r.report;
+    steamMessage.value =
+      `${rep.handled} compte(s) synchronisé(s)` +
+      (rep.failed ? `, ${rep.failed} en échec` : '') +
+      (rep.remaining ? `, ${rep.remaining} en attente (passage suivant)` : '') +
+      '.';
+    await loadSteamSettings();
+  } catch (e: any) {
+    error.value = e.message;
+  } finally {
+    steamRunning.value = false;
+  }
+}
+
+function steamIntervalLabel(hours: number) {
+  if (hours === 1) return 'Toutes les heures';
+  if (hours === 24) return 'Tous les jours';
+  if (hours === 48) return 'Tous les 2 jours';
+  if (hours === 168) return 'Toutes les semaines';
+  return `Toutes les ${hours} heures`;
+}
+
 async function load() {
   loading.value = true;
   error.value = null;
@@ -82,6 +158,8 @@ async function load() {
     loading.value = false;
   }
 }
+
+onMounted(loadSteamSettings);
 
 async function addIds() {
   const raw = input.value.trim();
@@ -184,6 +262,90 @@ onMounted(load);
         Lien d'invitation du serveur ↗
       </a>
     </div>
+
+    <!-- Synchronisation Steam -->
+    <section class="card mb-6">
+      <h2 class="font-semibold text-fg-strong">Synchronisation Steam</h2>
+      <p class="mt-1 max-w-2xl text-xs text-fg-faint">
+        Rafraîchit les ludothèques de <strong class="text-fg-muted">tous les comptes</strong>
+        (principal, secondaires et famille) pour récupérer les nouveaux jeux. La tâche
+        se réveille toutes les 15 minutes et ne travaille que si l'intervalle ci-dessous
+        est écoulé.
+      </p>
+
+      <div class="mt-3 flex flex-wrap items-center gap-3">
+        <span class="text-sm text-fg-muted">
+          {{ steamAccountsCount.main }} compte(s) principal(aux) ·
+          {{ steamAccountsCount.linked }} compte(s) secondaire(s)/famille
+        </span>
+      </div>
+
+      <div class="mt-4 grid gap-3 sm:grid-cols-2">
+        <div>
+          <label for="steam-interval" class="mb-1 block text-xs font-medium text-fg-muted">
+            Fréquence
+          </label>
+          <select
+            id="steam-interval"
+            class="input"
+            :disabled="steamSaving || !steamSettings"
+            :value="steamSettings?.steamSyncIntervalHours ?? 1"
+            @change="
+              saveSteamSettings({
+                intervalHours: Number(($event.target as HTMLSelectElement).value),
+              })
+            "
+          >
+            <option v-for="h in STEAM_INTERVALS" :key="h" :value="h">
+              {{ steamIntervalLabel(h) }}
+            </option>
+          </select>
+        </div>
+
+        <div>
+          <span class="mb-1 block text-xs font-medium text-fg-muted">État</span>
+          <button
+            type="button"
+            class="flex w-full items-center justify-between rounded-lg border border-line px-3 py-2 text-left text-sm transition hover:border-line-strong"
+            :disabled="steamSaving || !steamSettings"
+            @click="saveSteamSettings({ enabled: !steamSettings?.steamSyncEnabled })"
+          >
+            <span class="text-fg">
+              {{ steamSettings?.steamSyncEnabled ? 'Automatique activé' : 'Automatique désactivé' }}
+            </span>
+            <span
+              class="badge"
+              :class="
+                steamSettings?.steamSyncEnabled
+                  ? 'bg-ok-soft text-ok'
+                  : 'bg-app-surface2 text-fg-muted'
+              "
+            >
+              {{ steamSettings?.steamSyncEnabled ? 'ON' : 'OFF' }}
+            </span>
+          </button>
+        </div>
+      </div>
+
+      <div class="mt-4 flex flex-wrap items-center gap-3">
+        <button
+          class="btn-primary text-sm"
+          :disabled="steamRunning"
+          @click="runSteamSyncNow"
+        >
+          {{ steamRunning ? 'Synchronisation…' : 'Synchroniser maintenant' }}
+        </button>
+        <span v-if="steamSettings?.lastSteamSyncAt" class="text-xs text-fg-faint">
+          Dernier passage :
+          {{ new Date(steamSettings.lastSteamSyncAt).toLocaleString('fr-FR') }}
+          <template v-if="steamSettings.lastSteamSyncResult">
+            · {{ steamSettings.lastSteamSyncResult }}
+          </template>
+        </span>
+      </div>
+
+      <p v-if="steamMessage" class="mt-2 text-xs text-ok">{{ steamMessage }}</p>
+    </section>
 
     <!-- Ajout -->
     <section class="card mb-6">

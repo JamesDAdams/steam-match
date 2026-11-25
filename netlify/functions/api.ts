@@ -33,6 +33,7 @@ import eventsChannelsHandler from '../../lib/handlers/events-channels.ts';
 import eventsGameSearchHandler from '../../lib/handlers/events-game-search.ts';
 import eventsGameInfoHandler from '../../lib/handlers/events-game-info.ts';
 import steamAccountsHandler from '../../lib/handlers/steam-accounts.ts';
+import adminSettingsHandler from '../../lib/handlers/admin-settings.ts';
 
 interface Route {
   /** Méthodes acceptées. Vide = toutes. */
@@ -57,6 +58,7 @@ const ROUTES: Record<string, Route> = {
   '/auth/discord': { methods: ['GET'], module: authDiscordHandler },
   '/auth/discord-callback': { methods: ['GET'], module: authDiscordCallbackHandler },
   '/admin/users': { methods: ['GET', 'POST', 'DELETE'], module: adminUsersHandler },
+  '/admin/settings': { methods: ['GET', 'POST'], module: adminSettingsHandler },
   '/steam-accounts': { methods: ['GET', 'POST', 'DELETE'], module: steamAccountsHandler },
   '/events': { methods: ['GET', 'POST'], module: eventsHandler },
   '/events/create': { methods: ['POST'], module: eventsCreateHandler },
