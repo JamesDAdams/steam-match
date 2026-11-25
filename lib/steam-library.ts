@@ -251,6 +251,12 @@ async function syncLinkedWishlist(
       });
   }
 
+  // Chaque souhait doit avoir une ligne de cache, sinon l'interface affiche
+  // « App 12345 » et le worker d'enrichissement ne peut jamais le traiter
+  // (il travaille sur game_cache, pas sur wishlist_items). C'est l'oubli qui
+  // a laissé 148 souhaits bloqués en « identification ».
+  await seedWishlistCache(wishlist.items.map((w) => w.appid));
+
   await db.execute(sql`
     DELETE FROM wishlist_items
     WHERE steamid = ${ownerSteamid}
@@ -262,6 +268,27 @@ async function syncLinkedWishlist(
   `);
 
   return wishlist.items.length;
+}
+
+/**
+ * Crée les lignes de cache manquantes pour des jeux souhaités, avec un nom
+ * provisoire, et les met en file d'enrichissement.
+ */
+export async function seedWishlistCache(appids: number[]): Promise<void> {
+  if (appids.length === 0) return;
+  const db = getDb();
+
+  for (let i = 0; i < appids.length; i += BATCH) {
+    const slice = appids.slice(i, i + BATCH);
+    await db
+      .insert(gameCache)
+      .values(slice.map((appid) => ({ appid, name: `App ${appid}` })))
+      .onConflictDoNothing();
+    await db
+      .insert(enrichQueue)
+      .values(slice.map((appid) => ({ appid, priority: 2 })))
+      .onConflictDoNothing();
+  }
 }
 
 /** Remplit le cache de noms et met les jeux inconnus en file d'enrichissement. */
