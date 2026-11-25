@@ -57,6 +57,15 @@ const wishMessage = ref<string | null>(null);
 const selectedGenres = ref<string[]>([]);
 const selectedTags = ref<string[]>([]);
 const minMembers = ref(2);
+/**
+ * Le seuil n'a pas le même sens selon le mode : « possédé par au moins N »
+ * pour la ludothèque, « souhaité par au moins N » pour la wishlist. Avec un
+ * seul membre qui a une wishlist, un seuil à 2 ne peut rien renvoyer — d'où
+ * un message trompeur « aucune wishlist synchronisée ».
+ */
+watch(mode, (m) => {
+  minMembers.value = m === 'wishlist' ? 1 : 2;
+});
 const sortBy = ref<'players' | 'playtime' | 'name'>('players');
 const onlyEnriched = ref(false);
 
@@ -294,8 +303,11 @@ onUnmounted(stopAutoRefresh);
     <div class="card mb-6">
       <div class="flex flex-wrap items-end gap-4">
         <div>
-          <label class="block text-xs font-medium text-fg-muted">Possédé par au moins</label>
+          <label class="block text-xs font-medium text-fg-muted">
+            {{ mode === 'wishlist' ? 'Souhaité par au moins' : 'Possédé par au moins' }}
+          </label>
           <select v-model.number="minMembers" class="mt-1 rounded border border-line bg-app-bg px-3 py-1.5 text-sm text-fg">
+            <option v-if="mode === 'wishlist'" :value="1">1 membre</option>
             <option :value="2">2 membres</option>
             <option :value="3">3 membres</option>
             <option :value="4">4 membres</option>

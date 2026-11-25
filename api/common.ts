@@ -190,15 +190,27 @@ async function handleWishlist(req: VercelRequest, res: VercelResponse, db: any) 
   `);
 
   const appids = (rows.rows as any[]).map((r) => Number(r.appid));
+
+  // Nombre de membres réellement pourvus d'une wishlist : le dire évite de
+  // conclure « aucune wishlist » quand le filtre est simplement trop strict.
+  const [wishStats] = (
+    await db.execute(sql`
+      SELECT count(*)::int AS items, count(DISTINCT steamid)::int AS members
+      FROM wishlist_items
+    `)
+  ).rows as { items: number; members: number }[];
+
   if (appids.length === 0) {
+    const hasAny = Number(wishStats?.items ?? 0) > 0;
     return res.status(200).json({
       ok: true,
       mode: 'wishlist',
       games: [],
       total: 0,
-      message:
-        'Aucune wishlist synchronisée. Resynchronise : la wishlist doit aussi ' +
-        'être publique dans les paramètres Steam.',
+      memberCount: Number(wishStats?.members ?? 0),
+      message: hasAny
+        ? `Aucun jeu ne correspond au filtre « souhaité par au moins ${minWishers} membre(s) ». Passe à 1 membre.`
+        : 'Aucune wishlist synchronisée. Resynchronise : la wishlist doit aussi être publique dans les paramètres Steam.',
     });
   }
 
