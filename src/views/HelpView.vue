@@ -69,6 +69,13 @@ function since(d: string | Date | null) {
         Discord et apparaît aussitôt ici.
       </p>
       <p class="mt-2 text-sm text-fg-muted">
+        Pour un événement <strong class="text-fg">en salon vocal</strong>,
+        Discord exige que le bot puisse voir le salon <em>et s'y connecter</em>.
+        Si le salon refuse « Se connecter » à son rôle, le site le signale
+        désormais dans le formulaire (salon barré) au lieu d'échouer après coup.
+        À corriger dans Permissions du salon → rôle du bot → « Se connecter ».
+      </p>
+      <p class="mt-2 text-sm text-fg-muted">
         La <strong class="text-fg">suppression</strong> se fait aussi depuis le
         site : icône corbeille sur la carte de l'événement (à venir ou passé).
         Une confirmation est demandée, car l'événement est également supprimé

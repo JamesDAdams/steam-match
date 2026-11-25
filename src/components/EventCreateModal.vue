@@ -18,6 +18,9 @@ interface Channel {
   id: string;
   name: string;
   type: number;
+  /** Permissions effectives du bot sur ce salon (calculées côté serveur). */
+  canView?: boolean;
+  canConnect?: boolean;
 }
 
 interface BotInfo {
@@ -57,6 +60,25 @@ const guildId = ref<string | null>(null);
 
 const permissionBlocked = computed(() => bot.value !== null && !bot.value.canCreateEvents);
 
+/**
+ * Salons réellement utilisables pour un événement vocal : Discord exige que le
+ * bot puisse voir le salon ET s'y connecter. Les autres sont affichés barrés,
+ * avec la raison, plutôt que de laisser l'admin découvrir un 403 après coup.
+ */
+const usableChannels = computed(() =>
+  channels.value.filter((c) => c.canView !== false && c.canConnect !== false),
+);
+
+const blockedChannels = computed(() =>
+  channels.value.filter((c) => c.canView === false || c.canConnect === false),
+);
+
+function channelWarning(c: Channel): string | null {
+  if (c.canView === false) return 'bot sans accès';
+  if (c.canConnect === false) return 'bot sans « Se connecter »';
+  return null;
+}
+
 async function loadChannels() {
   loadingChannels.value = true;
   channelsError.value = null;
@@ -75,11 +97,12 @@ async function loadChannels() {
     bot.value = r.bot ?? null;
     guildId.value = r.guildId ?? null;
 
-    if (channels.value.length > 0 && !channelId.value) {
-      channelId.value = channels.value[0].id;
+    if (usableChannels.value.length > 0 && !channelId.value) {
+      channelId.value = usableChannels.value[0].id;
     }
-    // Aucun salon utilisable : le mode « lieu externe » reste possible.
-    if (r.configured && channels.value.length === 0) {
+    // Aucun salon utilisable : le mode « lieu externe » reste possible, et on
+    // y bascule directement pour ne pas proposer un formulaire qui échouera.
+    if (r.configured && usableChannels.value.length === 0) {
       kind.value = 'external';
     }
   } catch (e: any) {
@@ -243,7 +266,14 @@ const localError = computed<string | null>(() => {
   }
 
   if (kind.value === 'voice') {
-    if (!channelId.value) return 'Choisis un salon vocal.';
+    const selected = channels.value.find((c) => c.id === channelId.value);
+    if (!selected) return 'Choisis un salon vocal.';
+    if (selected.canView === false) {
+      return 'Le bot ne peut pas voir ce salon vocal. Autorise « Voir le salon ».';
+    }
+    if (selected.canConnect === false) {
+      return 'Le bot ne peut pas se connecter à ce salon vocal. Autorise « Se connecter » sur le salon.';
+    }
   } else if (location.value.trim().length < 2) {
     return 'Indique un lieu ou un lien pour l’événement.';
   }
@@ -508,15 +538,30 @@ onBeforeUnmount(() => {
               id="evt-channel"
               v-model="channelId"
               class="input"
-              :disabled="loadingChannels || channels.length === 0"
+              :disabled="loadingChannels || usableChannels.length === 0"
             >
               <option v-if="loadingChannels" value="">Chargement des salons…</option>
-              <option v-else-if="channels.length === 0" value="">
-                Aucun salon vocal disponible
+              <option v-else-if="usableChannels.length === 0" value="">
+                Aucun salon accessible au bot
               </option>
-              <option v-for="c in channels" :key="c.id" :value="c.id">{{ c.name }}</option>
+              <option
+                v-for="c in channels"
+                :key="c.id"
+                :value="c.id"
+                :disabled="channelWarning(c) !== null"
+              >
+                {{ c.name }}<template v-if="channelWarning(c)"> — {{ channelWarning(c) }}</template>
+              </option>
             </select>
             <p v-if="channelsError" class="mt-1 text-xs text-danger">{{ channelsError }}</p>
+            <p
+              v-else-if="!loadingChannels && blockedChannels.length > 0"
+              class="mt-1 text-xs text-warn"
+            >
+              {{ blockedChannels.length }} salon(s) inaccessible(s) au bot : Discord exige
+              « Se connecter » pour un événement vocal. Autorise-la sur le salon
+              (Permissions du salon → rôle du bot), ou utilise « Lieu externe ».
+            </p>
             <p v-else-if="!loadingChannels && channels.length === 0" class="mt-1 text-xs text-fg-faint">
               Aucun salon vocal n'est visible par le bot. Utilise « Lieu externe », ou
               vérifie les permissions du bot.

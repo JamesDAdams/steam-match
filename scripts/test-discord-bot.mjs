@@ -64,7 +64,9 @@ globalThis.fetch = async (url, init = {}) => {
       id: GUILD,
       name: 'Serveur de test',
       roles: [
-        { id: GUILD, permissions: String(MANAGE_EVENTS) },
+        // CONNECT (1<<20) et VIEW_CHANNEL (1<<10) accordés au niveau serveur :
+        // c'est une surcharge de salon qui les retire, comme sur un vrai serveur.
+        { id: GUILD, permissions: String(MANAGE_EVENTS | (1n << 20n) | (1n << 10n)) },
         { id: 'role-create', permissions: String(CREATE_EVENTS) },
         { id: 'role-sans-droit', permissions: '0' },
       ],
@@ -83,8 +85,18 @@ globalThis.fetch = async (url, init = {}) => {
     if (failChannels) return json(403, { message: 'Missing Access', code: 50001 });
     return json(200, [
       { id: '3', name: 'Salon texte', type: 0, position: 0 },
+      // Aucune surcharge : le bot hérite de CONNECT du serveur.
       { id: '2', name: 'Vocal B', type: 2, position: 2 },
-      { id: '1', name: 'Vocal A', type: 2, position: 1 },
+      // @everyone autorise Voir (1024) mais refuse Se connecter (1048576).
+      {
+        id: '1',
+        name: 'Vocal A',
+        type: 2,
+        position: 1,
+        permission_overwrites: [
+          { id: GUILD, type: 0, allow: '1024', deny: '1048576' },
+        ],
+      },
       { id: '4', name: 'Scène', type: 13, position: 3 },
     ]);
   }
@@ -194,6 +206,24 @@ const perms2 = await modSansDroit.getBotPermissions({ force: true });
 check('permission absente détectée', perms2.createEvents === false && perms2.manageEvents === true);
 botRoles = ['role-create'];
 
+// ── 3 bis. Accès par salon ────────────────────────────────────────────
+// Un événement vocal exige « Voir » ET « Se connecter » sur le salon, même
+// quand le rôle du bot a « Créer des événements » au niveau du serveur.
+console.log('  — Accès aux salons —');
+const access = await mod.getBotChannelAccess({ force: true });
+
+check(
+  'salon sans surcharge : voir + se connecter',
+  access['2']?.canView === true && access['2']?.canConnect === true,
+  JSON.stringify(access['2']),
+);
+check(
+  '« Se connecter » refusé par une surcharge détecté',
+  access['1']?.canView === true && access['1']?.canConnect === false,
+  JSON.stringify(access['1']),
+);
+check('salon texte ignoré', access['3'] === undefined);
+
 // ── 4. Création d'un événement vocal ──────────────────────────────────
 console.log('  — Création (vocal) —');
 calls.length = 0;
@@ -292,6 +322,35 @@ check(
   'oriente vers DISCORD_GUILD_ID / le jeton',
   /DISCORD_GUILD_ID/.test(refusal2 ?? ''),
   String(refusal2),
+);
+denyCreate = false;
+
+// ── 6 bis. Refus 403 sur salon vocal : CONNECT manquant ───────────────
+console.log('  — Refus sur salon vocal (surcharge du salon) —');
+denyCreate = true;
+
+const modVoice = await freshModule();
+let voiceRefusal = null;
+try {
+  await modVoice.createScheduledEvent({
+    name: 'Test vocal',
+    startAt: start,
+    entityType: 2,
+    channelId: '1',
+  });
+} catch (e) {
+  voiceRefusal = e.message;
+}
+
+check(
+  'message nomme « Se connecter »',
+  /Se connecter/.test(voiceRefusal ?? ''),
+  String(voiceRefusal),
+);
+check(
+  'message ne dit pas « Créer des événements » manquant',
+  !/Créer des événements/.test(voiceRefusal ?? ''),
+  String(voiceRefusal),
 );
 denyCreate = false;
 

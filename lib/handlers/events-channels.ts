@@ -1,5 +1,6 @@
 import { requireAdmin } from '../access.ts';
 import {
+  getBotChannelAccess,
   getBotIdentity,
   getBotPermissions,
   guildId,
@@ -67,11 +68,28 @@ export default async function handler(req: any, res: any) {
 
   try {
     const channels = await listEventChannels();
+
+    // Accès par salon : Discord exige « Voir » et « Se connecter » pour un
+    // événement vocal. Une liste sans cette information laisserait l'admin
+    // choisir un salon qui échouera en 403.
+    let access: Record<string, { canView: boolean; canConnect: boolean }> = {};
+    try {
+      access = await getBotChannelAccess();
+    } catch {
+      /* accès inconnu : on ne bloque pas, Discord tranchera */
+    }
+
     return res.status(200).json({
       ok: true,
       configured: true,
       guildId: guildId(),
-      channels: channels.map((c) => ({ id: c.id, name: c.name, type: c.type })),
+      channels: channels.map((c) => ({
+        id: c.id,
+        name: c.name,
+        type: c.type,
+        canView: access[c.id]?.canView ?? true,
+        canConnect: access[c.id]?.canConnect ?? true,
+      })),
       bot,
       error: permissionsError,
     });

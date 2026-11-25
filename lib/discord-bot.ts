@@ -420,11 +420,34 @@ async function explainCreateRefusal(
   }
 
   if (input.entityType === 2) {
+    // Le serveur accorde bien « Créer des événements », mais un événement vocal
+    // exige en plus que le bot puisse voir le salon et s'y connecter. On
+    // calcule ces permissions de salon pour nommer la case exacte à cocher.
+    const access = await getBotChannelAccess({ force: true }).catch(() => null);
+    const salon = input.channelId ? access?.[input.channelId] : undefined;
+
+    if (salon && !salon.canView) {
+      return (
+        `Discord a refusé la création (403). ${who}` +
+        'Le bot ne peut pas voir le salon vocal choisi. ' +
+        'Permissions du salon → rôle du bot → active « Voir le salon ».'
+      );
+    }
+
+    if (salon && !salon.canConnect) {
+      return (
+        `Discord a refusé la création (403). ${who}` +
+        'Le bot voit le salon vocal mais ne peut pas s’y connecter : la ' +
+        'permission « Se connecter » y est refusée (surcharge du salon). ' +
+        'Permissions du salon → rôle du bot → active « Se connecter », ' +
+        'puis réessaie. En attendant, un « Lieu externe » fonctionne.'
+      );
+    }
+
     return (
       `Discord a refusé la création (403). ${who}` +
-      'Le bot a les permissions serveur, mais pas l’accès au salon choisi. ' +
       'Vérifie que le bot peut voir et rejoindre ce salon vocal ' +
-      '(Permissions du salon → le bot → « Voir le salon » et « Se connecter »).'
+      '(Permissions du salon → rôle du bot → « Voir le salon » et « Se connecter »).'
     );
   }
 
@@ -530,7 +553,132 @@ export async function getBotPermissions(
   return value;
 }
 
-/** Construit l'URL publique de la bannière d'un événement. */export function eventCoverUrl(
+export interface BotChannelAccess {
+  /** Le bot peut voir le salon (« Voir le salon »). */
+  canView: boolean;
+  /** Le bot peut rejoindre le salon (« Se connecter »). */
+  canConnect: boolean;
+}
+
+const CHANNEL_ACCESS_TTL_MS = 2 * 60_000;
+let channelAccessCache: {
+  value: Record<string, BotChannelAccess>;
+  at: number;
+} | null = null;
+
+/**
+ * Accès du bot à chaque salon vocal et scène.
+ *
+ * POURQUOI : créer un événement sur un salon vocal exige que le bot puisse le
+ * VOIR et s'y CONNECTER. Les surcharges du salon (@everyone, rôles, membre)
+ * peuvent retirer « Se connecter » même quand le rôle du bot possède « Créer
+ * des événements » au niveau du serveur — d'où des 403 « Missing Permissions »
+ * impossibles à interpréter sans recalculer les permissions effectives.
+ *
+ * On applique les surcharges exactement comme Discord : @everyone, puis l'union
+ * des rôles du bot, puis la surcharge du membre. Un administrateur a tout.
+ */
+export async function getBotChannelAccess(
+  opts: { force?: boolean } = {},
+): Promise<Record<string, BotChannelAccess>> {
+  if (
+    !opts.force &&
+    channelAccessCache &&
+    Date.now() - channelAccessCache.at < CHANNEL_ACCESS_TTL_MS
+  ) {
+    return channelAccessCache.value;
+  }
+
+  const bot = await getBotIdentity();
+  await assertGuildAccessible();
+
+  const [guildRes, memberRes, channelsRes] = await Promise.all([
+    discordFetch(`/guilds/${guildId()}`),
+    discordFetch(`/guilds/${guildId()}/members/${bot.id}`),
+    discordFetch(`/guilds/${guildId()}/channels`),
+  ]);
+
+  if (!guildRes.ok) {
+    throw new Error(`Discord a répondu HTTP ${guildRes.status} sur le serveur.`);
+  }
+  if (!channelsRes.ok) {
+    throw new Error(
+      `Discord a répondu HTTP ${channelsRes.status} en lisant les salons.`,
+    );
+  }
+
+  const guild = (await guildRes.json()) as {
+    id: string;
+    roles?: { id: string; permissions: string }[];
+  };
+  const member = memberRes.ok
+    ? ((await memberRes.json()) as { roles?: string[] })
+    : { roles: [] as string[] };
+  const channels = (await channelsRes.json()) as {
+    id: string;
+    type: number;
+    permission_overwrites?: { id: string; type: number; allow: string; deny: string }[];
+  }[];
+
+  const roles = new Map((guild.roles ?? []).map((r) => [r.id, r]));
+  const everyone = roles.get(guild.id);
+
+  let base = BigInt(everyone?.permissions ?? '0');
+  for (const roleId of member.roles ?? []) {
+    const role = roles.get(roleId);
+    if (role) base |= BigInt(role.permissions);
+  }
+
+  const isAdmin = (base & (1n << PERM_ADMINISTRATOR)) !== 0n;
+  const has = (bits: bigint, bit: bigint) => (bits & (1n << bit)) !== 0n;
+
+  const value: Record<string, BotChannelAccess> = {};
+
+  for (const channel of Array.isArray(channels) ? channels : []) {
+    if (channel.type !== 2 && channel.type !== 13) continue;
+
+    let bits = base;
+
+    if (!isAdmin) {
+      const overwrites = channel.permission_overwrites ?? [];
+
+      const everyoneOw = overwrites.find(
+        (o) => o.type === 0 && o.id === guild.id,
+      );
+      if (everyoneOw) {
+        bits = (bits & ~BigInt(everyoneOw.deny)) | BigInt(everyoneOw.allow);
+      }
+
+      let allow = 0n;
+      let deny = 0n;
+      for (const o of overwrites) {
+        if (o.type === 0 && (member.roles ?? []).includes(o.id)) {
+          allow |= BigInt(o.allow);
+          deny |= BigInt(o.deny);
+        }
+      }
+      bits = (bits & ~deny) | allow;
+
+      const memberOw = overwrites.find((o) => o.type === 1 && o.id === bot.id);
+      if (memberOw) {
+        bits = (bits & ~BigInt(memberOw.deny)) | BigInt(memberOw.allow);
+      }
+    } else {
+      bits = ~0n;
+    }
+
+    value[channel.id] = {
+      canView: has(bits, 10n),
+      canConnect: has(bits, 20n),
+    };
+  }
+
+  channelAccessCache = { value, at: Date.now() };
+  return value;
+}
+
+/** Construit l'URL publique de la bannière d'un événement. */
+export function eventCoverUrl(
   eventId: string,
   imageHash: string | null | undefined,
 ): string | null {
