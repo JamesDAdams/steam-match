@@ -1,7 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
-import { apiGet, formatPlaytime, hideBrokenImage, steamHeaderUrl, steamStoreUrl } from '../lib/api';
+import {
+  apiGet,
+  formatPrice,
+  formatPlaytime,
+  hideBrokenImage,
+  steamHeaderUrl,
+  steamStoreUrl,
+} from '../lib/api';
 
 /**
  * Profil public d'un membre : sa ludothèque Steam, ses genres et son temps de

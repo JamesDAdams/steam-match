@@ -27,7 +27,8 @@
     "test:bot": "node scripts/test-discord-bot.mjs",
     "test:enrich": "node scripts/test-enrich.mjs",
     "check:functions": "node --experimental-strip-types scripts/check-functions.mjs",
-    "check": "npm run typecheck && npm run check:vues && npm run check:functions"
+    "check": "npm run check:types && npm run check:vues && npm run check:functions",
+    "check:types": "vue-tsc --noEmit"
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.10.4",

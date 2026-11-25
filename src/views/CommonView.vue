@@ -24,7 +24,7 @@ interface Game {
   wishCount?: number;
   wishers?: string[];
   ownerCount?: number;
-  owners?: string[];
+  ownerNames?: string[];
   playableNow?: boolean;
   cheapestPrice?: number | null;
   cheapestStore?: string | null;
@@ -462,9 +462,9 @@ onUnmounted(stopAutoRefresh);
               <span class="flex items-center gap-1">
                 🕐 {{ formatPlaytime(g.totalPlaytime) }}
               </span>
-              <span v-if="mode === 'wishlist'" class="truncate" :title="(g.owners ?? []).join(', ')">
+              <span v-if="mode === 'wishlist'" class="truncate" :title="(g.ownerNames ?? []).join(', ')">
                 <template v-if="g.ownerCount">
-                  possédé par {{ (g.owners ?? []).slice(0, 2).join(', ') }}<template v-if="(g.ownerCount ?? 0) > 2"> +{{ (g.ownerCount ?? 0) - 2 }}</template>
+                  possédé par {{ (g.ownerNames ?? []).slice(0, 2).join(', ') }}<template v-if="(g.ownerCount ?? 0) > 2"> +{{ (g.ownerCount ?? 0) - 2 }}</template>
                 </template>
                 <template v-else>personne ne l'a encore</template>
               </span>

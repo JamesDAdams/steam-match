@@ -317,7 +317,9 @@ async function handleWishlist(req: VercelRequest, res: VercelResponse, db: any) 
       wishCount: Number(r.wish_count),
       wishers: (r.wishers ?? []).map(name),
       ownerCount: owners.length,
-      owners: owners.map(name),
+      // `owners` est déjà un NOMBRE en mode « possédés » : on évite le conflit
+      // de type en nommant différemment la liste des noms ici.
+      ownerNames: owners.map(name),
       playableNow: owners.length > 0,
     };
   });

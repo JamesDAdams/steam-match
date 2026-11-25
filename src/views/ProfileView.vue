@@ -120,19 +120,24 @@ function accountKindLabel(kind: 'family' | 'secondary') {
  * les présenter de la même façon (avatar, nombre de jeux, dernière synchro),
  * ce qui n'était pas le cas du compte principal.
  */
-const accountRows = computed(() => {
-  const rows: {
-    key: string;
-    steamid: string;
-    personaName: string | null;
-    avatarUrl: string | null;
-    kind: 'main' | 'secondary' | 'family';
-    gamesCount: number;
-    lastSyncedAt: string | null;
-    lastError: string | null;
-    profileUrl: string;
-    isMain: boolean;
-  }[] = [];
+/** Ligne affichée : compte principal ou compte lié, même présentation. */
+interface AccountRow {
+  key: string;
+  steamid: string;
+  personaName: string | null;
+  avatarUrl: string | null;
+  kind: 'main' | 'secondary' | 'family';
+  gamesCount: number;
+  /** Taille brute importée (comptes liés uniquement). */
+  importedCount?: number;
+  lastSyncedAt: string | null;
+  lastError: string | null;
+  profileUrl: string;
+  isMain: boolean;
+}
+
+const accountRows = computed<AccountRow[]>(() => {
+  const rows: AccountRow[] = [];
 
   if (me.value.steam) {
     rows.push({
@@ -157,6 +162,7 @@ const accountRows = computed(() => {
       avatarUrl: a.avatarUrl,
       kind: a.kind,
       gamesCount: a.gamesCount,
+      importedCount: a.importedCount,
       lastSyncedAt: a.lastSyncedAt,
       lastError: a.lastError,
       profileUrl: a.profileUrl,
@@ -316,7 +322,7 @@ async function addAccount() {
   }
 }
 
-async function resyncAccount(a: LinkedAccount) {
+async function resyncAccount(a: AccountRow) {
   accountError.value = null;
   accountMessage.value = null;
   accountBusy.value = a.steamid;
@@ -334,7 +340,7 @@ async function resyncAccount(a: LinkedAccount) {
   }
 }
 
-async function removeAccount(a: LinkedAccount) {
+async function removeAccount(a: AccountRow) {
   accountError.value = null;
   accountMessage.value = null;
   accountBusy.value = a.steamid;
