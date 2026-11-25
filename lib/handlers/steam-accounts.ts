@@ -101,7 +101,11 @@ export default async function handler(req: any, res: any) {
           kind: a.kind === 'secondary' ? 'secondary' : 'family',
           personaName: a.personaName,
           avatarUrl: a.avatarUrl,
+          // Jeux réellement attribués (dédupliqués avec les autres comptes)
           gamesCount: byLink.get(a.steamid) ?? 0,
+          // Taille brute de la bibliothèque importée, pour expliquer l'écart
+          // avec ce que le client Steam affiche.
+          importedCount: a.gamesCount,
           lastSyncedAt: a.lastSyncedAt,
           lastError: a.lastError,
           profileUrl: `https://steamcommunity.com/profiles/${a.steamid}`,

@@ -99,6 +99,8 @@ interface LinkedAccount {
   lastSyncedAt: string | null;
   lastError: string | null;
   profileUrl: string;
+  /** Taille brute de la bibliothèque importée (avant déduplication). */
+  importedCount?: number;
 }
 
 const accounts = ref<LinkedAccount[]>([]);
@@ -288,6 +290,21 @@ async function load(silent = false) {
   }
 }
 
+/**
+ * Progression de l'enrichissement (genres, prix, dates) sur les jeux du membre.
+ * Sert de barre de progression, comme sur la page « jeux en commun ».
+ */
+const enrichProgress = computed(() => {
+  const total = stats.value?.totalGames ?? 0;
+  const enriched = stats.value?.enrichedGames ?? 0;
+  return {
+    total,
+    enriched,
+    pending: Math.max(0, total - enriched),
+    pct: total > 0 ? Math.round((enriched / total) * 100) : 0,
+  };
+});
+
 /** Jeux dont le nom n'est pas encore connu (affichés « App <id> »). */
 const unidentifiedCount = computed(() => {
   const inWish = wishlist.value.filter((w) => /^App \d+$/.test(w.name)).length;
@@ -355,30 +372,38 @@ async function sync() {
  */
 const POLL_MS = 15_000;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
+/** Reflet réactif de l'état de la boucle (pollTimer n'est pas une ref). */
+const pollingActive = ref(false);
 
 function stopPolling() {
   if (pollTimer) {
     clearInterval(pollTimer);
     pollTimer = null;
   }
+  pollingActive.value = false;
 }
 
 function startPolling() {
   if (pollTimer) return;
+  pollingActive.value = true;
   pollTimer = setInterval(async () => {
     // Onglet inactif ou requête déjà en cours : on ne fait rien.
     if (document.hidden || refreshing.value) return;
 
     await load(true);
 
-    // Plus rien à identifier : la boucle a rempli son rôle.
-    if (unidentifiedCount.value === 0) stopPolling();
+    // Plus rien à identifier NI à enrichir : la boucle a rempli son rôle.
+    if (unidentifiedCount.value === 0 && enrichProgress.value.pending === 0) {
+      stopPolling();
+    }
   }, POLL_MS);
 }
 
 /** Y a-t-il encore des données à rafraîchir automatiquement ? */
 const autoUpdating = computed(
-  () => pollTimer !== null && unidentifiedCount.value > 0,
+  () =>
+    pollingActive.value &&
+    (unidentifiedCount.value > 0 || enrichProgress.value.pending > 0),
 );
 
 /**
@@ -456,9 +481,9 @@ function startPump() {
 
 onMounted(async () => {
   await Promise.all([load(), loadAccounts()]);
-  if (unidentifiedCount.value > 0) {
+  if (unidentifiedCount.value > 0 || enrichProgress.value.pending > 0) {
     startPolling();
-    startPump();
+    if (unidentifiedCount.value > 0) startPump();
   }
 });
 
@@ -548,6 +573,28 @@ onUnmounted(() => {
           <template v-else>
             tu peux revenir un peu plus tard.
           </template>
+        </p>
+      </div>
+
+      <!-- Enrichissement des données du profil -->
+      <div v-if="stats && enrichProgress.pending > 0" class="card mb-6">
+        <div class="flex items-center justify-between gap-3 text-sm">
+          <span class="text-fg">
+            Enrichissement des genres — {{ enrichProgress.enriched }} /
+            {{ enrichProgress.total }} jeux
+          </span>
+          <span class="text-brand">{{ enrichProgress.pct }} %</span>
+        </div>
+        <div class="mt-2 h-2 overflow-hidden rounded bg-app-surface2">
+          <div
+            class="stripes h-full rounded bg-brand/60 transition-all"
+            :style="{ width: enrichProgress.pct + '%' }"
+          ></div>
+        </div>
+        <p class="mt-2 text-xs text-fg-faint">
+          Les métadonnées (noms, genres, prix) se remplissent automatiquement en
+          arrière-plan. Cette page se met à jour toute seule
+          <template v-if="autoUpdating"> — accéléré tant que tu restes ici.</template>.
         </p>
       </div>
 
@@ -718,6 +765,9 @@ onUnmounted(() => {
               </p>
               <p class="text-[11px] text-fg-faint">
                 {{ a.gamesCount }} jeu{{ a.gamesCount > 1 ? 'x' : '' }}
+                <template v-if="!a.isMain && (a.importedCount ?? 0) > a.gamesCount">
+                  (sur {{ a.importedCount }} importés)
+                </template>
                 <template v-if="a.isMain"> · synchronisé automatiquement</template>
                 <template v-else-if="a.lastSyncedAt">
                   · synchronisé le {{ new Date(a.lastSyncedAt).toLocaleString('fr-FR') }}
@@ -765,6 +815,12 @@ onUnmounted(() => {
 
         <p v-if="!accountRows.length" class="mt-4 text-sm text-fg-faint">
           Aucun compte Steam lié.
+        </p>
+
+        <p class="mt-3 text-[11px] text-fg-faint">
+          Les compteurs ne sont pas ceux du client Steam : un jeu déjà présent dans
+          un autre compte n'est pas compté deux fois, et Steam compte différemment
+          les jeux gratuits, les outils et les démos.
         </p>
 
 

@@ -64,10 +64,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           set: { priority: sql`excluded.priority`, updatedAt: now },
         });
 
-      // Retire les jeux sortis de la wishlist.
+      // Retire les jeux sortis de la wishlist — uniquement ceux du compte
+      // principal : `source_steamid IS NULL`. Sans cette borne, la synchro du
+      // compte principal effacerait la wishlist importée d'un compte secondaire.
       await db.execute(sql`
         DELETE FROM wishlist_items
         WHERE steamid = ${steamid}
+          AND source_steamid IS NULL
           AND appid NOT IN (${sql.join(
             wishlist.items.map((w) => sql`${w.appid}`),
             sql`, `,

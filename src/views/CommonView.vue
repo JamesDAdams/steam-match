@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import {
   apiGet,
   apiPost,
@@ -161,9 +161,42 @@ watch([selectedGenres, selectedTags, minMembers, sortBy, onlyEnriched, mode, pla
   debounceTimer = setTimeout(load, 250);
 });
 
+/* ── Mise à jour automatique pendant l'enrichissement ──────────────── */
+
+/**
+ * Tant qu'il reste des jeux à enrichir, la page se rafraîchit seule : sinon il
+ * fallait recharger à la main pour voir la barre avancer et les filtres se
+ * remplir.
+ */
+const REFRESH_MS = 5_000;
+let refreshTimer: ReturnType<typeof setInterval> | null = null;
+
+function stopAutoRefresh() {
+  if (refreshTimer) {
+    clearInterval(refreshTimer);
+    refreshTimer = null;
+  }
+}
+
+function startAutoRefresh() {
+  if (refreshTimer) return;
+  refreshTimer = setInterval(async () => {
+    if (document.hidden) return;
+    await loadGroup();
+    if ((cacheState.value?.pending ?? 0) === 0) {
+      stopAutoRefresh();
+      return;
+    }
+    await load();
+  }, REFRESH_MS);
+}
+
 onMounted(async () => {
   await Promise.all([load(), loadGroup()]);
+  if ((cacheState.value?.pending ?? 0) > 0) startAutoRefresh();
 });
+
+onUnmounted(stopAutoRefresh);
 </script>
 
 <template>

@@ -1,7 +1,7 @@
 import { getDb } from '../db/index.ts';
-import { users, ownedGames, gameCache, enrichQueue } from '../db/schema.ts';
+import { users, ownedGames, gameCache, enrichQueue, wishlistItems } from '../db/schema.ts';
 import { and, eq, sql } from 'drizzle-orm';
-import { getOwnedGames, getPlayerSummaries } from './steam.ts';
+import { getOwnedGames, getPlayerSummaries, getWishlist } from './steam.ts';
 
 /**
  * Synchronisation des ludothèques Steam, partagée par trois appelants :
@@ -132,7 +132,7 @@ export async function absorbLibrary(
   ownerSteamid: string,
   linkSteamid: string,
   kind: Exclude<GameSource, 'owned'>,
-): Promise<{ count: number }> {
+): Promise<{ count: number; wishlistCount: number }> {
   const db = getDb();
   const { games, gamesVisible } = await getOwnedGames(linkSteamid);
 
@@ -163,8 +163,11 @@ export async function absorbLibrary(
         slice.map((g) => ({
           steamid: ownerSteamid,
           appid: g.appid,
-          playtimeForever: g.playtime_forever ?? 0,
-          playtime2Weeks: g.playtime_2weeks ?? 0,
+          // Le temps de jeu d'un compte FAMILLE appartient à quelqu'un d'autre :
+          // le reprendre gonflerait les statistiques du membre (heures jouées,
+          // « joués récemment », styles de jeu). On ne garde que les jeux.
+          playtimeForever: kind === 'family' ? 0 : (g.playtime_forever ?? 0),
+          playtime2Weeks: kind === 'family' ? 0 : (g.playtime_2weeks ?? 0),
           source: kind,
           sourceSteamid: linkSteamid,
           updatedAt: now,
@@ -173,6 +176,10 @@ export async function absorbLibrary(
       .onConflictDoUpdate({
         target: [ownedGames.steamid, ownedGames.appid],
         set: {
+          // Le temps de jeu suit la règle du compte (0 pour la famille), y
+          // compris pour les lignes déjà importées avant ce correctif.
+          playtimeForever: sql`excluded.playtime_forever`,
+          playtime2Weeks: sql`excluded.playtime_2weeks`,
           // Un jeu réellement possédé le reste : on ne le dégrade pas.
           source: sql`CASE WHEN owned_games.source = 'owned' THEN 'owned' ELSE excluded.source END`,
           sourceSteamid: sql`CASE WHEN owned_games.source = 'owned' THEN NULL ELSE excluded.source_steamid END`,
@@ -183,7 +190,78 @@ export async function absorbLibrary(
 
   await seedCacheAndQueue(valid.map((g) => ({ appid: g.appid, name: g.name })));
 
-  return { count: valid.length };
+  // Wishlist : uniquement celle d'un compte SECONDAIRE. Celle d'un compte
+  // famille appartient à un autre joueur — l'agréger fausserait les envies du
+  // membre.
+  let wishlistCount = 0;
+  if (kind === 'secondary') {
+    wishlistCount = await syncLinkedWishlist(ownerSteamid, linkSteamid);
+  }
+
+  return { count: valid.length, wishlistCount };
+}
+
+/**
+ * Importe la wishlist d'un compte secondaire sous le membre.
+ *
+ * La suppression est bornée à `source_steamid` pour ne pas effacer les souhaits
+ * du compte principal, qui vivent dans la même table.
+ */
+async function syncLinkedWishlist(
+  ownerSteamid: string,
+  linkSteamid: string,
+): Promise<number> {
+  const db = getDb();
+  const wishlist = await getWishlist(linkSteamid);
+  if (!wishlist.wishlistVisible || wishlist.items.length === 0) {
+    // Wishlist retirée côté Steam : on nettoie ce que ce compte avait apporté.
+    await db
+      .delete(wishlistItems)
+      .where(
+        and(
+          eq(wishlistItems.steamid, ownerSteamid),
+          eq(wishlistItems.sourceSteamid, linkSteamid),
+        ),
+      );
+    return 0;
+  }
+
+  const now = new Date();
+
+  for (let i = 0; i < wishlist.items.length; i += BATCH) {
+    const slice = wishlist.items.slice(i, i + BATCH);
+    await db
+      .insert(wishlistItems)
+      .values(
+        slice.map((w) => ({
+          steamid: ownerSteamid,
+          appid: w.appid,
+          priority: w.priority,
+          sourceSteamid: linkSteamid,
+          updatedAt: now,
+        })),
+      )
+      .onConflictDoUpdate({
+        target: [wishlistItems.steamid, wishlistItems.appid],
+        set: {
+          priority: sql`excluded.priority`,
+          sourceSteamid: sql`COALESCE(wishlist_items.source_steamid, excluded.source_steamid)`,
+          updatedAt: now,
+        },
+      });
+  }
+
+  await db.execute(sql`
+    DELETE FROM wishlist_items
+    WHERE steamid = ${ownerSteamid}
+      AND source_steamid = ${linkSteamid}
+      AND appid NOT IN (${sql.join(
+        wishlist.items.map((w) => sql`${w.appid}`),
+        sql`, `,
+      )})
+  `);
+
+  return wishlist.items.length;
 }
 
 /** Remplit le cache de noms et met les jeux inconnus en file d'enrichissement. */

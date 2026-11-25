@@ -272,3 +272,14 @@ html.light {
     background-size: 1rem 1rem;
   }
 }
+
+/*
+ * Masque la pastille « Powered by Netlify » injectée par le HUD Netlify sur les
+ * comptes gratuits (`/.netlify/scripts/hud`). Elle est ajoutée après le build,
+ * dans une iframe `#nl-badge-frame` : aucune option du site ne la retire.
+ */
+#nl-badge-frame,
+#nl-hud-frame,
+#nl-badge {
+  display: none !important;
+}

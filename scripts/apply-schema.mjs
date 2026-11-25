@@ -115,6 +115,7 @@ const statements = [
      PRIMARY KEY (owner_steamid, steamid)
    )`,
   `ALTER TABLE owned_games ADD COLUMN IF NOT EXISTS source_steamid text`,
+  `ALTER TABLE wishlist_items ADD COLUMN IF NOT EXISTS source_steamid text`,
 
   // ── Jeux partagés par la famille Steam ─────────────────────────────
   // GetOwnedGames ne renvoie jamais les jeux empruntés à un groupe familial :

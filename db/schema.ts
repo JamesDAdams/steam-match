@@ -206,6 +206,12 @@ export const wishlistItems = pgTable(
       .references(() => users.steamid, { onDelete: 'cascade' }),
     appid: integer('appid').notNull(),
     priority: integer('priority').notNull().default(0),
+    /**
+     * Compte Steam d'où vient le souhait : NULL pour le compte principal,
+     * sinon l'identifiant du compte secondaire (les comptes famille ne
+     * fournissent jamais de wishlist).
+     */
+    sourceSteamid: text('source_steamid'),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
