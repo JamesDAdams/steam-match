@@ -34,10 +34,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return handleWishlist(req, res, db);
     }
 
+    // Sous-ensemble de membres choisi dans l'interface (steamids séparés par
+    // des virgules). Vide = tout le groupe.
+    const memberFilter = parseList(req.query.members as string | string[] | undefined).filter(
+      (id) => /^\d{17}$/.test(id),
+    );
+    const memberClause =
+      memberFilter.length > 0
+        ? sql`WHERE og.steamid IN (${sql.join(
+            memberFilter.map((id) => sql`${id}`),
+            sql`, `,
+          )})`
+        : sql``;
+
     const genreFilter = parseList(req.query.genres as string | string[] | undefined);
     const tagFilter = parseList(req.query.tags as string | string[] | undefined);
     const minRaw = Number(req.query.min ?? 2);
-    const minMembers = Number.isFinite(minRaw) ? Math.max(2, Math.min(50, minRaw)) : 2;
+    // 1 est autorisé : avec un seul membre sélectionné, on veut voir ses jeux.
+    const minMembers = Number.isFinite(minRaw) ? Math.max(1, Math.min(50, minRaw)) : 2;
     const sort = (req.query.sort as string) ?? 'players';
     const requireEnriched = req.query.enriched === '1';
 
@@ -49,6 +63,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
              min(og.playtime_forever)::int AS min_playtime,
              array_agg(DISTINCT og.steamid) AS steamids
       FROM owned_games og
+      ${memberClause}
       GROUP BY og.appid
       HAVING count(DISTINCT og.steamid) >= ${minMembers}
     `);
@@ -87,7 +102,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ]),
     );
 
-    const memberCount = allUsers.length;
+    const memberCount =
+      memberFilter.length > 0
+        ? allUsers.filter((u: any) => memberFilter.includes(u.steamid)).length
+        : allUsers.length;
 
     // 4. Assemblage + filtres.
     let games = (rows.rows as any[]).map((r) => {
@@ -174,6 +192,17 @@ function norm(s: string) {
  * possesseurs en second critère.
  */
 async function handleWishlist(req: VercelRequest, res: VercelResponse, db: any) {
+  const memberFilter = parseList(req.query.members as string | string[] | undefined).filter(
+    (id) => /^\d{17}$/.test(id),
+  );
+  const memberClause =
+    memberFilter.length > 0
+      ? sql`WHERE w.steamid IN (${sql.join(
+          memberFilter.map((id) => sql`${id}`),
+          sql`, `,
+        )})`
+      : sql``;
+
   const minWishersRaw = Number(req.query.min ?? 1);
   const minWishers = Number.isFinite(minWishersRaw)
     ? Math.max(1, Math.min(50, minWishersRaw))
@@ -185,6 +214,7 @@ async function handleWishlist(req: VercelRequest, res: VercelResponse, db: any) 
            count(DISTINCT w.steamid)::int AS wish_count,
            array_agg(DISTINCT w.steamid) AS wishers
     FROM wishlist_items w
+    ${memberClause}
     GROUP BY w.appid
     HAVING count(DISTINCT w.steamid) >= ${minWishers}
   `);

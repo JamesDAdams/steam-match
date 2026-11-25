@@ -31,7 +31,8 @@ const routes = [
     path: '/recommandations',
     name: 'recommend',
     component: RecommendView,
-    meta: { requiresAccess: true },
+    // Page en chantier : masquée tant que l'admin ne l'active pas.
+    meta: { requiresAccess: true, requiresFeature: 'recommendations' },
   },
   // Page publique : consultable sans compte.
   { path: '/twitch', name: 'twitch', component: TwitchView },
@@ -84,6 +85,15 @@ router.beforeEach(async (to) => {
   }
   if (to.meta.requiresAdmin && !state.isAdmin) {
     return { path: '/commun' };
+  }
+
+  // Fonctionnalité masquée : l'admin garde l'aperçu, les autres sont redirigés.
+  const feature = to.meta.requiresFeature as string | undefined;
+  if (feature) {
+    const enabled = (state.features as Record<string, boolean> | undefined)?.[feature];
+    if (!enabled && !state.isAdmin) {
+      return { path: '/commun' };
+    }
   }
   return true;
 });

@@ -397,6 +397,9 @@ export const appSettings = pgTable('app_settings', {
   /** Résumé lisible du dernier passage (comptes traités, erreurs). */
   lastSteamSyncResult: text('last_steam_sync_result'),
 
+  /** Page « Recommandations » visible (masquée par défaut, en chantier). */
+  recommendationsEnabled: boolean('recommendations_enabled').notNull().default(false),
+
   /** Rappels Discord des sorties de jeux. */
   releaseNotifyEnabled: boolean('release_notify_enabled').notNull().default(false),
   /** Heure d'envoi (0-23, heure de Paris). */

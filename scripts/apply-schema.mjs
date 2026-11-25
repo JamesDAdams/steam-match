@@ -106,6 +106,7 @@ const statements = [
      sent_at      timestamp with time zone NOT NULL DEFAULT now(),
      PRIMARY KEY (appid, discord_id, release_date)
    )`,
+  `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS recommendations_enabled boolean NOT NULL DEFAULT false`,
   `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS release_notify_enabled boolean NOT NULL DEFAULT false`,
   `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS release_notify_hour integer NOT NULL DEFAULT 6`,
   `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS release_channel_id text`,

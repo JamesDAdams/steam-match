@@ -13,6 +13,8 @@ export interface AppSettings {
   steamSyncIntervalHours: number;
   lastSteamSyncAt: Date | null;
   lastSteamSyncResult: string | null;
+  /** Page « Recommandations » affichée dans le menu. */
+  recommendationsEnabled: boolean;
   /** Rappels Discord des sorties. */
   releaseNotifyEnabled: boolean;
   /** Heure d'envoi, 0-23 (heure de Paris). */
@@ -33,6 +35,7 @@ const DEFAULTS: AppSettings = {
   steamSyncIntervalHours: 1,
   lastSteamSyncAt: null,
   lastSteamSyncResult: null,
+  recommendationsEnabled: false,
   releaseNotifyEnabled: false,
   releaseNotifyHour: 6,
   releaseChannelId: null,
@@ -58,6 +61,7 @@ export async function getSettings(): Promise<AppSettings> {
     steamSyncIntervalHours: row.steamSyncIntervalHours,
     lastSteamSyncAt: row.lastSteamSyncAt ?? null,
     lastSteamSyncResult: row.lastSteamSyncResult ?? null,
+    recommendationsEnabled: row.recommendationsEnabled,
     releaseNotifyEnabled: row.releaseNotifyEnabled,
     releaseNotifyHour: row.releaseNotifyHour,
     releaseChannelId: row.releaseChannelId ?? null,
@@ -73,6 +77,7 @@ export async function updateSettings(
       | 'steamSyncIntervalHours'
       | 'lastSteamSyncAt'
       | 'lastSteamSyncResult'
+      | 'recommendationsEnabled'
       | 'releaseNotifyEnabled'
       | 'releaseNotifyHour'
       | 'releaseChannelId'

@@ -19,6 +19,7 @@ import {
 import { isAdminId } from '../lib/discord.ts';
 import { resolveAccess } from '../lib/access.ts';
 import { inviteUrl, isBotConfigured } from '../lib/discord-bot.ts';
+import { recommendationsEnabled } from '../lib/features.ts';
 
 /**
  * GET  /api/me  → état complet de la session
@@ -297,6 +298,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       membershipError: decision.membership.error,
       botConfigured: isBotConfigured(),
       guildInviteUrl: inviteUrl(),
+      // Drapeaux d'affichage pilotés depuis l'admin (pages en chantier).
+      features: {
+        recommendations: await recommendationsEnabled(),
+      },
       discord: {
         id: du.discordId,
         username: du.username,

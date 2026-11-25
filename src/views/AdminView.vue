@@ -64,6 +64,7 @@ interface SteamSettings {
   steamSyncIntervalHours: number;
   lastSteamSyncAt: string | null;
   lastSteamSyncResult: string | null;
+  recommendationsEnabled?: boolean;
   releaseNotifyEnabled: boolean;
   releaseNotifyHour: number;
   releaseChannelId: string | null;
@@ -491,6 +492,37 @@ onMounted(load);
       </div>
 
       <p v-if="releaseMessage" class="mt-2 text-xs text-ok">{{ releaseMessage }}</p>
+    </section>
+
+    <!-- Pages du site -->
+    <section class="card mb-6">
+      <h2 class="font-semibold text-fg-strong">Pages visibles</h2>
+      <p class="mt-1 max-w-2xl text-xs text-fg-faint">
+        Certaines pages sont en chantier. Désactivées, elles disparaissent du menu
+        (toi seul peux encore y accéder par l'adresse).
+      </p>
+
+      <button
+        type="button"
+        class="mt-3 flex w-full max-w-md items-center justify-between rounded-lg border border-line px-3 py-2 text-left text-sm transition hover:border-line-strong disabled:opacity-50"
+        :disabled="steamSaving || !steamSettings"
+        @click="saveRelease({ recommendationsEnabled: !steamSettings?.recommendationsEnabled } as any)"
+      >
+        <span>
+          <span class="block text-fg">Recommandations</span>
+          <span class="text-[11px] text-fg-faint">Le jeu qui plaira à tout le monde</span>
+        </span>
+        <span
+          class="badge"
+          :class="
+            steamSettings?.recommendationsEnabled
+              ? 'bg-ok-soft text-ok'
+              : 'bg-app-surface2 text-fg-muted'
+          "
+        >
+          {{ steamSettings?.recommendationsEnabled ? 'ON' : 'OFF' }}
+        </span>
+      </button>
     </section>
 
     <!-- Ajout -->

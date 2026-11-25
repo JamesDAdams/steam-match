@@ -16,6 +16,7 @@ interface MeStateLike {
   authenticated: boolean;
   allowed?: boolean;
   isAdmin?: boolean;
+  features?: { recommendations?: boolean };
 }
 
 export async function refreshAuth(): Promise<MeStateLike> {
@@ -28,6 +29,7 @@ export async function refreshAuth(): Promise<MeStateLike> {
       authenticated: Boolean(data.authenticated),
       allowed: data.allowed,
       isAdmin: data.isAdmin,
+      features: (data as any).features ?? {},
     };
   } catch {
     cached = { authenticated: false };

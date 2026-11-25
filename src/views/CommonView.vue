@@ -2,7 +2,6 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import {
   apiGet,
-  apiPost,
   formatPlaytime,
   steamStoreUrl,
   steamHeaderUrl,
@@ -44,8 +43,6 @@ const loading = ref(true);
 const error = ref<string | null>(null);
 
 // Synchronisation
-const syncing = ref(false);
-const syncResult = ref<any>(null);
 const cacheState = ref<{ total: number; enriched: number; pending: number } | null>(null);
 
 // Mode : jeux possédés en commun, ou wishlist croisée
@@ -56,6 +53,42 @@ const wishMessage = ref<string | null>(null);
 // Filtres
 const selectedGenres = ref<string[]>([]);
 const selectedTags = ref<string[]>([]);
+/**
+ * Membres pris en compte. Vide = tout le groupe. Les ludothèques étant
+ * rafraîchies automatiquement, seuls les comptes reliés à Steam apparaissent.
+ */
+const availableMembers = ref<{ steamid: string; name: string; avatarUrl: string | null }[]>([]);
+const selectedMembers = ref<string[]>([]);
+
+async function loadMembers() {
+  try {
+    const r = await apiGet<{
+      members: {
+        discordId: string;
+        name: string;
+        avatarUrl: string | null;
+        steam: { steamid: string; personaName: string } | null;
+      }[];
+    }>('/api/members');
+
+    availableMembers.value = (r.members ?? [])
+      .filter((m) => m.steam)
+      .map((m) => ({
+        steamid: m.steam!.steamid,
+        name: m.steam!.personaName || m.name,
+        avatarUrl: m.avatarUrl,
+      }));
+  } catch {
+    /* la sélection est un confort : sans elle, on montre tout le groupe */
+  }
+}
+
+function toggleMember(steamid: string) {
+  const i = selectedMembers.value.indexOf(steamid);
+  if (i >= 0) selectedMembers.value.splice(i, 1);
+  else selectedMembers.value.push(steamid);
+}
+
 const minMembers = ref(2);
 /**
  * Le seuil n'a pas le même sens selon le mode : « possédé par au moins N »
@@ -103,7 +136,13 @@ async function load() {
       playable: mode.value === 'wishlist' && playableOnly.value ? '1' : undefined,
       genres: mode.value === 'owned' ? selectedGenres.value.join(',') || undefined : undefined,
       tags: selectedTags.value.join(',') || undefined,
-      min: minMembers.value,
+      // Le seuil ne peut pas dépasser le nombre de membres comparés : avec un
+      // seul compte relié, « possédé par au moins 2 » ne renverrait rien.
+      min: Math.min(
+        minMembers.value,
+        selectedMembers.value.length || availableMembers.value.length || minMembers.value,
+      ),
+      members: selectedMembers.value.length ? selectedMembers.value.join(',') : undefined,
       sort: sortBy.value,
       enriched: onlyEnriched.value ? '1' : undefined,
     });
@@ -128,21 +167,6 @@ async function loadGroup() {
   } catch {}
 }
 
-async function sync() {
-  syncing.value = true;
-  syncResult.value = null;
-  try {
-    const r = await apiPost('/api/sync');
-    syncResult.value = r;
-    await load();
-    await loadGroup();
-  } catch (e: any) {
-    syncResult.value = { ok: false, error: e.message };
-  } finally {
-    syncing.value = false;
-  }
-}
-
 
 function toggleGenre(g: string) {
   const i = selectedGenres.value.indexOf(g);
@@ -165,10 +189,23 @@ function resetFilters() {
 }
 
 let debounceTimer: ReturnType<typeof setTimeout>;
-watch([selectedGenres, selectedTags, minMembers, sortBy, onlyEnriched, mode, playableOnly], () => {
+watch(
+  [
+    selectedGenres,
+    selectedTags,
+    minMembers,
+    sortBy,
+    onlyEnriched,
+    mode,
+    playableOnly,
+    selectedMembers,
+    availableMembers,
+  ],
+  () => {
   clearTimeout(debounceTimer);
   debounceTimer = setTimeout(load, 250);
-});
+  },
+);
 
 /* ── Mise à jour automatique pendant l'enrichissement ──────────────── */
 
@@ -201,7 +238,7 @@ function startAutoRefresh() {
 }
 
 onMounted(async () => {
-  await Promise.all([load(), loadGroup()]);
+  await Promise.all([load(), loadGroup(), loadMembers()]);
   if ((cacheState.value?.pending ?? 0) > 0) startAutoRefresh();
 });
 
@@ -234,45 +271,9 @@ onUnmounted(stopAutoRefresh);
         </button>
       </div>
 
-      <div class="ml-auto flex gap-2">
-        <button class="btn-primary text-sm" :disabled="syncing" @click="sync">
-          <span v-if="syncing">Synchronisation…</span>
-          <span v-else>Synchroniser mon Steam</span>
-        </button>
+      <div class="ml-auto text-xs text-fg-faint">
+        Ludothèques rafraîchies automatiquement chaque jour.
       </div>
-    </div>
-
-    <!-- Retour du sync -->
-    <div v-if="syncResult" class="card mb-6" :class="syncResult.ok ? 'border-emerald-500/40 bg-emerald-500/5' : 'border-danger bg-danger-soft'">
-      <template v-if="syncResult.ok">
-        <p class="text-sm text-ok">
-          ✅ {{ syncResult.gamesCount }} jeux synchronisés
-          <template v-if="syncResult.playedCount">
-            — {{ syncResult.playedCount }} avec temps de jeu
-          </template>
-        </p>
-        <p v-if="syncResult.warning" class="mt-2 text-sm text-warn">
-          ⚠️ {{ syncResult.warning }}
-        </p>
-      </template>
-      <template v-else>
-        <p class="text-sm text-danger">
-          ❌ {{ syncResult.message || syncResult.error }}
-        </p>
-        <div v-if="syncResult.needsPublicProfile" class="mt-2 flex flex-wrap gap-3">
-          <a
-            href="https://steamcommunity.com/my/edit/settings"
-            target="_blank"
-            rel="noopener"
-            class="text-sm text-brand hover:underline"
-          >
-            Ouvrir mes paramètres de confidentialité Steam ↗
-          </a>
-          <router-link to="/profil" class="text-sm text-fg-muted hover:underline">
-            Synchroniser depuis mon profil
-          </router-link>
-        </div>
-      </template>
     </div>
 
     <!-- Progression de l'enrichissement -->
@@ -297,6 +298,40 @@ onUnmounted(stopAutoRefresh);
       Les jeux <strong class="text-fg">souhaités</strong> par les membres, croisés avec
       ce que les autres possèdent déjà. Un jeu « jouable » est déjà dans la
       bibliothèque de quelqu'un : pas besoin de l'acheter pour y jouer ensemble.
+    </div>
+
+    <!-- Choix des membres pris en compte -->
+    <div v-if="availableMembers.length > 1" class="card mb-6">
+      <div class="flex flex-wrap items-center gap-2">
+        <span class="text-xs font-medium text-fg-muted">Membres pris en compte</span>
+        <button
+          class="chip"
+          :class="{ 'chip-active': selectedMembers.length === 0 }"
+          @click="selectedMembers = []"
+        >
+          Tout le groupe
+        </button>
+        <button
+          v-for="m in availableMembers"
+          :key="m.steamid"
+          class="chip"
+          :class="{ 'chip-active': selectedMembers.includes(m.steamid) }"
+          @click="toggleMember(m.steamid)"
+        >
+          {{ m.name }}
+        </button>
+        <button
+          v-if="selectedMembers.length"
+          class="ml-auto text-xs text-fg-muted hover:text-fg-strong"
+          @click="selectedMembers = []"
+        >
+          Réinitialiser
+        </button>
+      </div>
+      <p v-if="selectedMembers.length" class="mt-2 text-[11px] text-fg-faint">
+        Seuls les jeux détenus par ces {{ selectedMembers.length }} membre(s) sont
+        comparés.
+      </p>
     </div>
 
     <!-- Filtres -->

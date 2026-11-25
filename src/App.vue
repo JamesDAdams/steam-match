@@ -37,7 +37,10 @@ const links = computed(() => [
         { to: '/commun', label: 'Jeux en commun' },
         { to: '/membres', label: 'Membres' },
         { to: '/sorties', label: 'Sorties' },
-        { to: '/recommandations', label: 'Recommandations' },
+        // Page masquée tant que l'admin ne l'active pas (voir réglages).
+        ...(me.value.features?.recommendations
+          ? [{ to: '/recommandations', label: 'Recommandations' }]
+          : []),
       ]
     : []),
   { to: '/twitch', label: 'Twitch' },
@@ -216,7 +219,13 @@ const links = computed(() => [
               <router-link v-if="canUseSite" to="/commun" class="block hover:text-fg-strong">Jeux en commun</router-link>
               <router-link v-if="canUseSite" to="/membres" class="block hover:text-fg-strong">Membres</router-link>
               <router-link v-if="canUseSite" to="/sorties" class="block hover:text-fg-strong">Sorties</router-link>
-              <router-link v-if="canUseSite" to="/recommandations" class="block hover:text-fg-strong">Recommandations</router-link>
+              <router-link
+                v-if="canUseSite && me.features?.recommendations"
+                to="/recommandations"
+                class="block hover:text-fg-strong"
+              >
+                Recommandations
+              </router-link>
               <router-link to="/twitch" class="block hover:text-fg-strong">Twitch</router-link>
             </div>
             <div class="space-y-1">

@@ -65,6 +65,7 @@ export default async function handler(req: any, res: any) {
       }
 
       const patch: {
+        recommendationsEnabled?: boolean;
         steamSyncEnabled?: boolean;
         steamSyncIntervalHours?: number;
         releaseNotifyEnabled?: boolean;
@@ -72,6 +73,9 @@ export default async function handler(req: any, res: any) {
         releaseChannelId?: string | null;
       } = {};
 
+      if (typeof body.recommendationsEnabled === 'boolean') {
+        patch.recommendationsEnabled = body.recommendationsEnabled;
+      }
       if (typeof body.releaseNotifyEnabled === 'boolean') {
         patch.releaseNotifyEnabled = body.releaseNotifyEnabled;
       }
