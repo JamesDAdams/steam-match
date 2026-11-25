@@ -89,15 +89,21 @@ function toggleMember(steamid: string) {
   else selectedMembers.value.push(steamid);
 }
 
-const minMembers = ref(2);
 /**
- * Le seuil n'a pas le même sens selon le mode : « possédé par au moins N »
- * pour la ludothèque, « souhaité par au moins N » pour la wishlist. Avec un
- * seul membre qui a une wishlist, un seuil à 2 ne peut rien renvoyer — d'où
- * un message trompeur « aucune wishlist synchronisée ».
+ * Seuil de possesseurs, désormais déduit de la sélection de membres :
+ * choisir 2 personnes affiche ce qu'elles possèdent EN COMMUN.
+ *
+ *   - membres sélectionnés → il faut qu'ils l'aient tous (intersection) ;
+ *   - aucune sélection      → tout le groupe, avec le seuil historique de 2
+ *     (abaissé si le groupe n'a qu'un compte relié, sinon rien ne sortirait).
  */
-watch(mode, (m) => {
-  minMembers.value = m === 'wishlist' ? 1 : 2;
+const minOwners = computed(() => {
+  const scope = selectedMembers.value.length;
+  if (scope > 0) return scope;
+
+  const total = availableMembers.value.length;
+  if (mode.value === 'wishlist') return 1;
+  return total > 0 ? Math.min(2, total) : 2;
 });
 const sortBy = ref<'players' | 'playtime' | 'name'>('players');
 const onlyEnriched = ref(false);
@@ -136,12 +142,7 @@ async function load() {
       playable: mode.value === 'wishlist' && playableOnly.value ? '1' : undefined,
       genres: mode.value === 'owned' ? selectedGenres.value.join(',') || undefined : undefined,
       tags: selectedTags.value.join(',') || undefined,
-      // Le seuil ne peut pas dépasser le nombre de membres comparés : avec un
-      // seul compte relié, « possédé par au moins 2 » ne renverrait rien.
-      min: Math.min(
-        minMembers.value,
-        selectedMembers.value.length || availableMembers.value.length || minMembers.value,
-      ),
+      min: minOwners.value,
       members: selectedMembers.value.length ? selectedMembers.value.join(',') : undefined,
       sort: sortBy.value,
       enriched: onlyEnriched.value ? '1' : undefined,
@@ -183,7 +184,6 @@ function toggleTag(t: string) {
 function resetFilters() {
   selectedGenres.value = [];
   selectedTags.value = [];
-  minMembers.value = 2;
   sortBy.value = 'players';
   onlyEnriched.value = false;
 }
@@ -193,7 +193,6 @@ watch(
   [
     selectedGenres,
     selectedTags,
-    minMembers,
     sortBy,
     onlyEnriched,
     mode,
@@ -301,7 +300,7 @@ onUnmounted(stopAutoRefresh);
     </div>
 
     <!-- Choix des membres pris en compte -->
-    <div v-if="availableMembers.length > 1" class="card mb-6">
+    <div class="card mb-6">
       <div class="flex flex-wrap items-center gap-2">
         <span class="text-xs font-medium text-fg-muted">Membres pris en compte</span>
         <button
@@ -329,27 +328,21 @@ onUnmounted(stopAutoRefresh);
         </button>
       </div>
       <p v-if="selectedMembers.length" class="mt-2 text-[11px] text-fg-faint">
-        Seuls les jeux détenus par ces {{ selectedMembers.length }} membre(s) sont
-        comparés.
+        Seuls les jeux que ces {{ selectedMembers.length }} membre(s) possèdent
+        tous les {{ selectedMembers.length }} sont affichés.
+      </p>
+      <p v-else class="mt-2 text-[11px] text-fg-faint">
+        Tout le groupe est comparé. Clique sur des membres pour ne garder que ce
+        qu'ils ont en commun.
+      </p>
+      <p v-if="!availableMembers.length" class="mt-2 text-xs text-fg-muted">
+        Aucun membre n'a encore relié de compte Steam : il n'y a rien à comparer.
       </p>
     </div>
 
     <!-- Filtres -->
     <div class="card mb-6">
       <div class="flex flex-wrap items-end gap-4">
-        <div>
-          <label class="block text-xs font-medium text-fg-muted">
-            {{ mode === 'wishlist' ? 'Souhaité par au moins' : 'Possédé par au moins' }}
-          </label>
-          <select v-model.number="minMembers" class="mt-1 rounded border border-line bg-app-bg px-3 py-1.5 text-sm text-fg">
-            <option v-if="mode === 'wishlist'" :value="1">1 membre</option>
-            <option :value="2">2 membres</option>
-            <option :value="3">3 membres</option>
-            <option :value="4">4 membres</option>
-            <option :value="5">5 membres</option>
-            <option :value="6">6 membres</option>
-          </select>
-        </div>
         <div>
           <label class="block text-xs font-medium text-fg-muted">Trier par</label>
           <select v-model="sortBy" class="mt-1 rounded border border-line bg-app-bg px-3 py-1.5 text-sm text-fg">
