@@ -4,6 +4,8 @@ import { apiGet } from './api';
 export interface SteamState {
   steamid: string;
   personaName: string;
+  /** Avatar Steam, affiché à côté du compte principal dans le profil. */
+  avatarUrl?: string | null;
   profileVisible: boolean;
   gamesVisible: boolean;
   lastSyncAt: string | null;

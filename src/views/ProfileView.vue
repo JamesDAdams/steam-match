@@ -63,6 +63,11 @@ interface WishItem {
 
 interface Stats {
   totalGames: number;
+  /** Répartition par origine (compte principal, famille, secondaire). */
+  ownedGames?: number;
+  familyGames?: number;
+  secondaryGames?: number;
+  sharedGames?: number;
   playedGames: number;
   neverPlayed: number;
   totalMinutes: number;
@@ -106,6 +111,69 @@ const accountMessage = ref<string | null>(null);
 
 function accountKindLabel(kind: 'family' | 'secondary') {
   return kind === 'secondary' ? 'Compte secondaire' : 'Compte famille';
+}
+
+/**
+ * Une seule liste pour le compte principal et les comptes liés : la page doit
+ * les présenter de la même façon (avatar, nombre de jeux, dernière synchro),
+ * ce qui n'était pas le cas du compte principal.
+ */
+const accountRows = computed(() => {
+  const rows: {
+    key: string;
+    steamid: string;
+    personaName: string | null;
+    avatarUrl: string | null;
+    kind: 'main' | 'secondary' | 'family';
+    gamesCount: number;
+    lastSyncedAt: string | null;
+    lastError: string | null;
+    profileUrl: string;
+    isMain: boolean;
+  }[] = [];
+
+  if (me.value.steam) {
+    rows.push({
+      key: 'main',
+      steamid: me.value.steam.steamid,
+      personaName: me.value.steam.personaName,
+      avatarUrl: me.value.steam.avatarUrl ?? null,
+      kind: 'main',
+      gamesCount: stats.value?.ownedGames ?? 0,
+      lastSyncedAt: me.value.steam.lastSyncAt,
+      lastError: null,
+      profileUrl: `https://steamcommunity.com/profiles/${me.value.steam.steamid}`,
+      isMain: true,
+    });
+  }
+
+  for (const a of accounts.value) {
+    rows.push({
+      key: a.steamid,
+      steamid: a.steamid,
+      personaName: a.personaName,
+      avatarUrl: a.avatarUrl,
+      kind: a.kind,
+      gamesCount: a.gamesCount,
+      lastSyncedAt: a.lastSyncedAt,
+      lastError: a.lastError,
+      profileUrl: a.profileUrl,
+      isMain: false,
+    });
+  }
+
+  return rows;
+});
+
+function accountBadge(kind: 'main' | 'secondary' | 'family') {
+  if (kind === 'main') return 'Compte principal';
+  return accountKindLabel(kind);
+}
+
+function accountBadgeClass(kind: 'main' | 'secondary' | 'family') {
+  if (kind === 'main') return 'bg-brand-soft text-brand';
+  if (kind === 'secondary') return 'bg-app-surface2 text-fg-muted';
+  return 'bg-ok-soft text-ok';
 }
 
 async function loadAccounts() {
@@ -562,6 +630,19 @@ onUnmounted(() => {
                 {{ formatPlaytime(stats?.totalMinutes ?? 0) }} jouées ·
                 {{ stats?.playedGames ?? 0 }} lancés
               </p>
+              <!-- Détail des jeux qui ne viennent pas du compte principal :
+                   sans ça, le total semblait inclure des jeux « fantômes ». -->
+              <p v-if="(stats?.sharedGames ?? 0) > 0" class="mt-1 text-[11px] text-fg-faint">
+                <template v-if="(stats?.familyGames ?? 0) > 0">
+                  {{ stats?.familyGames }} via la famille
+                </template>
+                <template v-if="(stats?.familyGames ?? 0) > 0 && (stats?.secondaryGames ?? 0) > 0">
+                  ·
+                </template>
+                <template v-if="(stats?.secondaryGames ?? 0) > 0">
+                  {{ stats?.secondaryGames }} via un compte secondaire
+                </template>
+              </p>
             </div>
             <span class="text-2xl">🎮</span>
           </div>
@@ -619,87 +700,85 @@ onUnmounted(() => {
           ludothèque.
         </p>
 
-        <!-- Compte principal -->
-        <div
-          v-if="me.steam"
-          class="mt-4 flex flex-wrap items-center gap-3 rounded-lg border border-line bg-app-elevated p-3"
-        >
-          <span class="badge bg-brand-soft text-brand">Compte principal</span>
-          <div class="min-w-0 flex-1">
-            <p class="truncate text-sm font-medium text-fg-strong">
-              {{ me.steam.personaName }}
-            </p>
-            <p class="text-[11px] text-fg-faint">
-              {{ me.steam.steamid }} · synchronisé automatiquement
-            </p>
-          </div>
-          <a
-            :href="`https://steamcommunity.com/profiles/${me.steam.steamid}`"
-            target="_blank"
-            rel="noopener"
-            class="text-xs text-brand hover:underline"
-          >
-            Profil Steam ↗
-          </a>
-        </div>
-
-        <!-- Comptes liés -->
-        <ul v-if="accounts.length" class="mt-3 space-y-2">
+        <!-- Compte principal + comptes liés : même présentation -->
+        <ul class="mt-4 space-y-2">
           <li
-            v-for="a in accounts"
-            :key="a.steamid"
+            v-for="a in accountRows"
+            :key="a.key"
             class="flex flex-wrap items-center gap-3 rounded-lg border border-line bg-app-elevated p-3"
           >
             <img
               v-if="a.avatarUrl"
               :src="a.avatarUrl"
               alt=""
-              class="h-9 w-9 rounded object-cover"
+              class="h-10 w-10 shrink-0 rounded object-cover"
               loading="lazy"
             />
+            <div
+              v-else
+              class="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-app-surface2 text-sm font-semibold text-fg-muted"
+            >
+              {{ (a.personaName ?? '?').charAt(0).toUpperCase() }}
+            </div>
+
             <div class="min-w-0 flex-1">
               <p class="flex flex-wrap items-center gap-2 text-sm font-medium text-fg-strong">
                 <span class="truncate">{{ a.personaName ?? a.steamid }}</span>
-                <span
-                  class="badge"
-                  :class="
-                    a.kind === 'secondary'
-                      ? 'bg-app-surface2 text-fg-muted'
-                      : 'bg-ok-soft text-ok'
-                  "
-                >
-                  {{ accountKindLabel(a.kind) }}
+                <span class="badge" :class="accountBadgeClass(a.kind)">
+                  {{ accountBadge(a.kind) }}
                 </span>
               </p>
               <p class="text-[11px] text-fg-faint">
                 {{ a.gamesCount }} jeu{{ a.gamesCount > 1 ? 'x' : '' }}
-                <template v-if="a.lastSyncedAt">
+                <template v-if="a.isMain"> · synchronisé automatiquement</template>
+                <template v-else-if="a.lastSyncedAt">
                   · synchronisé le {{ new Date(a.lastSyncedAt).toLocaleString('fr-FR') }}
                 </template>
               </p>
               <p v-if="a.lastError" class="mt-1 text-[11px] text-danger">{{ a.lastError }}</p>
             </div>
+
             <div class="flex items-center gap-1">
-              <button
-                class="rounded px-2 py-1 text-xs text-fg-muted transition hover:bg-app-surface2 hover:text-fg-strong"
-                :disabled="accountBusy === a.steamid"
-                @click="resyncAccount(a)"
+              <a
+                :href="a.profileUrl"
+                target="_blank"
+                rel="noopener"
+                class="rounded px-2 py-1 text-xs text-brand transition hover:bg-brand-soft"
               >
-                {{ accountBusy === a.steamid ? '…' : 'Resynchroniser' }}
-              </button>
+                Profil Steam ↗
+              </a>
               <button
-                class="rounded px-2 py-1 text-xs text-danger transition hover:bg-danger-soft"
-                :disabled="accountBusy === a.steamid"
-                @click="removeAccount(a)"
+                v-if="a.isMain"
+                class="rounded px-2 py-1 text-xs text-fg-muted transition hover:bg-app-surface2 hover:text-fg-strong disabled:opacity-50"
+                :disabled="syncing"
+                @click="sync()"
               >
-                Retirer
+                {{ syncing ? '…' : 'Resynchroniser' }}
               </button>
+              <template v-else>
+                <button
+                  class="rounded px-2 py-1 text-xs text-fg-muted transition hover:bg-app-surface2 hover:text-fg-strong disabled:opacity-50"
+                  :disabled="accountBusy === a.steamid"
+                  @click="resyncAccount(a)"
+                >
+                  {{ accountBusy === a.steamid ? '…' : 'Resynchroniser' }}
+                </button>
+                <button
+                  class="rounded px-2 py-1 text-xs text-danger transition hover:bg-danger-soft disabled:opacity-50"
+                  :disabled="accountBusy === a.steamid"
+                  @click="removeAccount(a)"
+                >
+                  Retirer
+                </button>
+              </template>
             </div>
           </li>
         </ul>
-        <p v-else class="mt-3 text-sm text-fg-faint">
-          Aucun compte secondaire ou familial lié pour l'instant.
+
+        <p v-if="!accountRows.length" class="mt-4 text-sm text-fg-faint">
+          Aucun compte Steam lié.
         </p>
+
 
         <!-- Ajout -->
         <div class="mt-5 rounded-lg border border-dashed border-line-strong p-3">

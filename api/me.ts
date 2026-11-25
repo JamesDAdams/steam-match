@@ -87,6 +87,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let steam: null | {
       steamid: string;
       personaName: string;
+      avatarUrl: string | null;
       profileVisible: boolean;
       gamesVisible: boolean;
       lastSyncAt: Date | null;
@@ -108,6 +109,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         steam = {
           steamid: u.steamid,
           personaName: u.personaName,
+          // Affiché dans la page profil, à côté des comptes liés : sans lui, le
+          // compte principal n'avait pas d'avatar alors que les autres oui.
+          avatarUrl: u.avatarUrl,
           profileVisible: u.profileVisible,
           gamesVisible: u.gamesVisible,
           lastSyncAt: u.lastSyncAt,
@@ -322,6 +326,7 @@ function buildStats(games: {
   playtime: number;
   genres: string[];
   name: string;
+  source?: string;
 }[]) {
   let totalMinutes = 0;
   let playedGames = 0;
@@ -345,8 +350,18 @@ function buildStats(games: {
     .sort((a, b) => b.minutes - a.minutes || b.games - a.games)
     .slice(0, 8);
 
+  // Répartition par origine : la carte « Ma ludothèque » doit dire combien de
+  // jeux ne viennent pas du compte principal.
+  const familyGames = games.filter((g) => g.source === 'family').length;
+  const secondaryGames = games.filter((g) => g.source === 'secondary').length;
+  const ownedGamesCount = games.length - familyGames - secondaryGames;
+
   return {
     totalGames: games.length,
+    ownedGames: ownedGamesCount,
+    familyGames,
+    secondaryGames,
+    sharedGames: familyGames + secondaryGames,
     playedGames,
     neverPlayed: games.length - playedGames,
     totalMinutes,
