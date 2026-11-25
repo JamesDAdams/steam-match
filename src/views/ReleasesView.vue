@@ -1,0 +1,230 @@
+<script setup lang="ts">
+import { onMounted, ref } from 'vue';
+import { apiGet, formatPrice, hideBrokenImage, steamStoreUrl } from '../lib/api';
+
+/**
+ * Calendrier des sorties du groupe.
+ *
+ * Steam propose un « calendrier personnel », mais il exige une session Steam
+ * (page personnalisée côté compte). Ici, on reconstitue l'équivalent à partir
+ * des wishlists des membres et des dates de sortie du Store — et c'est celui
+ * de tout le serveur, pas d'un seul joueur.
+ */
+interface Release {
+  appid: number;
+  name: string;
+  headerImage: string | null;
+  releaseDate: string;
+  dateIso: string | null;
+  daysUntil: number | null;
+  wishCount: number;
+  steamPrice: number | null;
+  steamCurrency: string | null;
+  steamDiscount: number | null;
+  ownedBySomeone: boolean;
+}
+
+const loading = ref(true);
+const error = ref<string | null>(null);
+const upcoming = ref<Release[]>([]);
+const undated = ref<Release[]>([]);
+const recent = ref<Release[]>([]);
+
+function when(entry: Release): string {
+  if (entry.daysUntil === null) return entry.releaseDate;
+  if (entry.daysUntil === 0) return "aujourd'hui";
+  if (entry.daysUntil === 1) return 'demain';
+  if (entry.daysUntil > 1) {
+    if (entry.daysUntil < 31) return `dans ${entry.daysUntil} jours`;
+    const months = Math.round(entry.daysUntil / 30);
+    return `dans ${months} mois`;
+  }
+  const ago = Math.abs(entry.daysUntil);
+  return ago <= 1 ? 'hier' : `il y a ${ago} jours`;
+}
+
+async function load() {
+  loading.value = true;
+  try {
+    const r = await apiGet<{ upcoming: Release[]; undated: Release[]; recent: Release[] }>(
+      '/api/releases',
+    );
+    upcoming.value = r.upcoming ?? [];
+    undated.value = r.undated ?? [];
+    recent.value = r.recent ?? [];
+    error.value = null;
+  } catch (e: any) {
+    error.value = e.message;
+  } finally {
+    loading.value = false;
+  }
+}
+
+onMounted(load);
+</script>
+
+<template>
+  <div>
+    <div class="mb-6">
+      <h1 class="font-display text-3xl font-bold text-fg-strong">Calendrier des sorties</h1>
+      <p class="mt-1 max-w-2xl text-sm text-fg-muted">
+        Les jeux que le groupe attend, d'après vos wishlists Steam — avec leurs
+        dates de sortie. Ceux que quelqu'un possède déjà sont signalés.
+      </p>
+    </div>
+
+    <div v-if="error" class="card mb-4 border-danger bg-danger-soft text-sm text-danger">
+      {{ error }}
+    </div>
+
+    <div v-if="loading" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div v-for="i in 8" :key="i" class="h-40 animate-pulse rounded-lg bg-app-surface2"></div>
+    </div>
+
+    <template v-else>
+      <!-- À venir -->
+      <section class="mb-10">
+        <div class="mb-3 flex items-center gap-2">
+          <h2 class="font-display text-lg font-semibold text-fg-strong">À venir</h2>
+          <span class="badge bg-brand-soft text-brand">{{ upcoming.length }}</span>
+        </div>
+
+        <div v-if="upcoming.length" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <a
+            v-for="e in upcoming"
+            :key="e.appid"
+            :href="steamStoreUrl(e.appid)"
+            target="_blank"
+            rel="noopener"
+            class="card group overflow-hidden p-0 transition hover:border-brand/50"
+          >
+            <div class="relative aspect-[460/215] w-full overflow-hidden bg-app-surface2">
+              <img
+                v-if="e.headerImage"
+                :src="e.headerImage"
+                :alt="e.name"
+                class="h-full w-full object-cover transition group-hover:scale-[1.02]"
+                loading="lazy"
+                @error="hideBrokenImage"
+              />
+              <span
+                class="absolute left-2 top-2 rounded bg-black/70 px-2 py-0.5 text-[11px] font-medium text-white"
+              >
+                {{ when(e) }}
+              </span>
+              <span
+                v-if="e.ownedBySomeone"
+                class="absolute right-2 top-2 rounded bg-ok px-2 py-0.5 text-[10px] font-semibold text-white"
+              >
+                déjà possédé
+              </span>
+            </div>
+            <div class="p-3">
+              <p class="truncate text-sm font-semibold text-fg-strong">{{ e.name }}</p>
+              <div class="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-fg-faint">
+                <span>{{ e.releaseDate }}</span>
+                <span v-if="e.wishCount > 1" class="badge bg-app-surface2 text-fg-muted">
+                  {{ e.wishCount }} membres
+                </span>
+                <span v-if="e.steamPrice !== null" class="ml-auto text-fg-muted">
+                  {{ formatPrice(e.steamPrice, e.steamCurrency ?? 'EUR') }}
+                </span>
+              </div>
+            </div>
+          </a>
+        </div>
+        <div v-else class="card py-8 text-center text-fg-muted">
+          Aucune sortie datée dans les wishlists pour l'instant.
+        </div>
+      </section>
+
+      <!-- Sorties récentes -->
+      <section v-if="recent.length" class="mb-10">
+        <div class="mb-3 flex items-center gap-2">
+          <h2 class="font-display text-lg font-semibold text-fg-strong">Sortis récemment</h2>
+          <span class="badge bg-app-surface2 text-fg-muted">{{ recent.length }}</span>
+        </div>
+
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <a
+            v-for="e in recent"
+            :key="e.appid"
+            :href="steamStoreUrl(e.appid)"
+            target="_blank"
+            rel="noopener"
+            class="card group overflow-hidden p-0 transition hover:border-brand/50"
+          >
+            <div class="relative aspect-[460/215] w-full overflow-hidden bg-app-surface2">
+              <img
+                v-if="e.headerImage"
+                :src="e.headerImage"
+                :alt="e.name"
+                class="h-full w-full object-cover transition group-hover:scale-[1.02]"
+                loading="lazy"
+                @error="hideBrokenImage"
+              />
+              <span
+                class="absolute left-2 top-2 rounded bg-black/70 px-2 py-0.5 text-[11px] font-medium text-white"
+              >
+                {{ when(e) }}
+              </span>
+            </div>
+            <div class="p-3">
+              <p class="truncate text-sm font-semibold text-fg-strong">{{ e.name }}</p>
+              <div class="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-fg-faint">
+                <span>{{ e.releaseDate }}</span>
+                <span v-if="e.wishCount > 1" class="badge bg-app-surface2 text-fg-muted">
+                  {{ e.wishCount }} membres
+                </span>
+              </div>
+            </div>
+          </a>
+        </div>
+      </section>
+
+      <!-- Sans date -->
+      <section v-if="undated.length">
+        <div class="mb-3 flex items-center gap-2">
+          <h2 class="font-display text-lg font-semibold text-fg-strong">Annoncés, sans date</h2>
+          <span class="badge bg-app-surface2 text-fg-muted">{{ undated.length }}</span>
+        </div>
+
+        <ul class="card divide-y divide-line p-0">
+          <li
+            v-for="e in undated"
+            :key="e.appid"
+            class="flex items-center gap-3 px-3 py-2"
+          >
+            <img
+              v-if="e.headerImage"
+              :src="e.headerImage"
+              alt=""
+              class="h-8 w-16 shrink-0 rounded object-cover"
+              loading="lazy"
+              @error="hideBrokenImage"
+            />
+            <span class="min-w-0 flex-1 truncate text-sm text-fg">{{ e.name }}</span>
+            <span class="shrink-0 text-[11px] text-fg-faint">{{ e.releaseDate }}</span>
+            <a
+              :href="steamStoreUrl(e.appid)"
+              target="_blank"
+              rel="noopener"
+              class="shrink-0 text-xs text-brand hover:underline"
+            >
+              ↗
+            </a>
+          </li>
+        </ul>
+      </section>
+
+      <div v-if="!upcoming.length && !recent.length && !undated.length" class="card py-12 text-center">
+        <p class="text-lg font-semibold text-fg-strong">Rien à afficher</p>
+        <p class="mx-auto mt-2 max-w-md text-sm text-fg-muted">
+          Le calendrier se remplit avec les wishlists des membres. Synchronise la
+          tienne depuis ton profil pour le compléter.
+        </p>
+        <router-link to="/profil" class="btn-primary mt-4 text-sm">Mon profil</router-link>
+      </div>
+    </template>
+  </div>
+</template>

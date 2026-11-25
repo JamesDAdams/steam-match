@@ -24,6 +24,7 @@ const FILES = [
   'lib/handlers/admin-settings.ts',
   'lib/handlers/twitch.ts',
   'lib/handlers/members.ts',
+  'lib/handlers/releases.ts',
   'netlify/functions/steam-sync-cron.ts',
 ];
 

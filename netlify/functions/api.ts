@@ -36,6 +36,7 @@ import steamAccountsHandler from '../../lib/handlers/steam-accounts.ts';
 import adminSettingsHandler from '../../lib/handlers/admin-settings.ts';
 import twitchHandler from '../../lib/handlers/twitch.ts';
 import membersHandler from '../../lib/handlers/members.ts';
+import releasesHandler from '../../lib/handlers/releases.ts';
 
 interface Route {
   /** Méthodes acceptées. Vide = toutes. */
@@ -64,6 +65,7 @@ const ROUTES: Record<string, Route> = {
   '/steam-accounts': { methods: ['GET', 'POST', 'DELETE'], module: steamAccountsHandler },
   '/twitch': { methods: ['GET', 'POST', 'DELETE'], module: twitchHandler },
   '/members': { methods: ['GET'], module: membersHandler },
+  '/releases': { methods: ['GET'], module: releasesHandler },
   '/events': { methods: ['GET', 'POST'], module: eventsHandler },
   '/events/create': { methods: ['POST'], module: eventsCreateHandler },
   '/events/delete': { methods: ['POST'], module: eventsDeleteHandler },

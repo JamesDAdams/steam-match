@@ -29,6 +29,7 @@ const FILES = [
   '/src/views/AdminView.vue',
   '/src/views/TwitchView.vue',
   '/src/views/MembersView.vue',
+  '/src/views/ReleasesView.vue',
   '/src/views/MemberView.vue',
 ];
 
@@ -57,6 +58,7 @@ for (const file of FILES) {
         { path: '/admin', component: { template: '<div />' } },
         { path: '/twitch', component: { template: '<div />' } },
         { path: '/membres', component: { template: '<div />' } },
+        { path: '/sorties', component: { template: '<div />' } },
         { path: '/membres/:discordId', component: { template: '<div />' } },
       ],
     });
