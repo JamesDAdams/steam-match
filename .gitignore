@@ -4,6 +4,10 @@
 .env.*.local
 !.env.example
 
+# Fichiers de travail (images sources non optimisées, brouillons)
+.temp/
+*.tmp
+
 # Dépendances
 node_modules/
 .pnpm-store/

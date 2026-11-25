@@ -315,6 +315,14 @@ onMounted(refresh);
 
         <!-- Hero -->
         <div class="hero-glow relative -mx-4 px-4 pb-16 pt-12 text-center sm:pt-20">
+          <img
+            src="/logo-512.webp"
+            alt="Le Bastion des Gamers"
+            width="128"
+            height="128"
+            class="mx-auto mb-6 h-28 w-28 rounded-2xl object-cover shadow-[0_16px_48px_rgba(0,0,0,0.5)] ring-1 ring-white/10 sm:h-32 sm:w-32"
+          />
+
           <span class="chip mx-auto mb-5 !border-gold/40 !text-gold">
             <span class="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-ok"></span>
             Communauté multigaming

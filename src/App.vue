@@ -46,15 +46,13 @@ const links = computed(() => [
           class="flex shrink-0 items-center gap-2.5 whitespace-nowrap"
           aria-label="Le Bastion des Gamers — accueil"
         >
-          <span
-            class="flex h-8 w-8 items-center justify-center rounded-lg bg-brand text-white"
-          >
-            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-              <path
-                d="M12 2a10 10 0 0 0-9.95 9h3.02a7 7 0 1 1 0 2H2.05A10 10 0 1 0 12 2Zm-.9 4.5 2.4 4.2 3.3.5-2.4 2.3.6 3.3-3-1.6-3 1.6.6-3.3-2.4-2.3 3.3-.5 2.4-4.2Z"
-              />
-            </svg>
-          </span>
+          <img
+            src="/logo-mark-192.webp"
+            alt=""
+            width="32"
+            height="32"
+            class="h-8 w-8 shrink-0 rounded-lg object-cover ring-1 ring-line-strong"
+          />
           <span class="font-display text-[15px] font-bold leading-none tracking-tight text-fg-strong">
             Le Bastion <span class="text-gold">des Gamers</span>
           </span>
