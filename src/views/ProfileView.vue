@@ -49,12 +49,20 @@ const loading = ref(true);
 const error = ref<string | null>(null);
 const syncing = ref(false);
 const enrichBusy = ref(false);
+const enrichDone = ref(0);
+const enrichRemaining = ref<number | null>(null);
 
 // Filtres
 const search = ref('');
 const sortBy = ref<'playtime' | 'name' | 'recent'>('playtime');
 const onlyPlayed = ref(false);
 const selectedGenre = ref<string | null>(null);
+
+/**
+ * Onglet actif : la ludothèque ou la wishlist.
+ * Les deux listes empilées devenaient illisibles (177 + 293 entrées).
+ */
+const tab = ref<'games' | 'wishlist'>('games');
 
 async function load() {
   loading.value = true;
@@ -76,6 +84,13 @@ async function load() {
     loading.value = false;
   }
 }
+
+/** Jeux dont le nom n'est pas encore connu (affichés « App <id> »). */
+const unidentifiedCount = computed(() => {
+  const inWish = wishlist.value.filter((w) => /^App \d+$/.test(w.name)).length;
+  const inGames = games.value.filter((g) => /^App \d+$/.test(g.name)).length;
+  return inWish + inGames;
+});
 
 const maxPlaytime = computed(() =>
   games.value.reduce((m, g) => Math.max(m, g.playtime), 0),
@@ -133,10 +148,38 @@ async function sync() {
   }
 }
 
+/**
+ * Enrichissement des métadonnées (nom, image, genres).
+ *
+ * L'API du Store Steam est limitée (~200 requêtes / 5 min) et chaque appel
+ * coûte ~250 ms : un seul lot de 15 ne suffit pas pour une ludothèque de
+ * 177 jeux + 293 envies. On boucle donc, avec un plafond pour ne pas marteler
+ * Steam, et on affiche la progression.
+ *
+ * Tant qu'un jeu n'est pas enrichi, il s'affiche « App <id> » : c'est
+ * exactement ce que corrige cette fonction.
+ */
 async function enrich() {
   enrichBusy.value = true;
+  enrichDone.value = 0;
   try {
-    await apiPost('/api/enrich');
+    // Plafond : 12 lots de 15 = 180 jeux par clic, soit ~45 s d'appels.
+    for (let i = 0; i < 12; i++) {
+      const r = await apiPost<{
+        ok: boolean;
+        enriched?: number;
+        deferred?: number;
+        remaining?: number;
+        processed?: number;
+      }>('/api/enrich');
+
+      enrichDone.value += r.enriched ?? 0;
+      enrichRemaining.value = r.remaining ?? null;
+
+      // File vide, ou plus rien de traitable (throttle Steam) : on s'arrête.
+      if (!r.remaining || r.remaining === 0) break;
+      if ((r.enriched ?? 0) === 0) break;
+    }
     await load();
   } catch {
   } finally {
@@ -184,7 +227,11 @@ onMounted(load);
 
         <div class="ml-auto flex gap-2">
           <button class="btn-ghost text-sm" :disabled="enrichBusy" @click="enrich">
-            {{ enrichBusy ? 'Enrichissement…' : 'Enrichir les genres' }}
+            <template v-if="enrichBusy">
+              Enrichissement… {{ enrichDone }}
+              <template v-if="enrichRemaining !== null">({{ enrichRemaining }} restants)</template>
+            </template>
+            <template v-else>Enrichir les métadonnées</template>
           </button>
           <button class="btn-primary text-sm" :disabled="syncing" @click="sync">
             {{ syncing ? 'Synchronisation…' : 'Synchroniser' }}
@@ -263,8 +310,63 @@ onMounted(load);
         </div>
       </section>
 
+      <!-- Jeux sans métadonnées -->
+      <div v-if="unidentifiedCount > 0" class="alert alert-warn mb-4">
+        <p class="text-xs">
+          <strong>{{ unidentifiedCount }} jeu(x)</strong> n'ont pas encore de nom ni de
+          genres — ils apparaissent sous la forme « App 12345 ». Lance
+          l'enrichissement : les métadonnées viennent de l'API du Store Steam,
+          limitée en débit, donc ça se remplit par lots.
+        </p>
+      </div>
+
+      <!-- Sélecteur : ludothèque / wishlist -->
+      <section class="mb-6 grid gap-4 sm:grid-cols-2">
+        <button
+          class="card-flat text-left transition hover:border-brand/50"
+          :class="tab === 'games' ? '!border-brand ring-1 ring-brand/30' : ''"
+          @click="tab = 'games'"
+        >
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <p class="text-xs uppercase tracking-wide text-fg-faint">Ma ludothèque</p>
+              <p class="mt-1 font-display text-2xl font-bold text-fg-strong">
+                {{ stats?.totalGames ?? 0 }}
+              </p>
+              <p class="mt-0.5 text-xs text-fg-muted">
+                {{ formatPlaytime(stats?.totalMinutes ?? 0) }} jouées ·
+                {{ stats?.playedGames ?? 0 }} lancés
+              </p>
+            </div>
+            <span class="text-2xl">🎮</span>
+          </div>
+        </button>
+
+        <button
+          class="card-flat text-left transition hover:border-brand/50"
+          :class="tab === 'wishlist' ? '!border-brand ring-1 ring-brand/30' : ''"
+          @click="tab = 'wishlist'"
+        >
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <p class="text-xs uppercase tracking-wide text-fg-faint">Ma wishlist</p>
+              <p class="mt-1 font-display text-2xl font-bold text-fg-strong">
+                {{ wishlist.length }}
+              </p>
+              <p class="mt-0.5 text-xs text-fg-muted">
+                <template v-if="wishlist.some((w) => w.playableNow)">
+                  {{ wishlist.filter((w) => w.playableNow).length }} déjà jouable(s) dans le groupe
+                </template>
+                <template v-else>jeux souhaités</template>
+              </p>
+            </div>
+            <span class="text-2xl">⭐</span>
+          </div>
+        </button>
+      </section>
+
       <!-- Ma wishlist -->
-      <section v-if="wishlist.length" class="card mb-6">
+      <section v-if="tab === 'wishlist' && wishlist.length" class="card mb-6">
         <div class="flex flex-wrap items-center gap-3">
           <h2 class="font-semibold text-fg-strong">Ma wishlist</h2>
           <span class="text-xs text-fg-faint">{{ wishlist.length }} jeu{{ wishlist.length > 1 ? 'x' : '' }} souhaité{{ wishlist.length > 1 ? 's' : '' }}</span>
@@ -307,8 +409,20 @@ onMounted(load);
         </p>
       </section>
 
+      <!-- Wishlist vide -->
+      <div v-if="tab === 'wishlist' && !wishlist.length" class="card py-12 text-center">
+        <p class="text-lg font-semibold text-fg-strong">Aucun jeu dans ta wishlist</p>
+        <p class="mx-auto mt-2 max-w-md text-sm text-fg-muted">
+          La wishlist Steam doit être <strong class="text-fg">publique</strong> pour être
+          synchronisée. Vérifie tes paramètres de confidentialité, puis resynchronise.
+        </p>
+        <button class="btn-primary mt-4 text-sm" :disabled="syncing" @click="sync">
+          Synchroniser
+        </button>
+      </div>
+
       <!-- Filtres -->
-      <section class="card mb-6">
+      <section v-if="tab === 'games'" class="card mb-6">
         <div class="flex flex-wrap items-center gap-3">
           <input
             v-model="search"
@@ -351,15 +465,15 @@ onMounted(load);
       </section>
 
       <!-- Liste des jeux -->
-      <div v-if="loading" class="grid gap-3 sm:grid-cols-2">
+      <div v-if="loading && tab === 'games'" class="grid gap-3 sm:grid-cols-2">
         <div v-for="i in 8" :key="i" class="h-20 animate-pulse rounded-lg bg-app-surface2"></div>
       </div>
 
-      <div v-else-if="filtered.length === 0" class="card py-10 text-center text-fg-muted">
+      <div v-else-if="tab === 'games' && filtered.length === 0" class="card py-10 text-center text-fg-muted">
         Aucun jeu ne correspond à ces filtres.
       </div>
 
-      <div v-else class="space-y-2">
+      <div v-else-if="tab === 'games'" class="space-y-2">
         <a
           v-for="g in filtered"
           :key="g.appid"
@@ -411,7 +525,7 @@ onMounted(load);
         </a>
       </div>
 
-      <p v-if="filtered.length" class="mt-6 text-center text-xs text-fg-faint">
+      <p v-if="tab === 'games' && filtered.length" class="mt-6 text-center text-xs text-fg-faint">
         {{ filtered.length }} jeu{{ filtered.length > 1 ? 'x' : '' }} affiché{{ filtered.length > 1 ? 's' : '' }}
         <template v-if="games.length !== filtered.length"> sur {{ games.length }}</template>
       </p>

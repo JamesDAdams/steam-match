@@ -17,8 +17,10 @@ import { getAppDetails, sleep } from '../lib/steam.ts';
  *
  * Le lot est petit volontairement pour tenir dans le timeout d'une fonction.
  */
-const BATCH = 15;
-const DELAY_MS = 250;
+// 10 jeux × (~250 ms d'appel + 200 ms de pause) ≈ 4,5 s : sous le timeout de
+// 10 s des fonctions Netlify et sous les ~200 req/5 min du Store Steam.
+const BATCH = 10;
+const DELAY_MS = 200;
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
