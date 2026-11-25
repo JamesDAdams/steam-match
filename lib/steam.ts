@@ -174,6 +174,53 @@ export async function getOwnedGames(steamid: string): Promise<{
   return { games, gamesVisible };
 }
 
+/* ─────────────────────────── Wishlist ─────────────────────────── */
+
+export interface WishlistEntry {
+  appid: number;
+  priority: number;
+}
+
+/**
+ * IWishlistService/GetWishlist
+ *
+ * Renvoie la liste des appids souhaités. Nécessite la clé API et une wishlist
+ * publique : sinon Steam renvoie une liste vide, sans erreur explicite.
+ *
+ * Endpoint relativement récent — s'il n'est pas disponible pour la clé ou le
+ * compte, on renvoie une liste vide plutôt que de casser tout le sync.
+ */
+export async function getWishlist(steamid: string): Promise<{
+  items: WishlistEntry[];
+  wishlistVisible: boolean;
+}> {
+  try {
+    const params = new URLSearchParams({
+      key: requireKey(),
+      steamid,
+      format: 'json',
+    });
+
+    const res = await fetch(
+      `${API_BASE}/IWishlistService/GetWishlist/v1/?${params.toString()}`,
+    );
+    if (!res.ok) return { items: [], wishlistVisible: false };
+
+    const data = (await res.json()) as {
+      response?: { items?: { appid: number; priority?: number }[] };
+    };
+
+    const items = (data.response?.items ?? [])
+      .filter((i) => typeof i?.appid === 'number')
+      .map((i) => ({ appid: i.appid, priority: i.priority ?? 0 }));
+
+    return { items, wishlistVisible: items.length > 0 };
+  } catch {
+    // Endpoint indisponible ou réseau : on n'empêche pas le sync des jeux.
+    return { items: [], wishlistVisible: false };
+  }
+}
+
 /* ─────────────────── Métadonnées du Store (genres) ─────────────────── */
 
 export interface AppDetails {

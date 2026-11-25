@@ -55,9 +55,20 @@ const statements = [
    )`,
   `CREATE INDEX IF NOT EXISTS steam_links_steam_idx ON steam_links (steamid)`,
 
-  // ── Sessions : on repart de zéro (aucune session utile en dev) ─────
-  `DROP TABLE IF EXISTS sessions CASCADE`,
-  `CREATE TABLE sessions (
+  // ── Wishlist Steam ─────────────────────────────────────────────────
+  `CREATE TABLE IF NOT EXISTS wishlist_items (
+     steamid    text NOT NULL REFERENCES users(steamid) ON DELETE CASCADE,
+     appid      integer NOT NULL,
+     priority   integer NOT NULL DEFAULT 0,
+     updated_at timestamp with time zone NOT NULL DEFAULT now(),
+     PRIMARY KEY (steamid, appid)
+   )`,
+  `CREATE INDEX IF NOT EXISTS wishlist_items_app_idx ON wishlist_items (appid)`,
+
+  // ── Sessions ─────────────────────────────────────────────��─────────
+  // NON destructif : on ne supprime jamais la table, sinon tous les membres
+  // connectés seraient déconnectés à chaque migration.
+  `CREATE TABLE IF NOT EXISTS sessions (
      token       text PRIMARY KEY NOT NULL,
      discord_id  text NOT NULL
        REFERENCES discord_users(discord_id) ON DELETE CASCADE,

@@ -125,6 +125,32 @@ export const ownedGames = pgTable(
 );
 
 /**
+ * Wishlist Steam d'un membre.
+ *
+ * Récupérée via IWishlistService/GetWishlist. Comme la ludothèque, elle doit
+ * être publique côté Steam (paramètre « Détails du jeu »).
+ *
+ * L'intérêt pour un groupe : un jeu souhaité par plusieurs personnes, et
+ * surtout un jeu souhaité par l'un et déjà possédé par l'autre — jouable
+ * immédiatement, sans achat.
+ */
+export const wishlistItems = pgTable(
+  'wishlist_items',
+  {
+    steamid: text('steamid')
+      .notNull()
+      .references(() => users.steamid, { onDelete: 'cascade' }),
+    appid: integer('appid').notNull(),
+    priority: integer('priority').notNull().default(0),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.steamid, t.appid] }),
+    byApp: index('wishlist_items_app_idx').on(t.appid),
+  }),
+);
+
+/**
  * Cache partagé des métadonnées de jeu.
  * GetOwnedGames ne renvoie PAS les genres : il faut appeler l'API du Store,
  * lente et limitée (~200 req / 5 min). On enrichit donc chaque appid une fois.
@@ -165,5 +191,6 @@ export type DiscordUser = typeof discordUsers.$inferSelect;
 export type SteamLink = typeof steamLinks.$inferSelect;
 export type User = typeof users.$inferSelect;
 export type OwnedGame = typeof ownedGames.$inferSelect;
+export type WishlistItem = typeof wishlistItems.$inferSelect;
 export type GameCacheRow = typeof gameCache.$inferSelect;
 export type Session = typeof sessions.$inferSelect;

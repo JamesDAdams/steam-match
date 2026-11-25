@@ -1,6 +1,13 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getDb } from '../db/index.ts';
-import { users, ownedGames, gameCache, steamLinks, discordUsers } from '../db/schema.ts';
+import {
+  users,
+  ownedGames,
+  gameCache,
+  steamLinks,
+  discordUsers,
+  wishlistItems,
+} from '../db/schema.ts';
 import { sql, eq, inArray, and, gt } from 'drizzle-orm';
 import { requireAccess } from '../lib/access.ts';
 
@@ -19,6 +26,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const db = getDb();
+
+    // ── Mode wishlist ────────────────────────────────────────────────────
+    // La wishlist est exposée ici plutôt que dans une fonction dédiée : le
+    // plan Hobby de Vercel plafonne à 12 fonctions serverless.
+    if (req.query.mode === 'wishlist') {
+      return handleWishlist(req, res, db);
+    }
 
     const genreFilter = parseList(req.query.genres as string | string[] | undefined);
     const tagFilter = parseList(req.query.tags as string | string[] | undefined);
@@ -143,4 +157,124 @@ function norm(s: string) {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .trim();
+}
+
+
+/**
+ * GET /api/common?mode=wishlist
+ *
+ * Jeux souhaités par les membres du groupe, croisés avec ce que les autres
+ * possèdent déjà.
+ *
+ * Deux usages concrets entre amis :
+ *   - « on veut tous les trois ce jeu » → achat groupé qui fait consensus
+ *   - « lui le veut, toi tu l'as déjà » → jouable tout de suite, zéro achat
+ *
+ * C'est le second cas qui a le plus de valeur, d'où le tri par nombre de
+ * possesseurs en second critère.
+ */
+async function handleWishlist(req: VercelRequest, res: VercelResponse, db: any) {
+  const minWishersRaw = Number(req.query.min ?? 1);
+  const minWishers = Number.isFinite(minWishersRaw)
+    ? Math.max(1, Math.min(50, minWishersRaw))
+    : 1;
+  const onlyPlayable = req.query.playable === '1';
+
+  const rows = await db.execute(sql`
+    SELECT w.appid AS appid,
+           count(DISTINCT w.steamid)::int AS wish_count,
+           array_agg(DISTINCT w.steamid) AS wishers
+    FROM wishlist_items w
+    GROUP BY w.appid
+    HAVING count(DISTINCT w.steamid) >= ${minWishers}
+  `);
+
+  const appids = (rows.rows as any[]).map((r) => Number(r.appid));
+  if (appids.length === 0) {
+    return res.status(200).json({
+      ok: true,
+      mode: 'wishlist',
+      games: [],
+      total: 0,
+      message:
+        'Aucune wishlist synchronisée. Resynchronise : la wishlist doit aussi ' +
+        'être publique dans les paramètres Steam.',
+    });
+  }
+
+  // Métadonnées + possesseurs réels.
+  const metas = await db
+    .select()
+    .from(gameCache)
+    .where(inArray(gameCache.appid, appids));
+  const metaById = new Map(metas.map((m: any) => [m.appid, m]));
+
+  const ownedRows = await db.execute(sql`
+    SELECT og.appid AS appid,
+           array_agg(DISTINCT og.steamid) AS owners
+    FROM owned_games og
+    WHERE og.appid IN (${sql.join(
+      appids.map((id) => sql`${id}`),
+      sql`, `,
+    )})
+    GROUP BY og.appid
+  `);
+  const ownersByApp = new Map<number, string[]>();
+  for (const r of ownedRows.rows as any[]) {
+    ownersByApp.set(Number(r.appid), r.owners ?? []);
+  }
+
+  // Noms affichés.
+  const people = await db
+    .select({
+      steamid: steamLinks.steamid,
+      personaName: users.personaName,
+      discordName: discordUsers.globalName,
+      discordUsername: discordUsers.username,
+    })
+    .from(steamLinks)
+    .innerJoin(users, eq(users.steamid, steamLinks.steamid))
+    .leftJoin(discordUsers, eq(discordUsers.discordId, steamLinks.discordId));
+
+  const nameById = new Map(
+    people.map((p: any) => [
+      p.steamid,
+      p.discordName || p.discordUsername || p.personaName,
+    ]),
+  );
+  const name = (sid: string) => nameById.get(sid) ?? `Joueur ${sid.slice(-4)}`;
+
+  let games = (rows.rows as any[]).map((r) => {
+    const appid = Number(r.appid);
+    const meta = metaById.get(appid);
+    const owners = ownersByApp.get(appid) ?? [];
+
+    return {
+      appid,
+      name: meta?.name ?? `App ${appid}`,
+      headerImage: meta?.headerImage ?? null,
+      genres: meta?.genres ?? [],
+      enriched: Boolean(meta?.enrichedAt),
+      wishCount: Number(r.wish_count),
+      wishers: (r.wishers ?? []).map(name),
+      ownerCount: owners.length,
+      owners: owners.map(name),
+      playableNow: owners.length > 0,
+    };
+  });
+
+  if (onlyPlayable) games = games.filter((g) => g.playableNow);
+
+  games.sort(
+    (a, b) => b.wishCount - a.wishCount || b.ownerCount - a.ownerCount,
+  );
+
+  return res.status(200).json({
+    ok: true,
+    mode: 'wishlist',
+    games,
+    total: games.length,
+    memberCount: people.length,
+    playableCount: games.filter((g) => g.playableNow).length,
+  });
 }

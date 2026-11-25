@@ -1,6 +1,13 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
-import { apiGet, apiPost, formatPlaytime, steamStoreUrl } from '../lib/api';
+import {
+  apiGet,
+  apiPost,
+  formatPlaytime,
+  steamStoreUrl,
+  steamHeaderUrl,
+  hideBrokenImage,
+} from '../lib/api';
 import { useAuth } from '../lib/auth';
 
 interface ProfileGame {
@@ -304,14 +311,15 @@ onMounted(load);
           rel="noopener"
           class="card flex items-center gap-4 p-2 transition hover:border-steam-blue/40"
         >
-          <img
-            v-if="g.headerImage"
-            :src="g.headerImage"
-            :alt="g.name"
-            loading="lazy"
-            class="h-14 w-32 shrink-0 rounded object-cover"
-          />
-          <div v-else class="h-14 w-32 shrink-0 rounded bg-steam-navy/40"></div>
+          <div class="h-14 w-32 shrink-0 overflow-hidden rounded bg-steam-navy/40">
+            <img
+              :src="g.headerImage || steamHeaderUrl(g.appid)"
+              :alt="g.name"
+              loading="lazy"
+              class="h-full w-full object-cover"
+              @error="hideBrokenImage"
+            />
+          </div>
 
           <div class="min-w-0 flex-1">
             <div class="flex items-baseline gap-2">

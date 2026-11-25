@@ -1,9 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getDb } from '../db/index.ts';
-import { users, ownedGames, gameCache, enrichQueue } from '../db/schema.ts';
+import { users, ownedGames, gameCache, enrichQueue, wishlistItems } from '../db/schema.ts';
 import { eq, sql } from 'drizzle-orm';
 import { requireSteam } from '../lib/access.ts';
-import { getOwnedGames, getPlayerSummaries } from '../lib/steam.ts';
+import { getOwnedGames, getPlayerSummaries, getWishlist } from '../lib/steam.ts';
 
 /**
  * POST /api/sync
@@ -115,12 +115,50 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       })
       .where(eq(users.steamid, steamid));
 
+    // 5. Wishlist : souhaitée, mais pas encore achetée.
+    //    Servira à croiser les envies du groupe avec ce que les autres possèdent.
+    const wishlist = await getWishlist(steamid);
+    if (wishlist.items.length > 0) {
+      await db
+        .insert(wishlistItems)
+        .values(
+          wishlist.items.map((w) => ({
+            steamid,
+            appid: w.appid,
+            priority: w.priority,
+            updatedAt: now,
+          })),
+        )
+        .onConflictDoUpdate({
+          target: [wishlistItems.steamid, wishlistItems.appid],
+          set: { priority: sql`excluded.priority`, updatedAt: now },
+        });
+
+      // Retire les jeux sortis de la wishlist.
+      await db.execute(sql`
+        DELETE FROM wishlist_items
+        WHERE steamid = ${steamid}
+          AND appid NOT IN (${sql.join(
+            wishlist.items.map((w) => sql`${w.appid}`),
+            sql`, `,
+          )})
+      `);
+
+      // Les jeux souhaités méritent aussi des métadonnées (nom, image, genres).
+      await db
+        .insert(enrichQueue)
+        .values(wishlist.items.map((w) => ({ appid: w.appid, priority: 2 })))
+        .onConflictDoNothing();
+    }
+
     const playedCount = games.filter((g) => (g.playtime_forever ?? 0) > 0).length;
 
     return res.status(200).json({
       ok: true,
       gamesCount: games.length,
       playedCount,
+      wishlistCount: wishlist.items.length,
+      wishlistVisible: wishlist.wishlistVisible,
       gamesVisible,
       profileVisible,
       warning: !gamesVisible

@@ -70,3 +70,22 @@ export function formatPlaytime(minutes: number): string {
 export function steamStoreUrl(appid: number) {
   return `https://store.steampowered.com/app/${appid}/`;
 }
+
+/**
+ * Jaquette d'un jeu, déduite de son appid.
+ *
+ * L'URL est un motif stable chez Steam : inutile d'attendre l'enrichissement
+ * (qui ne remplit header_image qu'après un appel au Store). Ça évite une
+ * liste de jeux sans images au premier sync.
+ *
+ * Tous les jeux n'ont pas de jaquette : l'appelant doit gérer l'échec.
+ */
+export function steamHeaderUrl(appid: number) {
+  return `https://cdn.cloudflare.steamstatic.com/steam/apps/${appid}/header.jpg`;
+}
+
+/** Masque une image dont le chargement a échoué (jaquette absente). */
+export function hideBrokenImage(event: Event) {
+  const img = event.target as HTMLImageElement;
+  img.style.visibility = 'hidden';
+}

@@ -1,6 +1,13 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
-import { apiGet, apiPost, formatPlaytime, steamStoreUrl } from '../lib/api';
+import {
+  apiGet,
+  apiPost,
+  formatPlaytime,
+  steamStoreUrl,
+  steamHeaderUrl,
+  hideBrokenImage,
+} from '../lib/api';
 
 interface Game {
   appid: number;
@@ -13,6 +20,12 @@ interface Game {
   totalPlaytime: number;
   minPlaytime: number;
   players: string[];
+  // Champs présents uniquement en mode wishlist
+  wishCount?: number;
+  wishers?: string[];
+  ownerCount?: number;
+  owners?: string[];
+  playableNow?: boolean;
 }
 
 const games = ref<Game[]>([]);
@@ -27,6 +40,11 @@ const syncing = ref(false);
 const syncResult = ref<any>(null);
 const enriching = ref(false);
 const cacheState = ref<{ total: number; enriched: number; pending: number } | null>(null);
+
+// Mode : jeux possédés en commun, ou wishlist croisée
+const mode = ref<'owned' | 'wishlist'>('owned');
+const playableOnly = ref(false);
+const wishMessage = ref<string | null>(null);
 
 // Filtres
 const selectedGenres = ref<string[]>([]);
@@ -65,7 +83,9 @@ async function load() {
       memberCount: number;
       genreCounts: Record<string, number>;
     }>('/api/common', {
-      genres: selectedGenres.value.join(',') || undefined,
+      mode: mode.value === 'wishlist' ? 'wishlist' : undefined,
+      playable: mode.value === 'wishlist' && playableOnly.value ? '1' : undefined,
+      genres: mode.value === 'owned' ? selectedGenres.value.join(',') || undefined : undefined,
       tags: selectedTags.value.join(',') || undefined,
       min: minMembers.value,
       sort: sortBy.value,
@@ -74,6 +94,7 @@ async function load() {
     games.value = data.games ?? [];
     total.value = data.total ?? 0;
     memberCount.value = data.memberCount ?? 0;
+    wishMessage.value = (data as any).message ?? null;
     // Les facettes sont calculées sur l'ensemble, pas sur le résultat filtré,
     // sinon les genres disparaissent dès qu'on en sélectionne un.
     genreCounts.value = data.genreCounts ?? {};
@@ -140,7 +161,7 @@ function resetFilters() {
 }
 
 let debounceTimer: ReturnType<typeof setTimeout>;
-watch([selectedGenres, selectedTags, minMembers, sortBy, onlyEnriched], () => {
+watch([selectedGenres, selectedTags, minMembers, sortBy, onlyEnriched, mode, playableOnly], () => {
   clearTimeout(debounceTimer);
   debounceTimer = setTimeout(load, 250);
 });
@@ -158,6 +179,23 @@ onMounted(async () => {
       <span class="text-sm text-slate-500">
         {{ memberCount }} membre{{ memberCount > 1 ? 's' : '' }} dans le groupe
       </span>
+
+      <div class="flex rounded border border-white/15 p-0.5 text-sm">
+        <button
+          class="rounded px-3 py-1 transition"
+          :class="mode === 'owned' ? 'bg-steam-blue/15 text-steam-blue' : 'text-slate-400 hover:text-white'"
+          @click="mode = 'owned'"
+        >
+          Possédés
+        </button>
+        <button
+          class="rounded px-3 py-1 transition"
+          :class="mode === 'wishlist' ? 'bg-steam-blue/15 text-steam-blue' : 'text-slate-400 hover:text-white'"
+          @click="mode = 'wishlist'"
+        >
+          Wishlist
+        </button>
+      </div>
 
       <div class="ml-auto flex gap-2">
         <button class="btn-ghost text-sm" :disabled="enriching" @click="enrich">
@@ -222,6 +260,13 @@ onMounted(async () => {
       </p>
     </div>
 
+    <!-- Explication wishlist -->
+    <div v-if="mode === 'wishlist'" class="card mb-6 border-white/5 text-xs text-slate-400">
+      Les jeux <strong class="text-slate-200">souhaités</strong> par les membres, croisés avec
+      ce que les autres possèdent déjà. Un jeu « jouable » est déjà dans la
+      bibliothèque de quelqu'un : pas besoin de l'acheter pour y jouer ensemble.
+    </div>
+
     <!-- Filtres -->
     <div class="card mb-6">
       <div class="flex flex-wrap items-end gap-4">
@@ -243,9 +288,13 @@ onMounted(async () => {
             <option value="name">Nom (A→Z)</option>
           </select>
         </div>
-        <label class="flex items-center gap-2 text-sm text-slate-300">
+        <label v-if="mode === 'owned'" class="flex items-center gap-2 text-sm text-slate-300">
           <input v-model="onlyEnriched" type="checkbox" class="rounded border-white/20 bg-steam-darker" />
           Masquer les jeux non enrichis
+        </label>
+        <label v-if="mode === 'wishlist'" class="flex items-center gap-2 text-sm text-slate-300">
+          <input v-model="playableOnly" type="checkbox" class="rounded border-white/20 bg-steam-darker" />
+          Jouable immédiatement (déjà possédé)
         </label>
         <button v-if="selectedGenres.length || selectedTags.length" class="btn-ghost text-xs" @click="resetFilters">
           Réinitialiser les filtres
@@ -287,6 +336,11 @@ onMounted(async () => {
       </div>
     </div>
 
+    <!-- Message wishlist -->
+    <div v-if="mode === 'wishlist' && wishMessage" class="card mb-6 border-sky-500/30 bg-sky-500/5 text-sm text-sky-200">
+      {{ wishMessage }}
+    </div>
+
     <!-- Erreur -->
     <div v-if="error" class="card border-red-500/40 bg-red-500/5 text-sm text-red-300">
       {{ error }}
@@ -309,17 +363,23 @@ onMounted(async () => {
         <a :href="steamStoreUrl(g.appid)" target="_blank" rel="noopener" class="block">
           <div class="relative aspect-[92/43] overflow-hidden bg-steam-navy/40">
             <img
-              v-if="g.headerImage"
-              :src="g.headerImage"
+              :src="g.headerImage || steamHeaderUrl(g.appid)"
               :alt="g.name"
               loading="lazy"
               class="h-full w-full object-cover transition group-hover:scale-105"
+              @error="hideBrokenImage"
             />
-            <div v-else class="flex h-full items-center justify-center text-slate-600">
-              Pas d'image
-            </div>
             <span class="badge absolute left-2 top-2 bg-black/70 text-steam-blue">
-              {{ g.owners }} / {{ memberCount }}
+              <template v-if="mode === 'wishlist'">
+                {{ g.wishCount }} souhait{{ (g.wishCount ?? 0) > 1 ? 'ent' : '' }}
+              </template>
+              <template v-else>{{ g.owners }} / {{ memberCount }}</template>
+            </span>
+            <span
+              v-if="mode === 'wishlist' && g.playableNow"
+              class="badge absolute right-2 top-2 bg-emerald-500/90 text-black"
+            >
+              jouable
             </span>
             <span v-if="!g.enriched" class="badge absolute right-2 top-2 bg-black/70 text-slate-400">
               genres ?
@@ -339,7 +399,13 @@ onMounted(async () => {
               <span class="flex items-center gap-1">
                 🕐 {{ formatPlaytime(g.totalPlaytime) }}
               </span>
-              <span class="truncate" :title="g.players.join(', ')">
+              <span v-if="mode === 'wishlist'" class="truncate" :title="(g.owners ?? []).join(', ')">
+                <template v-if="g.ownerCount">
+                  possédé par {{ (g.owners ?? []).slice(0, 2).join(', ') }}<template v-if="(g.ownerCount ?? 0) > 2"> +{{ (g.ownerCount ?? 0) - 2 }}</template>
+                </template>
+                <template v-else>personne ne l'a encore</template>
+              </span>
+              <span v-else class="truncate" :title="g.players.join(', ')">
                 {{ g.players.slice(0, 2).join(', ') }}<template v-if="g.players.length > 2"> +{{ g.players.length - 2 }}</template>
               </span>
             </div>

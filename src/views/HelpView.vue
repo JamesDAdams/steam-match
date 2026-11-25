@@ -40,6 +40,10 @@ function since(d: string | Date | null) {
         puis on relie son compte Steam.
       </p>
       <p class="mt-2 text-sm text-slate-400">
+        La <strong class="text-slate-200">wishlist</strong> est lue avec les mêmes
+        restrictions : elle doit être publique pour être synchronisée.
+      </p>
+      <p class="mt-2 text-sm text-slate-400">
         Si tu tombes sur « Accès non autorisé », la page t'affiche ton
         identifiant Discord : transmets-le à l'administrateur, qui l'ajoutera
         depuis la page d'administration.
