@@ -96,25 +96,52 @@ function toRequest(event: HandlerEvent, pathname: string): any {
   };
 }
 
-/** Accumule une réponse façon Express et la restitue au format Netlify. */
-function createResponse() {
-  const headers: Record<string, string | string[]> = {};
+/**
+ * Accumule une réponse façon Express et la restitue au format Netlify.
+ *
+ * ATTENTION : Netlify n'accepte PAS un tableau dans `headers`. Envoyer
+ * `set-cookie: [a, b]` provoque « invalid type []interface {} for headers key
+ * set-cookie ». Les valeurs multiples doivent passer par `multiValueHeaders`.
+ */
+export function createResponse() {
+  const headers: Record<string, string> = {};
+  const multiValueHeaders: Record<string, string[]> = {};
   let statusCode = 200;
-  let finalResult: { statusCode: number; headers: any; body: string } | null = null;
+  let finalResult: {
+    statusCode: number;
+    headers: Record<string, string>;
+    multiValueHeaders?: Record<string, string[]>;
+    body: string;
+  } | null = null;
 
   const finish = (body: string) => {
-    finalResult = { statusCode, headers, body };
+    finalResult = {
+      statusCode,
+      headers,
+      body,
+      // On n'ajoute la clé que si elle sert : certains outils la rejettent vide.
+      ...(Object.keys(multiValueHeaders).length > 0 ? { multiValueHeaders } : {}),
+    };
     return finalResult;
   };
 
   const res: any = {
     setHeader(key: string, value: string | string[]) {
-      // Netlify gère nativement un tableau pour Set-Cookie (plusieurs cookies).
-      headers[key.toLowerCase()] = value;
+      const k = key.toLowerCase();
+
+      if (Array.isArray(value)) {
+        // Plusieurs valeurs (typiquement plusieurs cookies de session).
+        multiValueHeaders[k] = value.map(String);
+        delete headers[k];
+      } else {
+        headers[k] = String(value);
+        delete multiValueHeaders[k];
+      }
       return res;
     },
     getHeader(key: string) {
-      return headers[key.toLowerCase()];
+      const k = key.toLowerCase();
+      return multiValueHeaders[k] ?? headers[k];
     },
     status(code: number) {
       statusCode = code;

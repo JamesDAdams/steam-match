@@ -69,6 +69,43 @@ console.log(
 );
 if (!(parsed.ok === true && parsed.authenticated === false)) failures++;
 
+// ── Cas spécifique : plusieurs cookies ──
+// Netlify refuse un tableau dans headers ; ils doivent partir dans
+// multiValueHeaders, sinon le login Discord casse en production.
+console.log('\n  — En-têtes à valeurs multiples —');
+const res2 = mod.createResponse();
+const out = res2
+  .setHeader('Set-Cookie', ['sm_session=abc; Path=/', 'sm_oauth_state=def; Path=/api/auth'])
+  .status(200)
+  .json({ ok: true });
+
+const mv = out.multiValueHeaders?.['set-cookie'];
+const inHeaders = out.headers?.['set-cookie'];
+
+if (mv && mv.length === 2) {
+  console.log('  ✓ deux cookies placés dans multiValueHeaders');
+} else {
+  failures++;
+  console.error(`  ✗ multiValueHeaders attendu (2 entrées), reçu : ${JSON.stringify(mv)}`);
+}
+
+if (inHeaders === undefined) {
+  console.log('  ✓ pas de "set-cookie" dans headers (Netlify le refuserait)');
+} else {
+  failures++;
+  console.error(`  ✗ set-cookie ne doit pas être dans headers : ${JSON.stringify(inHeaders)}`);
+}
+
+// Les en-têtes simples restent bien dans headers.
+const res3 = mod.createResponse();
+const out3 = res3.setHeader('Cache-Control', 'no-store').status(200).json({});
+if (out3.headers?.['cache-control'] === 'no-store') {
+  console.log('  ✓ en-têtes simples conservés dans headers');
+} else {
+  failures++;
+  console.error('  ✗ en-tête simple perdu');
+}
+
 await vite.close();
 console.log(failures === 0 ? '\nFonction Netlify : OK' : `\n${failures} échec(s)`);
 process.exit(failures === 0 ? 0 : 1);
