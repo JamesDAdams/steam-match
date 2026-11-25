@@ -69,6 +69,30 @@ for (const file of FILES) {
   }
 }
 
+// ── Contrôle statique : une vue qui démarre en `loading = true` doit
+//    déclencher son chargement, sinon elle affiche ses squelettes à vie.
+//    Le rendu SSR ne peut pas le détecter : onMounted ne s'y exécute pas.
+console.log('\n  — Initialisation des chargements —');
+for (const file of FILES) {
+  let src = '';
+  try {
+    src = await (await import('node:fs/promises')).readFile(
+      new URL(`..${file}`, import.meta.url),
+      'utf8',
+    );
+  } catch {
+    continue;
+  }
+  const startsLoading = /const loading = ref\(true\)/.test(src);
+  const triggersLoad = /onMounted\(/.test(src);
+  if (startsLoading && !triggersLoad) {
+    failures++;
+    console.error(`  ✗ ${file} : loading démarre à true mais aucun onMounted()`);
+  } else if (startsLoading) {
+    console.log(`  ✓ ${file.replace('/src/', '')} déclenche son chargement`);
+  }
+}
+
 await vite.close();
 console.log(failures === 0 ? '\nToutes les vues se rendent.' : `\n${failures} vue(s) en échec.`);
 process.exit(failures === 0 ? 0 : 1);

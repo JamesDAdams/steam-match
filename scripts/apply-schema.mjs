@@ -91,6 +91,12 @@ const statements = [
   `ALTER TABLE game_cache ADD COLUMN IF NOT EXISTS steam_initial_price integer`,
   `ALTER TABLE game_cache ADD COLUMN IF NOT EXISTS steam_discount integer`,
   `ALTER TABLE game_cache ADD COLUMN IF NOT EXISTS steam_currency text`,
+  `ALTER TABLE game_cache ADD COLUMN IF NOT EXISTS review_positive integer`,
+  `ALTER TABLE game_cache ADD COLUMN IF NOT EXISTS review_negative integer`,
+  `ALTER TABLE game_cache ADD COLUMN IF NOT EXISTS review_score integer`,
+  `ALTER TABLE game_cache ADD COLUMN IF NOT EXISTS release_date text`,
+  `ALTER TABLE game_cache ADD COLUMN IF NOT EXISTS play_modes jsonb NOT NULL DEFAULT '[]'::jsonb`,
+  `ALTER TABLE game_cache ADD COLUMN IF NOT EXISTS enrich_version integer NOT NULL DEFAULT 0`,
 
   // ── Sessions ─────────────────────────────────────────────��─────────
   // NON destructif : on ne supprime jamais la table, sinon tous les membres

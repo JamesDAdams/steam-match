@@ -37,6 +37,13 @@ try {
     console.log(`  genres  : ${m.genres.join(', ') || '(aucun)'}`);
     console.log(`  tags    : ${m.tags.slice(0, 6).join(', ') || '(aucun)'}`);
     console.log(`  source  : ${m.source}`);
+    console.log(
+      `  avis    : ${
+        m.reviewScore != null
+          ? `${m.reviewScore}% positifs (${m.reviewPositive ?? 0} / ${(m.reviewPositive ?? 0) + (m.reviewNegative ?? 0)})`
+          : 'aucun avis'
+      }`,
+    );
     console.log('  ✓ métadonnées récupérées');
   } else {
     console.error('  ✗ aucune métadonnée');
@@ -49,6 +56,8 @@ try {
     console.log(`  actuel  : ${prices.formatPrice(sp.priceCents, sp.currency)}`);
     console.log(`  de base : ${prices.formatPrice(sp.initialCents, sp.currency)}`);
     console.log(`  remise  : ${sp.discountPercent}%`);
+    console.log(`  sortie  : ${sp.releaseDate ?? '—'}`);
+    console.log(`  modes   : ${sp.playModes.join(', ') || '—'}`);
   } else {
     console.log('  (jeu gratuit ou prix indisponible)');
   }
@@ -60,7 +69,7 @@ try {
     console.log(`  boutique: ${p.store}`);
     console.log(`  devise  : ${p.currency}`);
     console.log(
-      `  source  : ${process.env.GG_DEALS_API_KEY ? 'GG.deals (clé configurée)' : 'CheapShark (sans clé)'}`,
+      `  source  : ${p.store === 'GG.deals' || p.currency === 'EUR' ? 'GG.deals' : 'CheapShark'}`,
     );
     console.log('  ✓ prix récupéré');
   } else {

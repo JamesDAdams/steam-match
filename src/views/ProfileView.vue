@@ -8,6 +8,8 @@ import {
   steamHeaderUrl,
   hideBrokenImage,
   formatPrice,
+  ggDealsUrl,
+  reviewLabel,
 } from '../lib/api';
 import { useAuth } from '../lib/auth';
 
@@ -27,6 +29,11 @@ interface ProfileGame {
   steamInitialPrice: number | null;
   steamDiscount: number | null;
   steamCurrency: string | null;
+  reviewScore: number | null;
+  reviewPositive: number | null;
+  reviewNegative: number | null;
+  releaseDate: string | null;
+  playModes: string[];
 }
 
 interface WishItem {
@@ -43,6 +50,11 @@ interface WishItem {
   steamInitialPrice: number | null;
   steamDiscount: number | null;
   steamCurrency: string | null;
+  reviewScore: number | null;
+  reviewPositive: number | null;
+  reviewNegative: number | null;
+  releaseDate: string | null;
+  playModes: string[];
 }
 
 interface Stats {
@@ -396,16 +408,14 @@ onUnmounted(stopPolling);
           </span>
         </div>
 
-        <div class="mt-4 grid gap-2 sm:grid-cols-2">
-          <a
+        <div class="mt-4 space-y-2">
+          <div
             v-for="w in wishlist"
             :key="w.appid"
-            :href="steamStoreUrl(w.appid)"
-            target="_blank"
-            rel="noopener"
-            class="flex items-center gap-3 rounded border border-line p-2 transition hover:border-brand/40"
+            class="flex flex-col gap-3 rounded-lg border border-line p-3 transition hover:border-brand/40 sm:flex-row sm:items-center"
           >
-            <div class="h-12 w-28 shrink-0 overflow-hidden rounded bg-app-surface2">
+            <!-- Jaquette -->
+            <div class="h-16 w-32 shrink-0 overflow-hidden rounded bg-app-surface2">
               <img
                 :src="w.headerImage || steamHeaderUrl(w.appid)"
                 :alt="w.name"
@@ -414,34 +424,82 @@ onUnmounted(stopPolling);
                 @error="hideBrokenImage"
               />
             </div>
+
+            <!-- Informations -->
             <div class="min-w-0 flex-1">
-              <p class="truncate text-sm text-fg-strong">{{ w.name }}</p>
-              <p v-if="w.playableNow" class="text-xs text-ok">
-                déjà possédé par {{ w.owners.slice(0, 2).join(', ') }}<template v-if="w.owners.length > 2"> +{{ w.owners.length - 2 }}</template>
-              </p>
-              <p v-else class="text-xs text-fg-faint">personne du groupe ne l'a encore</p>
-              <!-- Prix : Steam officiel et meilleure clé -->
-              <div
-                v-if="w.steamPrice || w.cheapestPrice"
-                class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px]"
-              >
-                <span v-if="w.steamPrice" class="text-fg-muted">
-                  Steam
-                  <span v-if="w.steamDiscount" class="ml-1 text-fg-faint line-through">
-                    {{ formatPrice(w.steamInitialPrice ?? w.steamPrice, w.steamCurrency ?? 'EUR') }}
-                  </span>
-                  <span class="ml-1 font-medium text-fg">
-                    {{ formatPrice(w.steamPrice, w.steamCurrency ?? 'EUR') }}
-                  </span>
-                  <span v-if="w.steamDiscount" class="ml-1 text-ok">-{{ w.steamDiscount }}%</span>
+              <p class="truncate font-medium text-fg-strong">{{ w.name }}</p>
+
+              <div class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
+                <span
+                  v-if="w.reviewScore !== null"
+                  class="badge"
+                  :class="{
+                    'bg-ok-soft text-ok': reviewLabel(w.reviewScore).tone === 'ok',
+                    'bg-warn-soft text-warn': reviewLabel(w.reviewScore).tone === 'warn',
+                    'bg-danger-soft text-danger': reviewLabel(w.reviewScore).tone === 'danger',
+                    'bg-app-surface2 text-fg-muted': reviewLabel(w.reviewScore).tone === 'muted',
+                  }"
+                  :title="`${w.reviewScore}% d'avis positifs`"
+                >
+                  {{ w.reviewScore }}% · {{ reviewLabel(w.reviewScore).text }}
                 </span>
-                <span v-if="w.cheapestPrice" class="text-gold">
-                  Clé dès {{ formatPrice(w.cheapestPrice, w.cheapestCurrency ?? 'EUR') }}
-                  <span v-if="w.cheapestStore" class="text-fg-faint">· {{ w.cheapestStore }}</span>
+                <span v-if="w.releaseDate" class="text-fg-faint">{{ w.releaseDate }}</span>
+                <span
+                  v-for="m in w.playModes"
+                  :key="m"
+                  class="badge bg-app-surface2 text-fg-muted"
+                >
+                  {{ m }}
                 </span>
+                <span v-if="w.playableNow" class="text-ok">
+                  possédé par {{ w.owners.slice(0, 2).join(', ') }}<template v-if="w.owners.length > 2"> +{{ w.owners.length - 2 }}</template>
+                </span>
+                <span v-else class="text-fg-faint">personne du groupe ne l'a</span>
               </div>
             </div>
-          </a>
+
+            <!-- Prix -->
+            <div class="shrink-0 text-left sm:text-right">
+              <p v-if="w.steamPrice" class="text-xs text-fg-muted">
+                Steam
+                <span v-if="w.steamDiscount" class="ml-1 text-fg-faint line-through">
+                  {{ formatPrice(w.steamInitialPrice ?? w.steamPrice, w.steamCurrency ?? 'EUR') }}
+                </span>
+                <span class="ml-1 font-medium text-fg-strong">
+                  {{ formatPrice(w.steamPrice, w.steamCurrency ?? 'EUR') }}
+                </span>
+              </p>
+              <p v-if="w.cheapestPrice" class="text-xs text-gold">
+                Clé dès {{ formatPrice(w.cheapestPrice, w.cheapestCurrency ?? 'EUR') }}
+                <span v-if="w.cheapestStore" class="text-fg-faint">· {{ w.cheapestStore }}</span>
+              </p>
+              <p v-if="!w.steamPrice && !w.cheapestPrice" class="text-[11px] text-fg-faint">
+                prix bientôt disponible
+              </p>
+            </div>
+
+            <!-- Actions -->
+            <div class="flex shrink-0 gap-2">
+              <a
+                :href="ggDealsUrl(w.name)"
+                target="_blank"
+                rel="noopener"
+                class="rounded-md border border-line-strong px-2.5 py-1.5 text-[11px] font-medium text-gold transition hover:bg-gold-soft"
+                title="Comparer les prix des clés sur GG.deals"
+              >
+                Clés ↗
+              </a>
+              <a
+                :href="steamStoreUrl(w.appid)"
+                target="_blank"
+                rel="noopener"
+                class="rounded-md border border-line-strong px-2.5 py-1.5 text-[11px] font-medium text-fg transition hover:bg-app-surface2"
+                title="Ouvrir la page Steam"
+              >
+                Steam ↗
+              </a>
+            </div>
+          </div>
         </div>
 
         <p class="mt-3 text-xs text-fg-faint">

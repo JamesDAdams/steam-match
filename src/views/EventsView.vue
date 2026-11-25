@@ -112,6 +112,10 @@ function duration(e: DiscordEvent) {
 }
 
 const nextEvent = computed(() => upcoming.value[0] ?? null);
+
+// Sans cet appel, `loading` restait à true et les squelettes s'affichaient
+// indéfiniment (le rendu SSR ne l'exécute pas, d'où le bug passé inaperçu).
+onMounted(load);
 </script>
 
 <template>

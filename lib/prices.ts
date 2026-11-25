@@ -158,6 +158,41 @@ export interface SteamPrice {
   /** Remise en pourcentage, 0 si pas de promo. */
   discountPercent: number;
   currency: string;
+  /** Date de sortie telle qu'affichée par Steam (ex. « 24 févr. 2022 »). */
+  releaseDate: string | null;
+  /** Modes de jeu lisibles : Solo, Multijoueur, Coopération… */
+  playModes: string[];
+}
+
+/**
+ * Catégories Steam qui nous intéressent pour savoir comment on joue.
+ * On ne garde que celles-ci : la liste complète contient 20 entrées
+ * techniques (Steam Cloud, Cartes à échanger…) sans intérêt ici.
+ */
+const PLAY_MODE_KEYWORDS = [
+  'solo',
+  'multijoueur',
+  'multi-joueur',
+  'coopération',
+  'cooperation',
+  'co-op',
+  'pvp',
+  'jcj',
+  'écran partagé',
+  'local',
+];
+
+function extractPlayModes(categories: { description?: string }[] = []): string[] {
+  return categories
+    .map((c) => c.description)
+    .filter((d): d is string => Boolean(d))
+    .filter((d) => {
+      const low = d.toLowerCase();
+      return PLAY_MODE_KEYWORDS.some((k) => low.includes(k));
+    })
+    // On garde les plus parlantes en tête.
+    .sort((a, b) => a.length - b.length)
+    .slice(0, 4);
 }
 
 /**
@@ -171,7 +206,7 @@ export async function fetchSteamPrice(appid: number): Promise<SteamPrice | null>
   try {
     const res = await fetch(
       `https://store.steampowered.com/api/appdetails?appids=${appid}` +
-        `&filters=price_overview&cc=fr&l=french`,
+        `&filters=price_overview,release_date,categories&cc=fr&l=french`,
       { signal: AbortSignal.timeout(8000) },
     );
     if (res.status === 429 || !res.ok) return null;
@@ -180,14 +215,32 @@ export async function fetchSteamPrice(appid: number): Promise<SteamPrice | null>
     const entry = json[String(appid)];
     if (!entry?.success) return null;
 
-    const p = entry.data?.price_overview;
-    if (!p) return null; // jeu gratuit
+    const data = entry.data ?? {};
+    const p = data.price_overview;
+    const releaseDate = data.release_date?.date ?? null;
+    const playModes = extractPlayModes(data.categories);
+
+    // Jeu gratuit : pas de price_overview, mais on veut quand même la date
+    // et les modes de jeu.
+    if (!p) {
+      if (!releaseDate && playModes.length === 0) return null;
+      return {
+        priceCents: 0,
+        initialCents: 0,
+        discountPercent: 0,
+        currency: 'EUR',
+        releaseDate,
+        playModes,
+      };
+    }
 
     return {
       priceCents: Number(p.final ?? 0),
       initialCents: Number(p.initial ?? p.final ?? 0),
       discountPercent: Number(p.discount_percent ?? 0),
       currency: String(p.currency ?? 'EUR'),
+      releaseDate,
+      playModes,
     };
   } catch {
     return null;

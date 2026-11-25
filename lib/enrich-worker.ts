@@ -26,6 +26,14 @@ export interface EnrichBatchResult {
 const MAX_ATTEMPTS = 3;
 
 /**
+ * Version courante du schéma d'enrichissement.
+ * 1 : nom + genres + tags + prix
+ * 2 : + date de sortie, modes de jeu, avis Steam
+ * Incrémenter force la reprise des jeux déjà enrichis.
+ */
+const ENRICH_VERSION = 2;
+
+/**
  * Traite un lot de jeux en attente.
  *
  * @param batchSize nombre de jeux traités dans cet appel
@@ -37,22 +45,29 @@ export async function runEnrichBatch(
 ): Promise<EnrichBatchResult> {
   const db = getDb();
 
-  // File d'attente : uniquement les jeux pas encore enrichis et pas en échec
-  // définitif. Les priorités les plus hautes passent d'abord.
-  const pending = await db
-    .select({ appid: enrichQueue.appid })
-    .from(enrichQueue)
-    .innerJoin(gameCache, eq(enrichQueue.appid, gameCache.appid))
-    .where(
-      and(
-        sql`${gameCache.enrichedAt} is null`,
-        lt(gameCache.enrichAttempts, MAX_ATTEMPTS),
-      ),
-    )
-    .orderBy(sql`${enrichQueue.priority} DESC`, enrichQueue.createdAt)
-    .limit(batchSize);
+  // On part de game_cache, PAS de la file d'attente.
+  //
+  // Raison : un jeu enrichi est retiré de enrich_queue. Si on ajoute ensuite
+  // de nouveaux champs (date, avis, modes de jeu), ces jeux ne seraient plus
+  // jamais repris faute de ligne dans la file. En partant de game_cache, on
+  // attrape aussi bien les nouveaux jeux que ceux à mettre au niveau de
+  // schéma courant.
+  //
+  // La file ne sert plus qu'à porter la priorité (les jeux de wishlist
+  // passent après ceux que l'on possède).
+  const pendingRows = await db.execute(sql`
+    SELECT gc.appid AS appid
+    FROM game_cache gc
+    LEFT JOIN enrich_queue eq ON eq.appid = gc.appid
+    WHERE (gc.enriched_at IS NULL OR gc.enrich_version < ${ENRICH_VERSION})
+      AND gc.enrich_attempts < ${MAX_ATTEMPTS}
+    ORDER BY COALESCE(eq.priority, 0) DESC, gc.updated_at ASC
+    LIMIT ${batchSize}
+  `);
 
-  const appids = pending.map((p) => p.appid);
+  const appids = (pendingRows.rows as { appid: number }[]).map((r) =>
+    Number(r.appid),
+  );
 
   if (appids.length === 0) {
     return { processed: 0, enriched: 0, deferred: 0, remaining: 0 };
@@ -86,6 +101,7 @@ export async function runEnrichBatch(
         tags: meta.tags,
         shortDescription: meta.shortDescription,
         enrichedAt: new Date(),
+        enrichVersion: ENRICH_VERSION,
         enrichFailed: false,
         updatedAt: new Date(),
         ...(price
@@ -101,6 +117,15 @@ export async function runEnrichBatch(
               steamInitialPrice: steamPrice.initialCents,
               steamDiscount: steamPrice.discountPercent,
               steamCurrency: steamPrice.currency,
+              releaseDate: steamPrice.releaseDate,
+              playModes: steamPrice.playModes,
+            }
+          : {}),
+        ...(meta.reviewPositive !== null
+          ? {
+              reviewPositive: meta.reviewPositive,
+              reviewNegative: meta.reviewNegative,
+              reviewScore: meta.reviewScore,
             }
           : {}),
         ...(price || steamPrice ? { priceUpdatedAt: new Date() } : {}),

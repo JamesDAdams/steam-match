@@ -26,6 +26,29 @@ const tables = await sql`
 console.log('\n=== TABLES ===');
 for (const t of tables) console.log('  ' + t.table_name);
 
+// Aperçu des jeux enrichis avec les nouveaux champs.
+if (tables.some((t) => t.table_name === 'game_cache')) {
+  const games = await sql`
+    select name, release_date, review_score, play_modes,
+           steam_price, steam_currency, cheapest_price, cheapest_currency,
+           enrich_version
+    from game_cache
+    where enriched_at is not null
+    order by updated_at desc
+    limit 5
+  `;
+  console.log(`\n=== JEUX ENRICHIS (aperçu, ${games.length}) ===`);
+  for (const g of games) {
+    const prix = [
+      g.steam_price ? `Steam ${(g.steam_price / 100).toFixed(2)}${g.steam_currency ?? ''}` : null,
+      g.cheapest_price ? `clé ${(g.cheapest_price / 100).toFixed(2)}${g.cheapest_currency ?? ''}` : null,
+    ].filter(Boolean).join(' | ');
+    console.log(`  ${String(g.name).slice(0, 34).padEnd(36)}`);
+    console.log(`     sortie: ${g.release_date ?? '—'} | avis: ${g.review_score != null ? g.review_score + '%' : '—'} | modes: ${(g.play_modes ?? []).join(', ') || '—'}`);
+    console.log(`     ${prix || 'aucun prix'} | schéma v${g.enrich_version}`);
+  }
+}
+
 // Résumé applicatif : état de confidentialité Steam détecté.
 if (tables.some((t) => t.table_name === 'users')) {
   const us = await sql`

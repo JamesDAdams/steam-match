@@ -133,6 +133,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           steamInitialPrice: gameCache.steamInitialPrice,
           steamDiscount: gameCache.steamDiscount,
           steamCurrency: gameCache.steamCurrency,
+          reviewScore: gameCache.reviewScore,
+          reviewPositive: gameCache.reviewPositive,
+          reviewNegative: gameCache.reviewNegative,
+          releaseDate: gameCache.releaseDate,
+          playModes: gameCache.playModes,
         })
         .from(ownedGames)
         .leftJoin(gameCache, eq(gameCache.appid, ownedGames.appid))
@@ -155,6 +160,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         steamInitialPrice: r.steamInitialPrice ?? null,
         steamDiscount: r.steamDiscount ?? null,
         steamCurrency: r.steamCurrency ?? null,
+        reviewScore: r.reviewScore ?? null,
+        reviewPositive: r.reviewPositive ?? null,
+        reviewNegative: r.reviewNegative ?? null,
+        releaseDate: r.releaseDate ?? null,
+        playModes: r.playModes ?? [],
       }));
 
       stats = buildStats(games);
@@ -177,6 +187,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           steamInitialPrice: gameCache.steamInitialPrice,
           steamDiscount: gameCache.steamDiscount,
           steamCurrency: gameCache.steamCurrency,
+          reviewScore: gameCache.reviewScore,
+          reviewPositive: gameCache.reviewPositive,
+          reviewNegative: gameCache.reviewNegative,
+          releaseDate: gameCache.releaseDate,
+          playModes: gameCache.playModes,
         })
         .from(wishlistItems)
         .leftJoin(gameCache, eq(gameCache.appid, wishlistItems.appid))
@@ -236,6 +251,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             steamInitialPrice: w.steamInitialPrice ?? null,
             steamDiscount: w.steamDiscount ?? null,
             steamCurrency: w.steamCurrency ?? null,
+            reviewScore: w.reviewScore ?? null,
+            reviewPositive: w.reviewPositive ?? null,
+            reviewNegative: w.reviewNegative ?? null,
+            releaseDate: w.releaseDate ?? null,
+            playModes: w.playModes ?? [],
           };
         });
       }

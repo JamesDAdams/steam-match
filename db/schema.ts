@@ -214,10 +214,25 @@ export const gameCache = pgTable(
     steamInitialPrice: integer('steam_initial_price'),
     steamDiscount: integer('steam_discount'),
     steamCurrency: text('steam_currency'),
+
+    // Avis globaux Steam (via SteamSpy). L'évaluation « récente » n'est pas
+    // accessible sans cookie de session Steam : on affiche donc l'avis global,
+    // ce qui est honnête et stable.
+    reviewPositive: integer('review_positive'),
+    reviewNegative: integer('review_negative'),
+    reviewScore: integer('review_score'),
+
+    releaseDate: text('release_date'),
+    // Modes de jeu extraits des catégories Steam : Solo, Multijoueur, Coopération…
+    playModes: jsonb('play_modes').$type<string[]>().notNull().default([]),
     priceUpdatedAt: timestamp('price_updated_at', { withTimezone: true }),
     enrichedAt: timestamp('enriched_at', { withTimezone: true }),
     enrichFailed: boolean('enrich_failed').notNull().default(false),
     enrichAttempts: integer('enrich_attempts').notNull().default(0),
+    // Version du schéma d'enrichissement. Permet de repasser sur les jeux
+    // déjà traités quand on ajoute de nouveaux champs (date, avis, modes…),
+    // sans toucher aux jeux déjà à jour.
+    enrichVersion: integer('enrich_version').notNull().default(0),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({

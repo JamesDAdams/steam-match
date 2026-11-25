@@ -84,6 +84,27 @@ export function steamHeaderUrl(appid: number) {
   return `https://cdn.cloudflare.steamstatic.com/steam/apps/${appid}/header.jpg`;
 }
 
+/**
+ * Recherche GG.deals pour un jeu.
+ * On passe par la recherche (faute de slug fiable) : le nom suffit dans
+ * l'immense majorité des cas.
+ */
+export function ggDealsUrl(name: string) {
+  return `https://gg.deals/search/?q=${encodeURIComponent(name)}`;
+}
+
+/** Libellé qualitatif d'une note d'avis Steam (pourcentage positif). */
+export function reviewLabel(score: number | null | undefined): {
+  text: string;
+  tone: 'ok' | 'warn' | 'danger' | 'muted';
+} {
+  if (score == null) return { text: 'Avis inconnus', tone: 'muted' };
+  if (score >= 85) return { text: 'Très positive', tone: 'ok' };
+  if (score >= 70) return { text: 'Positive', tone: 'ok' };
+  if (score >= 50) return { text: 'Mitigée', tone: 'warn' };
+  return { text: 'Négative', tone: 'danger' };
+}
+
 /** Formate un prix stocké en centimes. */
 export function formatPrice(priceCents: number, currency = 'EUR'): string {
   try {

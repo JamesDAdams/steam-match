@@ -19,6 +19,11 @@ export interface GameMetadata {
   genres: string[];
   tags: string[];
   shortDescription: string | null;
+  /** Avis Steam globaux : SteamSpy les fournit gratuitement. */
+  reviewPositive: number | null;
+  reviewNegative: number | null;
+  /** Pourcentage d'avis positifs, 0-100. */
+  reviewScore: number | null;
   /** Origine des données, utile pour diagnostiquer. */
   source: 'steamspy' | 'store';
 }
@@ -27,6 +32,9 @@ interface SteamSpyDetails {
   name?: string;
   genre?: string;
   tags?: Record<string, number> | string[];
+  positive?: number;
+  negative?: number;
+  userscore?: number;
 }
 
 /** SteamSpy renvoie parfois « Action, Indie, Simulation ». */
@@ -63,11 +71,18 @@ async function fromSteamSpy(appid: number): Promise<GameMetadata | null> {
     // SteamSpy renvoie un objet vide pour un appid inconnu.
     if (!d?.name) return null;
 
+    const positive = typeof d.positive === 'number' ? d.positive : null;
+    const negative = typeof d.negative === 'number' ? d.negative : null;
+    const total = (positive ?? 0) + (negative ?? 0);
+
     return {
       name: d.name,
       genres: splitGenres(d.genre),
       tags: topTags(d.tags),
       shortDescription: null,
+      reviewPositive: positive,
+      reviewNegative: negative,
+      reviewScore: total > 0 ? Math.round(((positive ?? 0) / total) * 100) : null,
       source: 'steamspy',
     };
   } catch {
@@ -96,6 +111,9 @@ async function fromSteamStore(appid: number): Promise<GameMetadata | null> {
       genres: (d.genres ?? []).map((g: any) => g.description).filter(Boolean),
       tags: (d.categories ?? []).map((c: any) => c.description).filter(Boolean),
       shortDescription: d.short_description ?? null,
+      reviewPositive: null,
+      reviewNegative: null,
+      reviewScore: null,
       source: 'store',
     };
   } catch {
