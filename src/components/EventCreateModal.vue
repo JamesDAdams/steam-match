@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue';
-import { apiGet, apiPost } from '../lib/api';
+import { apiGet, apiPost, formatPrice, hideBrokenImage } from '../lib/api';
 
 /**
  * Modal de création d'un événement sur le serveur Discord.
@@ -27,6 +27,19 @@ interface Channel {
    * d'un salon que le bot ne peut justement pas administrer.
    */
   grantingRoles?: { id: string; name: string }[];
+}
+
+interface GameHit {
+  appid: number;
+  name: string;
+  headerImage: string;
+  shortDescription: string | null;
+  steamPrice: number | null;
+  steamDiscount: number | null;
+  steamCurrency: string;
+  cheapestPrice: number | null;
+  cheapestStore: string | null;
+  cheapestCurrency: string;
 }
 
 interface BotInfo {
@@ -133,6 +146,157 @@ async function loadChannels() {
   }
 }
 
+/* ── Jeu associé ────────────────────────────────────────────────────── */
+
+/**
+ * Champ de recherche + sélection d'un jeu de la bibliothèque.
+ *
+ * Une fois le jeu choisi, on remplit la description (résumé Steam puis prix
+ * Steam et prix en clé) et on laisse le serveur poser la jaquette en bannière :
+ * le navigateur ne peut pas encoder une image d'un autre domaine en data URI.
+ */
+const gameQuery = ref('');
+const gameResults = ref<GameHit[]>([]);
+const gameSearching = ref(false);
+const gameError = ref<string | null>(null);
+const showGameResults = ref(false);
+const selectedGame = ref<GameHit | null>(null);
+/** Texte exact inséré par le jeu, pour savoir quoi retirer ensuite. */
+const appliedGameBlock = ref<string | null>(null);
+
+let searchTimer: ReturnType<typeof setTimeout> | undefined;
+let searchSeq = 0;
+
+function onGameInput() {
+  clearTimeout(searchTimer);
+  const q = gameQuery.value.trim();
+
+  // Modifier le texte après sélection retire le jeu : le formulaire ne doit
+  // pas prétendre qu'un jeu est encore associé alors que le nom a changé.
+  if (selectedGame.value && q !== selectedGame.value.name) {
+    selectedGame.value = null;
+  }
+
+  if (q.length < 2) {
+    gameResults.value = [];
+    gameSearching.value = false;
+    showGameResults.value = false;
+    return;
+  }
+
+  gameSearching.value = true;
+  searchTimer = setTimeout(() => void searchGames(q), 250);
+}
+
+async function searchGames(q: string) {
+  const seq = ++searchSeq;
+  try {
+    const r = await apiGet<{ games: GameHit[] }>(
+      `/api/events/game-search?q=${encodeURIComponent(q)}`,
+    );
+    if (seq !== searchSeq) return; // réponse obsolète
+    gameResults.value = r.games ?? [];
+    gameError.value = null;
+    showGameResults.value = true;
+  } catch (e: any) {
+    if (seq !== searchSeq) return;
+    gameError.value = e.message ?? 'Recherche impossible.';
+  } finally {
+    if (seq === searchSeq) gameSearching.value = false;
+  }
+}
+
+/** Prix (« non disponible » plutôt qu'un vide inquiétant). */
+function steamPriceLabel(g: GameHit): string {
+  if (g.steamPrice == null) return 'non disponible';
+  const base = formatPrice(g.steamPrice, g.steamCurrency || 'EUR');
+  return g.steamDiscount ? `${base} (−${g.steamDiscount} %)` : base;
+}
+
+function keyPriceLabel(g: GameHit): string {
+  if (g.cheapestPrice == null) return 'non disponible';
+  const base = formatPrice(g.cheapestPrice, g.cheapestCurrency || 'EUR');
+  return g.cheapestStore ? `${base} (${g.cheapestStore})` : base;
+}
+
+/** Bloc ajouté en fin de description : résumé du jeu, puis les deux prix. */
+function gameBlock(g: GameHit): string {
+  const prices = `Prix Steam : ${steamPriceLabel(g)}\nPrix en clé : ${keyPriceLabel(g)}`;
+
+  let intro = (g.shortDescription ?? '').trim();
+  // La description Discord est plafonnée à 1000 caractères : on réserve la
+  // place des prix et de la mise en forme.
+  const room = 1000 - prices.length - 2;
+  if (intro.length > room) {
+    intro = `${intro.slice(0, Math.max(0, room - 1)).trimEnd()}…`;
+  }
+
+  return intro ? `${intro}\n\n${prices}` : prices;
+}
+
+/** Insère (ou remplace) le bloc du jeu en fin de description. */
+function writeGameBlock(g: GameHit) {
+  let base = description.value;
+  if (appliedGameBlock.value) {
+    base = base.replace(appliedGameBlock.value, '');
+  }
+  base = base.trimEnd();
+
+  const block = gameBlock(g);
+  appliedGameBlock.value = block;
+  description.value = base ? `${base}\n\n${block}` : block;
+}
+
+const loadingGameInfo = ref(false);
+
+async function applyGame(g: GameHit) {
+  selectedGame.value = g;
+  gameQuery.value = g.name;
+  gameResults.value = [];
+  showGameResults.value = false;
+  gameError.value = null;
+
+  // Nom : on complète seulement s'il est vide, jamais à la place d'une saisie.
+  if (name.value.trim().length === 0) {
+    name.value = `Soirée ${g.name}`;
+  }
+
+  // La liste de recherche ne transporte pas le résumé Steam (le cache peut
+  // être vide) : on demande la fiche complète, récupérée et mémorisée côté
+  // serveur au besoin. Le texte déjà présent reste affiché entre-temps.
+  loadingGameInfo.value = true;
+  try {
+    const r = await apiGet<{ game: GameHit }>(
+      `/api/events/game-info?appid=${g.appid}`,
+    );
+    // Un autre jeu a été choisi entre-temps : on n'écrase pas son bloc.
+    if (selectedGame.value?.appid !== g.appid) return;
+    const full = r.game;
+    selectedGame.value = full;
+    writeGameBlock(full);
+  } catch {
+    if (selectedGame.value?.appid !== g.appid) return;
+    writeGameBlock(g); // prix au moins ; pas de résumé si Steam ne répond pas
+  } finally {
+    if (selectedGame.value?.appid === g.appid) loadingGameInfo.value = false;
+  }
+}
+
+function clearGame() {
+  if (appliedGameBlock.value) {
+    description.value = description.value
+      .replace(appliedGameBlock.value, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  }
+  appliedGameBlock.value = null;
+  selectedGame.value = null;
+  gameQuery.value = '';
+  gameResults.value = [];
+  showGameResults.value = false;
+  gameError.value = null;
+}
+
 /* ── Bannière ───────────────────────────────────────────────────────── */
 
 const imageData = ref<string | null>(null);
@@ -217,9 +381,19 @@ async function onFile(event: Event) {
 }
 
 function removeImage() {
-  imageData.value = null;
-  imageError.value = null;
+  if (imageData.value) {
+    imageData.value = null;
+    imageError.value = null;
+    return;
+  }
+  // La bannière venait de la jaquette du jeu : retirer la bannière revient à
+  // retirer le jeu (et donc sa description et ses prix, qui vont ensemble).
+  clearGame();
 }
+
+/** Image réellement affichée en aperçu : fichier choisi, sinon jaquette du jeu. */
+const bannerPreview = computed(() => imageData.value ?? selectedGame.value?.headerImage ?? null);
+const bannerFromGame = computed(() => !imageData.value && selectedGame.value !== null);
 
 /* ── Dates ──────────────────────────────────────────────────────────── */
 
@@ -246,6 +420,12 @@ function resetForm() {
   duration.value = 120;
   imageData.value = null;
   imageError.value = null;
+  appliedGameBlock.value = null;
+  selectedGame.value = null;
+  gameQuery.value = '';
+  gameResults.value = [];
+  showGameResults.value = false;
+  gameError.value = null;
   error.value = null;
   attempted.value = false;
 }
@@ -342,6 +522,9 @@ async function submit() {
       channelId: kind.value === 'voice' ? channelId.value : null,
       location: kind.value === 'external' ? location.value.trim() : null,
       image: imageData.value,
+      // Le serveur s'en sert pour poser la jaquette si aucune image n'a été
+      // choisie à la main.
+      gameAppid: selectedGame.value?.appid ?? null,
     });
 
     emit('created', r.event);
@@ -431,6 +614,91 @@ onBeforeUnmount(() => {
             />
           </div>
 
+          <!-- Jeu (préremplit description, bannière et prix) -->
+          <div>
+            <label for="evt-game" class="mb-1 block text-xs font-medium text-fg-muted">
+              Jeu <span class="text-fg-faint">(facultatif)</span>
+            </label>
+
+            <div class="relative">
+              <svg
+                class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-faint"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                aria-hidden="true"
+              >
+                <circle cx="11" cy="11" r="7" />
+                <path d="m20 20-3.5-3.5" />
+              </svg>
+              <input
+                id="evt-game"
+                v-model="gameQuery"
+                type="text"
+                autocomplete="off"
+                placeholder="Rechercher un jeu de la bibliothèque…"
+                class="input pl-9"
+                @input="onGameInput"
+              />
+            </div>
+
+            <p v-if="gameError" class="mt-1 text-xs text-danger">{{ gameError }}</p>
+            <p v-else-if="gameSearching" class="mt-1 text-xs text-fg-faint">Recherche…</p>
+            <p v-else-if="loadingGameInfo" class="mt-1 text-xs text-fg-faint">
+              Chargement de la fiche Steam…
+            </p>
+
+            <ul
+              v-if="showGameResults && gameResults.length > 0"
+              class="mt-1 max-h-64 divide-y divide-line overflow-y-auto rounded-lg border border-line bg-app-elevated"
+            >
+              <li v-for="g in gameResults" :key="g.appid">
+                <button
+                  type="button"
+                  class="flex w-full items-center gap-3 px-3 py-2 text-left transition hover:bg-brand-soft"
+                  @click="applyGame(g)"
+                >
+                  <img
+                    :src="g.headerImage"
+                    alt=""
+                    class="h-8 w-14 shrink-0 rounded object-cover"
+                    loading="lazy"
+                    @error="hideBrokenImage"
+                  />
+                  <span class="min-w-0 flex-1">
+                    <span class="block truncate text-sm text-fg-strong">{{ g.name }}</span>
+                    <span class="block text-[11px] text-fg-faint">
+                      Steam {{ steamPriceLabel(g) }} · clé {{ keyPriceLabel(g) }}
+                    </span>
+                  </span>
+                </button>
+              </li>
+            </ul>
+            <p
+              v-else-if="showGameResults && !gameSearching && gameQuery.trim().length >= 2"
+              class="mt-1 text-xs text-fg-faint"
+            >
+              Aucun jeu de la bibliothèque ne correspond.
+            </p>
+
+            <div v-if="selectedGame" class="mt-2 flex flex-wrap items-center gap-2 text-xs">
+              <span class="rounded bg-brand-soft px-2 py-0.5 font-medium text-fg-strong">
+                {{ selectedGame.name }}
+              </span>
+              <button
+                type="button"
+                class="text-fg-muted underline transition hover:text-fg-strong hover:no-underline"
+                @click="clearGame"
+              >
+                retirer
+              </button>
+              <span class="text-fg-faint">
+                {{ loadingGameInfo ? 'récupération du résumé…' : 'description, jaquette et prix ajoutés' }}
+              </span>
+            </div>
+          </div>
+
           <!-- Description -->
           <div>
             <label for="evt-desc" class="mb-1 block text-xs font-medium text-fg-muted">
@@ -453,14 +721,20 @@ onBeforeUnmount(() => {
             </span>
 
             <div
-              v-if="imageData"
+              v-if="bannerPreview"
               class="relative overflow-hidden rounded-lg border border-line"
             >
               <img
-                :src="imageData"
+                :src="bannerPreview"
                 alt="Aperçu de la bannière"
                 class="aspect-video w-full object-cover"
               />
+              <span
+                v-if="bannerFromGame"
+                class="absolute left-2 top-2 rounded bg-black/60 px-2 py-0.5 text-[11px] text-white"
+              >
+                Jaquette de {{ selectedGame?.name }}
+              </span>
               <div
                 class="absolute inset-x-0 bottom-0 flex justify-end gap-2 bg-gradient-to-t from-black/75 to-transparent p-2"
               >
@@ -506,7 +780,10 @@ onBeforeUnmount(() => {
 
             <p v-if="imageError" class="mt-1 text-xs text-danger">{{ imageError }}</p>
             <p v-else class="mt-1 text-[11px] text-fg-faint">
-              Recadrée en 1280×720 et compressée automatiquement.
+              <template v-if="bannerFromGame">
+                Jaquette Steam du jeu sélectionné, ajoutée automatiquement.
+              </template>
+              <template v-else>Recadrée en 1280×720 et compressée automatiquement.</template>
             </p>
           </div>
 

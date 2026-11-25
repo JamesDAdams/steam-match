@@ -30,6 +30,8 @@ import eventsHandler from '../../lib/handlers/events.ts';
 import eventsCreateHandler from '../../lib/handlers/events-create.ts';
 import eventsDeleteHandler from '../../lib/handlers/events-delete.ts';
 import eventsChannelsHandler from '../../lib/handlers/events-channels.ts';
+import eventsGameSearchHandler from '../../lib/handlers/events-game-search.ts';
+import eventsGameInfoHandler from '../../lib/handlers/events-game-info.ts';
 
 interface Route {
   /** Méthodes acceptées. Vide = toutes. */
@@ -58,6 +60,8 @@ const ROUTES: Record<string, Route> = {
   '/events/create': { methods: ['POST'], module: eventsCreateHandler },
   '/events/delete': { methods: ['POST'], module: eventsDeleteHandler },
   '/events/channels': { methods: ['GET'], module: eventsChannelsHandler },
+  '/events/game-search': { methods: ['GET'], module: eventsGameSearchHandler },
+  '/events/game-info': { methods: ['GET'], module: eventsGameInfoHandler },
 };
 
 /**

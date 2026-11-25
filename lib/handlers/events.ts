@@ -3,7 +3,7 @@ import { discordEvents } from '../../db/schema.ts';
 import { desc } from 'drizzle-orm';
 import { requireAccess, requireAdmin } from '../access.ts';
 import { isBotConfigured, inviteUrl } from '../discord-bot.ts';
-import { syncDiscordEvents } from '../events-sync.ts';
+import { syncDiscordEvents, syncDiscordEventsIfStale } from '../events-sync.ts';
 
 /**
  * GET  /api/events  → événements à venir et passés (membres autorisés)
@@ -44,6 +44,15 @@ export default async function handler(req: any, res: any) {
   if (!ctx) return;
 
   try {
+    // Discord reste la source de vérité : on rafraîchit la base avant de lire,
+    // au plus une fois toutes les 45 s. Sans ça, un événement supprimé sur
+    // Discord continuait d'apparaître sur le site.
+    if (isBotConfigured()) {
+      await syncDiscordEventsIfStale().catch((err: any) => {
+        console.warn('[events] synchronisation de fond ignorée :', err?.message);
+      });
+    }
+
     const db = getDb();
     const now = new Date();
 

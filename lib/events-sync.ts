@@ -1,6 +1,6 @@
 import { getDb } from '../db/index.ts';
 import { discordEvents } from '../db/schema.ts';
-import { sql } from 'drizzle-orm';
+import { max, sql } from 'drizzle-orm';
 import { getScheduledEvents, eventCoverUrl, guildId } from './discord-bot.ts';
 import type { DiscordScheduledEvent } from './discord-bot.ts';
 
@@ -62,19 +62,79 @@ export async function syncDiscordEvents(): Promise<{
       });
   }
 
-  // Retire les événements supprimés côté Discord.
-  // Si Discord ne renvoie RIEN, on ne supprime rien : ça peut être un serveur
-  // sans événement, mais aussi une permission retirée par erreur.
-  if (events.length > 0) {
-    const keep = events.map((e) => e.id);
+  // Réconciliation : tout ce que Discord ne renvoie plus disparaît de la base.
+  //
+  // POURQUOI MÊME QUAND LA LISTE EST VIDE : une liste vide est une réponse
+  // valide (« il n'y a plus aucun événement »). L'ancien garde-fou
+  // `if (events.length > 0)` laissait donc les événements supprimés sur
+  // Discord affichés indéfiniment sur le site — le cas le plus fréquent,
+  // puisque le dernier événement supprimé est justement le dernier restant.
+  //
+  // Une erreur d'accès, elle, lève avant d'arriver ici (getScheduledEvents),
+  // donc on ne confond pas « plus rien » avec « je ne vois plus rien ».
+  const guild = guildId();
+  const keep = events.map((e) => e.id);
+
+  if (keep.length > 0) {
     await db.execute(sql`
       DELETE FROM discord_events
-      WHERE id NOT IN (${sql.join(
-        keep.map((id) => sql`${id}`),
-        sql`, `,
-      )})
+      WHERE guild_id = ${guild}
+        AND id NOT IN (${sql.join(
+          keep.map((id) => sql`${id}`),
+          sql`, `,
+        )})
+    `);
+  } else {
+    await db.execute(sql`
+      DELETE FROM discord_events
+      WHERE guild_id = ${guild}
     `);
   }
 
   return { synced: events.length, syncedAt: now, events };
+}
+
+/**
+ * Synchronisation « de fond » : rafraîchit la base au plus une fois par
+ * intervalle, sans bloquer ni ralentir les appels suivants.
+ *
+ * POURQUOI : sans elle, la page des événements ne lisait QUE la base. Un
+ * événement supprimé sur Discord restait donc affiché jusqu'à ce qu'un admin
+ * pense à cliquer « Synchroniser » — c'est exactement le bug constaté.
+ *
+ * Le garde-fou est double : un horodatage en mémoire (par instance) et le
+ * `synced_at` le plus récent en base, pour ne pas marteler l'API Discord quand
+ * plusieurs instances tournent.
+ */
+const AUTO_SYNC_MIN_INTERVAL_MS = 45_000;
+let lastAttemptAt = 0;
+
+export async function syncDiscordEventsIfStale(
+  minIntervalMs = AUTO_SYNC_MIN_INTERVAL_MS,
+): Promise<{ skipped: boolean; synced?: number }> {
+  const now = Date.now();
+  if (now - lastAttemptAt < minIntervalMs) return { skipped: true };
+
+  // Base déjà fraîche : inutile d'appeler Discord (cas d'une instance froide).
+  try {
+    const db = getDb();
+    const [row] = await db
+      .select({ at: max(discordEvents.syncedAt) })
+      .from(discordEvents);
+    if (row?.at && now - new Date(row.at).getTime() < minIntervalMs) {
+      lastAttemptAt = now;
+      return { skipped: true };
+    }
+  } catch {
+    /* lecture impossible : on tente la synchronisation, Discord tranchera */
+  }
+
+  lastAttemptAt = now;
+  try {
+    const { synced } = await syncDiscordEvents();
+    return { skipped: false, synced };
+  } catch (err) {
+    lastAttemptAt = 0; // échec : on réessaiera au prochain appel
+    throw err;
+  }
 }

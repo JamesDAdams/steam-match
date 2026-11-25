@@ -5,6 +5,7 @@ import {
   listEventChannels,
 } from '../discord-bot.ts';
 import { syncDiscordEvents } from '../events-sync.ts';
+import { gameBannerDataUri } from '../game-banner.ts';
 
 /**
  * POST /api/events/create — crée un événement programmé sur le serveur Discord.
@@ -80,6 +81,15 @@ export default async function handler(req: any, res: any) {
     image = body.image.trim();
   } else if (body.image != null && body.image !== '') {
     return res.status(400).json({ error: 'Bannière invalide.' });
+  }
+
+  // ── Bannière issue du jeu choisi ─────────────────────────────────────
+  // Le formulaire peut référencer un jeu de la bibliothèque : on récupère sa
+  // jaquette Steam et on l'encode ici. Le navigateur en serait incapable
+  // (canvas « tainted » sur une image d'un autre domaine).
+  const gameAppid = Number(body.gameAppid);
+  if (image === null && Number.isInteger(gameAppid) && gameAppid > 0) {
+    image = await gameBannerDataUri(gameAppid).catch(() => null);
   }
 
   // ── Dates ────────────────────────────────────────────────────────────
