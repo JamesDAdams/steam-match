@@ -40,14 +40,6 @@ const links = computed(() => {
 
 <template>
   <div class="flex min-h-screen flex-col">
-    <!-- Bandeau association -->
-    <div class="border-b border-line bg-app-elevated">
-      <div class="mx-auto flex max-w-6xl items-center gap-2 px-4 py-1.5 text-[11px] text-fg-muted">
-        <span class="inline-block h-1.5 w-1.5 rounded-full bg-ok"></span>
-        Communauté multigaming — événements, jeux partagés, découvertes
-      </div>
-    </div>
-
     <header
       class="sticky top-0 z-40 border-b border-line bg-app-bg/85 backdrop-blur-md"
     >
@@ -64,8 +56,8 @@ const links = computed(() => {
             </svg>
           </span>
           <span class="leading-tight">
-            <span class="block font-display text-base font-bold tracking-tight text-fg-strong">
-              Steam<span class="text-gold">Match</span>
+            <span class="block font-display text-base font-bold leading-tight tracking-tight text-fg-strong">
+              Le Bastion <span class="text-gold">des Gamers</span>
             </span>
             <span class="block text-[10px] uppercase tracking-[0.18em] text-fg-faint">
               Association gaming
@@ -194,7 +186,7 @@ const links = computed(() => {
         <div class="flex flex-wrap items-start justify-between gap-6">
           <div>
             <p class="font-display text-sm font-bold text-fg-strong">
-              Steam<span class="text-gold">Match</span>
+              Le Bastion <span class="text-gold">des Gamers</span>
             </p>
             <p class="mt-1 max-w-xs text-xs text-fg-muted">
               Association gaming — on rassemble les ludothèques pour trouver le
@@ -217,7 +209,7 @@ const links = computed(() => {
           </div>
         </div>
         <p class="mt-8 border-t border-line pt-4 text-[11px] text-fg-faint">
-          SteamMatch — projet associatif entre amis. Non affilié à Valve.
+          Le Bastion des Gamers — association gaming. Non affilié à Valve ni à Discord.
         </p>
       </div>
     </footer>
