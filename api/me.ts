@@ -126,6 +126,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const rows = await db
         .select({
           appid: ownedGames.appid,
+          source: ownedGames.source,
+          sourceSteamid: ownedGames.sourceSteamid,
           playtimeForever: ownedGames.playtimeForever,
           playtime2Weeks: ownedGames.playtime2Weeks,
           name: gameCache.name,
@@ -158,6 +160,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         genres: r.genres ?? [],
         tags: r.tags ?? [],
         enriched: Boolean(r.enrichedAt),
+        // Origine du jeu : « owned », « secondary » ou « family » — affiché
+        // comme étiquette dans la ludothèque.
+        source: r.source ?? 'owned',
+        sourceSteamid: r.sourceSteamid ?? null,
         playtime: r.playtimeForever ?? 0,
         playtime2Weeks: r.playtime2Weeks ?? 0,
         cheapestPrice: r.cheapestPrice ?? null,

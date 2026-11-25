@@ -72,8 +72,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         set: {
           playtimeForever: sql`excluded.playtime_forever`,
           playtime2Weeks: sql`excluded.playtime_2weeks`,
-          // Le jeu est désormais réellement possédé : il n'est plus « famille ».
+          // Le jeu est désormais réellement possédé : il n'est plus
+          // « secondaire » ni « famille », et n'est plus rattaché à un compte lié.
           source: sql`'owned'`,
+          sourceSteamid: sql`NULL`,
           updatedAt: now,
         },
       });

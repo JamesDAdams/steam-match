@@ -140,11 +140,51 @@ export const ownedGames = pgTable(
      * disparaîtraient à chaque sync puisque GetOwnedGames ne les renvoie pas.
      */
     source: text('source').notNull().default('owned'),
+    /**
+     * Compte Steam d'où vient le jeu quand `source` vaut 'secondary' ou
+     * 'family' : identifie le compte à re-synchroniser, et permet de retirer
+     * exactement ses jeux quand on le délie.
+     */
+    sourceSteamid: text('source_steamid'),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     pk: primaryKey({ columns: [t.steamid, t.appid] }),
     byApp: index('owned_games_app_idx').on(t.appid),
+  }),
+);
+
+/**
+ * Comptes Steam supplémentaires d'un membre.
+ *
+ * Un joueur peut avoir plusieurs comptes (un principal, un secondaire) ou
+ * profiter de la bibliothèque de sa famille Steam. Aucun de ces comptes n'est
+ * visible via `GetOwnedGames` du compte principal : on les déclare donc ici,
+ * puis on aspire leur ludothèque publique et on marque chaque jeu de son
+ * origine pour l'afficher dans la ludothèque.
+ *
+ * `kind` :
+ *   'secondary' → autre compte du même joueur
+ *   'family'    → compte d'un proche partageant sa bibliothèque (Steam Families)
+ */
+export const steamAccounts = pgTable(
+  'steam_accounts',
+  {
+    ownerSteamid: text('owner_steamid')
+      .notNull()
+      .references(() => users.steamid, { onDelete: 'cascade' }),
+    steamid: text('steamid').notNull(),
+    kind: text('kind').notNull().default('family'),
+    /** Pseudo Steam au moment de l'ajout, pour un affichage lisible. */
+    personaName: text('persona_name'),
+    avatarUrl: text('avatar_url'),
+    gamesCount: integer('games_count').notNull().default(0),
+    lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }),
+    lastError: text('last_error'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.ownerSteamid, t.steamid] }),
   }),
 );
 

@@ -92,6 +92,21 @@ const statements = [
      events_synced_at  timestamp with time zone
    )`,
 
+  // ── Comptes Steam supplémentaires (secondaire / famille) ───────────
+  `CREATE TABLE IF NOT EXISTS steam_accounts (
+     owner_steamid  text NOT NULL REFERENCES users(steamid) ON DELETE CASCADE,
+     steamid        text NOT NULL,
+     kind           text NOT NULL DEFAULT 'family',
+     persona_name   text,
+     avatar_url     text,
+     games_count    integer NOT NULL DEFAULT 0,
+     last_synced_at timestamp with time zone,
+     last_error     text,
+     created_at     timestamp with time zone NOT NULL DEFAULT now(),
+     PRIMARY KEY (owner_steamid, steamid)
+   )`,
+  `ALTER TABLE owned_games ADD COLUMN IF NOT EXISTS source_steamid text`,
+
   // ── Jeux partagés par la famille Steam ─────────────────────────────
   // GetOwnedGames ne renvoie jamais les jeux empruntés à un groupe familial :
   // ils sont donc ajoutés à la main et marqués, pour survivre aux synchros.

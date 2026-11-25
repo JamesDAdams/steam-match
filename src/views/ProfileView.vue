@@ -16,6 +16,9 @@ import { useAuth } from '../lib/auth';
 
 interface ProfileGame {
   appid: number;
+  /** 'owned' | 'secondary' | 'family' — origine du jeu. */
+  source?: string;
+  sourceSteamid?: string | null;
   name: string;
   headerImage: string | null;
   genres: string[];
@@ -74,70 +77,109 @@ const games = ref<ProfileGame[]>([]);
 const stats = ref<Stats | null>(null);
 const wishlist = ref<WishItem[]>([]);
 
-/* ── Jeux de la famille Steam ───────────────────────────────────────── */
+/* ── Comptes Steam liés (secondaire / famille) ──────────────────────── */
 
 /**
- * GetOwnedGames ne renvoie jamais les jeux empruntés à un groupe familial, et
- * l'API qui les expose exige un jeton de session navigateur (impossible côté
- * serveur). Le membre les déclare donc ici, à partir d'un lien Steam.
+ * Steam ne renvoie que les jeux achetés par le compte principal. Un joueur qui
+ * possède un second compte, ou qui profite de la bibliothèque de sa famille
+ * (Steam Families), déclare donc ces comptes ici : on aspire leur ludothèque
+ * publique et chaque jeu garde son origine pour être étiqueté.
  */
-interface FamilyGame {
-  appid: number;
-  name: string;
-  headerImage: string | null;
+interface LinkedAccount {
+  steamid: string;
+  kind: 'secondary' | 'family';
+  personaName: string | null;
+  avatarUrl: string | null;
+  gamesCount: number;
+  lastSyncedAt: string | null;
+  lastError: string | null;
+  profileUrl: string;
 }
 
-const familyGames = ref<FamilyGame[]>([]);
-const familyInput = ref('');
-const familyBusy = ref(false);
-const familyError = ref<string | null>(null);
-const familyMessage = ref<string | null>(null);
+const accounts = ref<LinkedAccount[]>([]);
+const maxAccounts = ref(5);
+const accountValue = ref('');
+const accountKind = ref<'family' | 'secondary'>('family');
+const accountBusy = ref<string | null>(null); // 'new' ou steamid en cours
+const accountError = ref<string | null>(null);
+const accountMessage = ref<string | null>(null);
 
-async function loadFamily() {
+function accountKindLabel(kind: 'family' | 'secondary') {
+  return kind === 'secondary' ? 'Compte secondaire' : 'Compte famille';
+}
+
+async function loadAccounts() {
   try {
-    const r = await apiGet<{ games: FamilyGame[] }>('/api/family');
-    familyGames.value = r.games ?? [];
+    const r = await apiGet<{ accounts: LinkedAccount[]; maxAccounts: number }>(
+      '/api/steam-accounts',
+    );
+    accounts.value = r.accounts ?? [];
+    maxAccounts.value = r.maxAccounts ?? 5;
   } catch {
     /* pas bloquant : le reste du profil s'affiche */
   }
 }
 
-async function addFamilyGame() {
-  familyError.value = null;
-  familyMessage.value = null;
-  const value = familyInput.value.trim();
-  if (!value || familyBusy.value) return;
+async function addAccount() {
+  accountError.value = null;
+  accountMessage.value = null;
+  const value = accountValue.value.trim();
+  if (!value || accountBusy.value) return;
 
-  familyBusy.value = true;
+  accountBusy.value = 'new';
   try {
-    const r = await apiPost<{ game: FamilyGame; already?: boolean }>('/api/family', { value });
-    familyInput.value = '';
-    if (r.already) {
-      familyMessage.value = 'Ce jeu est déjà dans ta liste.';
-    } else {
-      familyGames.value = [...familyGames.value, r.game].sort((a, b) =>
-        a.name.localeCompare(b.name, 'fr'),
-      );
-      familyMessage.value = `« ${r.game.name} » ajouté.`;
-    }
+    const r = await apiPost<{ account: LinkedAccount }>('/api/steam-accounts', {
+      value,
+      kind: accountKind.value,
+    });
+    accountValue.value = '';
+    accountMessage.value =
+      `« ${r.account.personaName ?? r.account.steamid} » ajouté — ` +
+      `${r.account.gamesCount} jeu(x) importé(s).`;
+    await Promise.all([loadAccounts(), load()]);
   } catch (e: any) {
-    familyError.value = e.message ?? 'Ajout impossible.';
+    accountError.value = e.message ?? 'Ajout impossible.';
+    await loadAccounts();
   } finally {
-    familyBusy.value = false;
+    accountBusy.value = null;
   }
 }
 
-async function removeFamilyGame(g: FamilyGame) {
-  familyError.value = null;
-  familyMessage.value = null;
+async function resyncAccount(a: LinkedAccount) {
+  accountError.value = null;
+  accountMessage.value = null;
+  accountBusy.value = a.steamid;
   try {
-    await apiDelete('/api/family', { appid: g.appid });
-    familyGames.value = familyGames.value.filter((x) => x.appid !== g.appid);
-    familyMessage.value = `« ${g.name} » retiré.`;
+    const r = await apiPost<{ gamesCount: number }>('/api/steam-accounts', {
+      steamid: a.steamid,
+    });
+    accountMessage.value = `${a.personaName ?? a.steamid} : ${r.gamesCount} jeu(x) importé(s).`;
+    await Promise.all([loadAccounts(), load()]);
   } catch (e: any) {
-    familyError.value = e.message ?? 'Retrait impossible.';
+    accountError.value = e.message ?? 'Synchronisation impossible.';
+    await loadAccounts();
+  } finally {
+    accountBusy.value = null;
   }
 }
+
+async function removeAccount(a: LinkedAccount) {
+  accountError.value = null;
+  accountMessage.value = null;
+  accountBusy.value = a.steamid;
+  try {
+    await apiDelete('/api/steam-accounts', { steamid: a.steamid });
+    accounts.value = accounts.value.filter((x) => x.steamid !== a.steamid);
+    accountMessage.value = `« ${a.personaName ?? a.steamid} » retiré.`;
+    await load();
+  } catch (e: any) {
+    accountError.value = e.message ?? 'Retrait impossible.';
+  } finally {
+    accountBusy.value = null;
+  }
+}
+
+
 const loading = ref(true);
 const error = ref<string | null>(null);
 const syncing = ref(false);
@@ -153,7 +195,7 @@ const selectedGenre = ref<string | null>(null);
  * Onglet actif : la ludothèque ou la wishlist.
  * Les deux listes empilées devenaient illisibles (177 + 293 entrées).
  */
-const tab = ref<'games' | 'wishlist' | 'family'>('games');
+const tab = ref<'games' | 'wishlist' | 'accounts'>('games');
 
 async function load(silent = false) {
   if (!silent) loading.value = true;
@@ -352,7 +394,7 @@ function startPump() {
 }
 
 onMounted(async () => {
-  await Promise.all([load(), loadFamily()]);
+  await Promise.all([load(), loadAccounts()]);
   if (unidentifiedCount.value > 0) {
     startPolling();
     startPump();
@@ -549,17 +591,17 @@ onUnmounted(() => {
 
         <button
           class="card-flat text-left transition hover:border-brand/50"
-          :class="tab === 'family' ? '!border-brand ring-1 ring-brand/30' : ''"
-          @click="tab = 'family'"
+          :class="tab === 'accounts' ? '!border-brand ring-1 ring-brand/30' : ''"
+          @click="tab = 'accounts'"
         >
           <div class="flex items-start justify-between gap-3">
             <div>
-              <p class="text-xs uppercase tracking-wide text-fg-faint">Famille Steam</p>
+              <p class="text-xs uppercase tracking-wide text-fg-faint">Mes comptes Steam</p>
               <p class="mt-1 font-display text-2xl font-bold text-fg-strong">
-                {{ familyGames.length }}
+                {{ accounts.length }}
               </p>
               <p class="mt-0.5 text-xs text-fg-muted">
-                {{ familyGames.length ? 'jeux empruntés à ta famille' : 'jeux partagés' }}
+                {{ accounts.length ? 'comptes secondaires ou famille' : 'secondaire ou famille' }}
               </p>
             </div>
             <span class="text-2xl">👪</span>
@@ -567,65 +609,159 @@ onUnmounted(() => {
         </button>
       </section>
 
-      <!-- Jeux de la famille Steam -->
-      <section v-if="tab === 'family'" class="card mb-6">
-        <h2 class="font-semibold text-fg-strong">Jeux de ma famille Steam</h2>
+      <!-- Comptes Steam liés -->
+      <section v-if="tab === 'accounts'" class="card mb-6">
+        <h2 class="font-semibold text-fg-strong">Mes comptes Steam</h2>
         <p class="mt-1 max-w-2xl text-sm text-fg-muted">
-          Steam ne transmet <strong class="text-fg">que les jeux achetés</strong> par un
-          compte : les jeux empruntés à un groupe familial (Steam Families) en sont
-          absents. Ajoute-les ici en collant leur lien Steam — ils compteront ensuite
-          dans les jeux en commun et les recommandations.
+          Steam ne transmet que les jeux <strong class="text-fg">achetés par ton compte
+          principal</strong>. Un second compte, ou la bibliothèque de ta famille (Steam
+          Families), reste invisible : déclare-les ici pour les faire entrer dans ta
+          ludothèque.
         </p>
 
-        <div class="mt-4 flex flex-wrap gap-2">
-          <input
-            v-model="familyInput"
-            type="text"
-            class="input min-w-[240px] flex-1"
-            placeholder="https://store.steampowered.com/app/892970/Valheim/"
-            @keydown.enter.prevent="addFamilyGame"
-          />
-          <button
-            class="btn-primary text-sm"
-            :disabled="familyBusy || !familyInput.trim()"
-            @click="addFamilyGame"
+        <!-- Compte principal -->
+        <div
+          v-if="me.steam"
+          class="mt-4 flex flex-wrap items-center gap-3 rounded-lg border border-line bg-app-elevated p-3"
+        >
+          <span class="badge bg-brand-soft text-brand">Compte principal</span>
+          <div class="min-w-0 flex-1">
+            <p class="truncate text-sm font-medium text-fg-strong">
+              {{ me.steam.personaName }}
+            </p>
+            <p class="text-[11px] text-fg-faint">
+              {{ me.steam.steamid }} · synchronisé automatiquement
+            </p>
+          </div>
+          <a
+            :href="`https://steamcommunity.com/profiles/${me.steam.steamid}`"
+            target="_blank"
+            rel="noopener"
+            class="text-xs text-brand hover:underline"
           >
-            {{ familyBusy ? 'Ajout…' : 'Ajouter' }}
-          </button>
+            Profil Steam ↗
+          </a>
         </div>
 
-        <p v-if="familyError" class="mt-2 text-xs text-danger">{{ familyError }}</p>
-        <p v-else-if="familyMessage" class="mt-2 text-xs text-ok">{{ familyMessage }}</p>
-
-        <ul v-if="familyGames.length" class="mt-4 space-y-2">
+        <!-- Comptes liés -->
+        <ul v-if="accounts.length" class="mt-3 space-y-2">
           <li
-            v-for="g in familyGames"
-            :key="g.appid"
-            class="flex items-center gap-3 rounded-lg border border-line bg-app-elevated p-2"
+            v-for="a in accounts"
+            :key="a.steamid"
+            class="flex flex-wrap items-center gap-3 rounded-lg border border-line bg-app-elevated p-3"
           >
             <img
-              v-if="g.headerImage"
-              :src="g.headerImage"
+              v-if="a.avatarUrl"
+              :src="a.avatarUrl"
               alt=""
-              class="h-10 w-20 shrink-0 rounded object-cover"
+              class="h-9 w-9 rounded object-cover"
               loading="lazy"
-              @error="hideBrokenImage"
             />
             <div class="min-w-0 flex-1">
-              <p class="truncate text-sm font-medium text-fg-strong">{{ g.name }}</p>
-              <p class="text-[11px] text-fg-faint">appid {{ g.appid }}</p>
+              <p class="flex flex-wrap items-center gap-2 text-sm font-medium text-fg-strong">
+                <span class="truncate">{{ a.personaName ?? a.steamid }}</span>
+                <span
+                  class="badge"
+                  :class="
+                    a.kind === 'secondary'
+                      ? 'bg-app-surface2 text-fg-muted'
+                      : 'bg-ok-soft text-ok'
+                  "
+                >
+                  {{ accountKindLabel(a.kind) }}
+                </span>
+              </p>
+              <p class="text-[11px] text-fg-faint">
+                {{ a.gamesCount }} jeu{{ a.gamesCount > 1 ? 'x' : '' }}
+                <template v-if="a.lastSyncedAt">
+                  · synchronisé le {{ new Date(a.lastSyncedAt).toLocaleString('fr-FR') }}
+                </template>
+              </p>
+              <p v-if="a.lastError" class="mt-1 text-[11px] text-danger">{{ a.lastError }}</p>
             </div>
-            <button
-              class="rounded px-2 py-1 text-xs text-danger transition hover:bg-danger-soft"
-              @click="removeFamilyGame(g)"
-            >
-              Retirer
-            </button>
+            <div class="flex items-center gap-1">
+              <button
+                class="rounded px-2 py-1 text-xs text-fg-muted transition hover:bg-app-surface2 hover:text-fg-strong"
+                :disabled="accountBusy === a.steamid"
+                @click="resyncAccount(a)"
+              >
+                {{ accountBusy === a.steamid ? '…' : 'Resynchroniser' }}
+              </button>
+              <button
+                class="rounded px-2 py-1 text-xs text-danger transition hover:bg-danger-soft"
+                :disabled="accountBusy === a.steamid"
+                @click="removeAccount(a)"
+              >
+                Retirer
+              </button>
+            </div>
           </li>
         </ul>
-        <p v-else class="mt-4 text-sm text-fg-faint">
-          Aucun jeu de famille ajouté pour l'instant.
+        <p v-else class="mt-3 text-sm text-fg-faint">
+          Aucun compte secondaire ou familial lié pour l'instant.
         </p>
+
+        <!-- Ajout -->
+        <div class="mt-5 rounded-lg border border-dashed border-line-strong p-3">
+          <p class="text-xs font-medium text-fg-muted">Ajouter un compte</p>
+
+          <div class="mt-2 flex flex-wrap gap-2">
+            <input
+              v-model="accountValue"
+              type="text"
+              class="input min-w-[240px] flex-1"
+              placeholder="Lien de profil Steam ou identifiant d’URL personnalisée"
+              @keydown.enter.prevent="addAccount"
+            />
+            <button
+              class="btn-primary text-sm"
+              :disabled="!!accountBusy || !accountValue.trim() || accounts.length >= maxAccounts"
+              @click="addAccount"
+            >
+              {{ accountBusy === 'new' ? 'Import…' : 'Ajouter' }}
+            </button>
+          </div>
+
+          <!-- Type de compte : le point clé de la demande -->
+          <div class="mt-3 grid gap-2 sm:grid-cols-2">
+            <button
+              type="button"
+              class="rounded-lg border px-3 py-2 text-left text-sm transition"
+              :class="
+                accountKind === 'family'
+                  ? 'border-brand bg-brand-soft text-fg-strong'
+                  : 'border-line bg-app-elevated text-fg-muted hover:border-line-strong'
+              "
+              @click="accountKind = 'family'"
+            >
+              <span class="block font-medium">Compte famille</span>
+              <span class="text-[11px] text-fg-faint">
+                Bibliothèque d’un proche (Steam Families)
+              </span>
+            </button>
+            <button
+              type="button"
+              class="rounded-lg border px-3 py-2 text-left text-sm transition"
+              :class="
+                accountKind === 'secondary'
+                  ? 'border-brand bg-brand-soft text-fg-strong'
+                  : 'border-line bg-app-elevated text-fg-muted hover:border-line-strong'
+              "
+              @click="accountKind = 'secondary'"
+            >
+              <span class="block font-medium">Compte secondaire</span>
+              <span class="text-[11px] text-fg-faint">Ton deuxième compte Steam</span>
+            </button>
+          </div>
+
+          <p class="mt-2 text-[11px] text-fg-faint">
+            Le profil Steam doit être <strong class="text-fg-muted">public</strong> et la
+            liste de jeux visible. {{ accounts.length }}/{{ maxAccounts }} comptes liés.
+          </p>
+        </div>
+
+        <p v-if="accountError" class="mt-3 text-xs text-danger">{{ accountError }}</p>
+        <p v-else-if="accountMessage" class="mt-3 text-xs text-ok">{{ accountMessage }}</p>
       </section>
 
       <!-- Ma wishlist -->
@@ -822,8 +958,22 @@ onUnmounted(() => {
           </div>
 
           <div class="min-w-0 flex-1">
-            <div class="flex items-baseline gap-2">
+            <div class="flex flex-wrap items-baseline gap-2">
               <p class="truncate text-sm font-medium text-fg-strong">{{ g.name }}</p>
+              <span
+                v-if="g.source === 'family'"
+                class="badge bg-ok-soft text-ok"
+                title="Provient de la bibliothèque d’un compte famille (Steam Families)"
+              >
+                Famille
+              </span>
+              <span
+                v-else-if="g.source === 'secondary'"
+                class="badge bg-app-surface2 text-fg-muted"
+                title="Provient de ton compte Steam secondaire"
+              >
+                Compte secondaire
+              </span>
               <span v-if="g.playtime2Weeks > 0" class="badge bg-ok-soft text-ok">
                 récent
               </span>
