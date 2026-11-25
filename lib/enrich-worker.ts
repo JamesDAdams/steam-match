@@ -272,6 +272,9 @@ async function enrichPrices(appid: number): Promise<boolean> {
             steamCurrency: steamPrice.currency,
             releaseDate: steamPrice.releaseDate,
             playModes: steamPrice.playModes,
+            // La jaquette était absente du cache : toutes les pages devaient
+            // reconstruire l'URL du CDN. On la stocke quand le Store la donne.
+            ...(steamPrice.headerImage ? { headerImage: steamPrice.headerImage } : {}),
           }
         : {}),
     })

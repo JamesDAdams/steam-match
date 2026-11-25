@@ -178,6 +178,44 @@ function accountBadgeClass(kind: 'main' | 'secondary' | 'family') {
   return 'bg-ok-soft text-ok';
 }
 
+/* ── Notifications Discord ──────────────────────────────────────────── */
+
+/**
+ * Le membre choisit lui-même d'être prévenu : personne n'est notifié sans
+ * l'avoir demandé. L'heure et le salon sont des réglages d'admin.
+ */
+const releaseReminders = ref(false);
+const notifBusy = ref(false);
+const notifMessage = ref<string | null>(null);
+
+async function loadNotifications() {
+  try {
+    const r = await apiGet<{ releaseReminders: boolean }>('/api/notifications');
+    releaseReminders.value = r.releaseReminders;
+  } catch {
+    /* section secondaire */
+  }
+}
+
+async function toggleReminders() {
+  notifBusy.value = true;
+  notifMessage.value = null;
+  const next = !releaseReminders.value;
+  try {
+    const r = await apiPost<{ releaseReminders: boolean }>('/api/notifications', {
+      releaseReminders: next,
+    });
+    releaseReminders.value = r.releaseReminders;
+    notifMessage.value = r.releaseReminders
+      ? 'Activé : tu seras mentionné le jour de la sortie.'
+      : 'Désactivé.';
+  } catch (e: any) {
+    notifMessage.value = e.message ?? 'Modification impossible.';
+  } finally {
+    notifBusy.value = false;
+  }
+}
+
 /* ── Chaîne Twitch ──────────────────────────────────────────────────── */
 
 /**
@@ -552,7 +590,7 @@ function startPump() {
 }
 
 onMounted(async () => {
-  await Promise.all([load(), loadAccounts(), loadTwitch()]);
+  await Promise.all([load(), loadAccounts(), loadTwitch(), loadNotifications()]);
   if (unidentifiedCount.value > 0 || enrichProgress.value.pending > 0) {
     startPolling();
     if (unidentifiedCount.value > 0) startPump();
@@ -1039,6 +1077,30 @@ onUnmounted(() => {
 
         <p v-if="twitchError" class="mt-2 text-xs text-danger">{{ twitchError }}</p>
         <p v-else-if="twitchMessage" class="mt-2 text-xs text-ok">{{ twitchMessage }}</p>
+
+        <hr class="my-5 border-line" />
+
+        <h3 class="font-semibold text-fg-strong">Rappels de sortie</h3>
+        <p class="mt-1 max-w-2xl text-sm text-fg-muted">
+          Sois mentionné sur Discord le jour où un jeu de ta wishlist sort, dans le
+          salon des sorties du serveur.
+        </p>
+
+        <button
+          type="button"
+          class="mt-3 flex w-full max-w-md items-center justify-between rounded-lg border border-line px-3 py-2 text-left text-sm transition hover:border-line-strong disabled:opacity-50"
+          :disabled="notifBusy"
+          @click="toggleReminders"
+        >
+          <span class="text-fg">Prévenu le jour de la sortie</span>
+          <span
+            class="badge"
+            :class="releaseReminders ? 'bg-ok-soft text-ok' : 'bg-app-surface2 text-fg-muted'"
+          >
+            {{ releaseReminders ? 'ON' : 'OFF' }}
+          </span>
+        </button>
+        <p v-if="notifMessage" class="mt-2 text-xs text-fg-muted">{{ notifMessage }}</p>
       </section>
 
       <!-- Ma wishlist -->

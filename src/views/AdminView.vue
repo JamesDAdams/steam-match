@@ -64,9 +64,14 @@ interface SteamSettings {
   steamSyncIntervalHours: number;
   lastSteamSyncAt: string | null;
   lastSteamSyncResult: string | null;
+  releaseNotifyEnabled: boolean;
+  releaseNotifyHour: number;
+  releaseChannelId: string | null;
+  lastReleaseNotifyAt: string | null;
 }
 
 const steamSettings = ref<SteamSettings | null>(null);
+const discordChannels = ref<{ id: string; name: string }[]>([]);
 const steamAccountsCount = ref<{ main: number; linked: number }>({ main: 0, linked: 0 });
 const steamSaving = ref(false);
 const steamRunning = ref(false);
@@ -80,9 +85,11 @@ async function loadSteamSettings() {
     const r = await apiGet<{
       settings: SteamSettings;
       accounts: { main: number; linked: number };
+      channels?: { id: string; name: string }[];
     }>('/api/admin/settings');
     steamSettings.value = r.settings;
     steamAccountsCount.value = r.accounts ?? { main: 0, linked: 0 };
+    discordChannels.value = r.channels ?? [];
   } catch {
     /* section secondaire : on n'empêche pas l'admin de travailler */
   }
@@ -100,6 +107,54 @@ async function saveSteamSettings(patch: { enabled?: boolean; intervalHours?: num
     error.value = e.message;
   } finally {
     steamSaving.value = false;
+  }
+}
+
+/* ── Rappels Discord des sorties ───────────────────────────────────── */
+
+const releaseSaving = ref(false);
+const releaseRunning = ref(false);
+const releaseMessage = ref<string | null>(null);
+
+const HOURS = Array.from({ length: 24 }, (_, i) => i);
+
+async function saveRelease(patch: {
+  releaseNotifyEnabled?: boolean;
+  releaseNotifyHour?: number;
+  releaseChannelId?: string | null;
+}) {
+  releaseSaving.value = true;
+  releaseMessage.value = null;
+  error.value = null;
+  try {
+    const r = await apiPost<{ settings: SteamSettings & any }>('/api/admin/settings', patch);
+    steamSettings.value = r.settings as any;
+    releaseMessage.value = 'Réglage enregistré.';
+  } catch (e: any) {
+    error.value = e.message;
+  } finally {
+    releaseSaving.value = false;
+  }
+}
+
+async function runReleaseNow() {
+  releaseRunning.value = true;
+  releaseMessage.value = null;
+  error.value = null;
+  try {
+    const r = await apiPost<{
+      report: { games: number; members: number; sent: number; skipped?: string; errors: string[] };
+    }>('/api/admin/settings', { action: 'run-releases' });
+    const rep = r.report;
+    releaseMessage.value = rep.skipped
+      ? `Rien envoyé (${rep.skipped}).`
+      : `${rep.games} sortie(s), ${rep.members} membre(s) concerné(s), ${rep.sent} message(s) envoyé(s)` +
+        (rep.errors.length ? ` — ${rep.errors[0]}` : '.');
+    await loadSteamSettings();
+  } catch (e: any) {
+    error.value = e.message;
+  } finally {
+    releaseRunning.value = false;
   }
 }
 
@@ -345,6 +400,97 @@ onMounted(load);
       </div>
 
       <p v-if="steamMessage" class="mt-2 text-xs text-ok">{{ steamMessage }}</p>
+    </section>
+
+    <!-- Rappels de sortie Discord -->
+    <section class="card mb-6">
+      <h2 class="font-semibold text-fg-strong">Rappels de sortie (Discord)</h2>
+      <p class="mt-1 max-w-2xl text-xs text-fg-faint">
+        Chaque jour à l'heure choisie, le site mentionne les membres qui l'ont
+        demandé quand un jeu de leur wishlist sort. Un seul message par membre,
+        même si plusieurs jeux sortent le même jour.
+      </p>
+
+      <div class="mt-4 grid gap-3 sm:grid-cols-3">
+        <div>
+          <span class="mb-1 block text-xs font-medium text-fg-muted">Envoi</span>
+          <button
+            type="button"
+            class="flex w-full items-center justify-between rounded-lg border border-line px-3 py-2 text-left text-sm transition hover:border-line-strong disabled:opacity-50"
+            :disabled="releaseSaving || !steamSettings"
+            @click="saveRelease({ releaseNotifyEnabled: !steamSettings?.releaseNotifyEnabled })"
+          >
+            <span class="text-fg">
+              {{ steamSettings?.releaseNotifyEnabled ? 'Activé' : 'Désactivé' }}
+            </span>
+            <span
+              class="badge"
+              :class="
+                steamSettings?.releaseNotifyEnabled
+                  ? 'bg-ok-soft text-ok'
+                  : 'bg-app-surface2 text-fg-muted'
+              "
+            >
+              {{ steamSettings?.releaseNotifyEnabled ? 'ON' : 'OFF' }}
+            </span>
+          </button>
+        </div>
+
+        <div>
+          <label for="release-hour" class="mb-1 block text-xs font-medium text-fg-muted">
+            Heure (Paris)
+          </label>
+          <select
+            id="release-hour"
+            class="input"
+            :disabled="releaseSaving || !steamSettings"
+            :value="steamSettings?.releaseNotifyHour ?? 6"
+            @change="
+              saveRelease({
+                releaseNotifyHour: Number(($event.target as HTMLSelectElement).value),
+              })
+            "
+          >
+            <option v-for="h in HOURS" :key="h" :value="h">
+              {{ String(h).padStart(2, '0') }}:00
+            </option>
+          </select>
+        </div>
+
+        <div>
+          <label for="release-channel" class="mb-1 block text-xs font-medium text-fg-muted">
+            Salon Discord
+          </label>
+          <select
+            id="release-channel"
+            class="input"
+            :disabled="releaseSaving"
+            :value="steamSettings?.releaseChannelId ?? ''"
+            @change="
+              saveRelease({
+                releaseChannelId: ($event.target as HTMLSelectElement).value || null,
+              })
+            "
+          >
+            <option value="">Automatique (salon « games »)</option>
+            <option v-for="c in discordChannels" :key="c.id" :value="c.id">
+              {{ c.name }}
+            </option>
+          </select>
+        </div>
+      </div>
+
+      <div class="mt-4 flex flex-wrap items-center gap-3">
+        <button class="btn-ghost text-sm" :disabled="releaseRunning" @click="runReleaseNow">
+          {{ releaseRunning ? 'Envoi…' : 'Envoyer maintenant' }}
+        </button>
+        <span v-if="steamSettings?.lastReleaseNotifyAt" class="text-xs text-fg-faint">
+          Dernier envoi :
+          {{ new Date(steamSettings.lastReleaseNotifyAt).toLocaleString('fr-FR') }}
+        </span>
+      </div>
+
+      <p v-if="releaseMessage" class="mt-2 text-xs text-ok">{{ releaseMessage }}</p>
     </section>
 
     <!-- Ajout -->

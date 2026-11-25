@@ -27,8 +27,9 @@ interface Release {
 const loading = ref(true);
 const error = ref<string | null>(null);
 const upcoming = ref<Release[]>([]);
-const undated = ref<Release[]>([]);
 const recent = ref<Release[]>([]);
+const later = ref<Release[]>([]);
+const undated = ref<Release[]>([]);
 
 function when(entry: Release): string {
   if (entry.daysUntil === null) return entry.releaseDate;
@@ -46,12 +47,16 @@ function when(entry: Release): string {
 async function load() {
   loading.value = true;
   try {
-    const r = await apiGet<{ upcoming: Release[]; undated: Release[]; recent: Release[] }>(
-      '/api/releases',
-    );
+    const r = await apiGet<{
+      upcoming: Release[];
+      recent: Release[];
+      later: Release[];
+      undated: Release[];
+    }>('/api/releases');
     upcoming.value = r.upcoming ?? [];
-    undated.value = r.undated ?? [];
     recent.value = r.recent ?? [];
+    later.value = r.later ?? [];
+    undated.value = r.undated ?? [];
     error.value = null;
   } catch (e: any) {
     error.value = e.message;
@@ -85,7 +90,7 @@ onMounted(load);
       <!-- À venir -->
       <section class="mb-10">
         <div class="mb-3 flex items-center gap-2">
-          <h2 class="font-display text-lg font-semibold text-fg-strong">À venir</h2>
+          <h2 class="font-display text-lg font-semibold text-fg-strong">Dans les 30 prochains jours</h2>
           <span class="badge bg-brand-soft text-brand">{{ upcoming.length }}</span>
         </div>
 
@@ -134,14 +139,14 @@ onMounted(load);
           </a>
         </div>
         <div v-else class="card py-8 text-center text-fg-muted">
-          Aucune sortie datée dans les wishlists pour l'instant.
+          Aucune sortie prévue dans les 30 prochains jours.
         </div>
       </section>
 
       <!-- Sorties récentes -->
       <section v-if="recent.length" class="mb-10">
         <div class="mb-3 flex items-center gap-2">
-          <h2 class="font-display text-lg font-semibold text-fg-strong">Sortis récemment</h2>
+          <h2 class="font-display text-lg font-semibold text-fg-strong">Sortis ces 3 derniers mois</h2>
           <span class="badge bg-app-surface2 text-fg-muted">{{ recent.length }}</span>
         </div>
 
@@ -182,6 +187,37 @@ onMounted(load);
         </div>
       </section>
 
+      <!-- Plus tard -->
+      <section v-if="later.length" class="mb-10">
+        <div class="mb-3 flex items-center gap-2">
+          <h2 class="font-display text-lg font-semibold text-fg-strong">Plus tard</h2>
+          <span class="badge bg-app-surface2 text-fg-muted">{{ later.length }}</span>
+        </div>
+
+        <ul class="card divide-y divide-line p-0">
+          <li v-for="e in later" :key="e.appid" class="flex items-center gap-3 px-3 py-2">
+            <img
+              v-if="e.headerImage"
+              :src="e.headerImage"
+              alt=""
+              class="h-8 w-16 shrink-0 rounded object-cover"
+              loading="lazy"
+              @error="hideBrokenImage"
+            />
+            <span class="min-w-0 flex-1 truncate text-sm text-fg">{{ e.name }}</span>
+            <span class="shrink-0 text-[11px] text-fg-faint">{{ e.releaseDate }}</span>
+            <a
+              :href="steamStoreUrl(e.appid)"
+              target="_blank"
+              rel="noopener"
+              class="shrink-0 text-xs text-brand hover:underline"
+            >
+              ↗
+            </a>
+          </li>
+        </ul>
+      </section>
+
       <!-- Sans date -->
       <section v-if="undated.length">
         <div class="mb-3 flex items-center gap-2">
@@ -217,7 +253,10 @@ onMounted(load);
         </ul>
       </section>
 
-      <div v-if="!upcoming.length && !recent.length && !undated.length" class="card py-12 text-center">
+      <div
+        v-if="!upcoming.length && !recent.length && !later.length && !undated.length"
+        class="card py-12 text-center"
+      >
         <p class="text-lg font-semibold text-fg-strong">Rien à afficher</p>
         <p class="mx-auto mt-2 max-w-md text-sm text-fg-muted">
           Le calendrier se remplit avec les wishlists des membres. Synchronise la

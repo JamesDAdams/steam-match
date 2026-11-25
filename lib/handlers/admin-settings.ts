@@ -6,6 +6,8 @@ import {
   STEAM_SYNC_MIN_HOURS,
 } from '../settings.ts';
 import { countTrackedAccounts, runSteamSync } from '../steam-sync-worker.ts';
+import { runReleaseNotifications, todayInParis } from '../release-notifier.ts';
+import { listTextChannels } from '../discord-bot.ts';
 
 /**
  * /api/admin/settings — réglages de la synchronisation Steam.
@@ -25,17 +27,30 @@ export default async function handler(req: any, res: any) {
 
   try {
     if (method === 'GET') {
-      const [settings, counts] = await Promise.all([getSettings(), countTrackedAccounts()]);
+      const [settings, counts, channels] = await Promise.all([
+        getSettings(),
+        countTrackedAccounts(),
+        listTextChannels().catch(() => []),
+      ]);
       return res.status(200).json({
         ok: true,
         settings,
         accounts: counts,
         bounds: { min: STEAM_SYNC_MIN_HOURS, max: STEAM_SYNC_MAX_HOURS },
+        today: todayInParis(),
+        // Sélecteur de salon dans l'admin : plus simple qu'un identifiant à
+        // recopier, et évite les erreurs de frappe.
+        channels,
       });
     }
 
     if (method === 'POST') {
       const body = (req.body ?? {}) as Record<string, unknown>;
+
+      if (body.action === 'run-releases') {
+        const report = await runReleaseNotifications({ force: true });
+        return res.status(200).json({ ok: true, report });
+      }
 
       if (body.action === 'run') {
         const report = await runSteamSync({ budgetMs: 8_000 });
@@ -49,7 +64,31 @@ export default async function handler(req: any, res: any) {
         return res.status(200).json({ ok: true, report });
       }
 
-      const patch: { steamSyncEnabled?: boolean; steamSyncIntervalHours?: number } = {};
+      const patch: {
+        steamSyncEnabled?: boolean;
+        steamSyncIntervalHours?: number;
+        releaseNotifyEnabled?: boolean;
+        releaseNotifyHour?: number;
+        releaseChannelId?: string | null;
+      } = {};
+
+      if (typeof body.releaseNotifyEnabled === 'boolean') {
+        patch.releaseNotifyEnabled = body.releaseNotifyEnabled;
+      }
+      if (body.releaseNotifyHour !== undefined && body.releaseNotifyHour !== null) {
+        const hour = Number(body.releaseNotifyHour);
+        if (!Number.isInteger(hour) || hour < 0 || hour > 23) {
+          return res.status(400).json({ error: 'Heure invalide (0 à 23).' });
+        }
+        patch.releaseNotifyHour = hour;
+      }
+      if (body.releaseChannelId !== undefined) {
+        const raw = String(body.releaseChannelId ?? '').trim();
+        if (raw && !/^\d{17,20}$/.test(raw)) {
+          return res.status(400).json({ error: 'Identifiant de salon Discord invalide.' });
+        }
+        patch.releaseChannelId = raw || null;
+      }
 
       if (typeof body.enabled === 'boolean') {
         patch.steamSyncEnabled = body.enabled;

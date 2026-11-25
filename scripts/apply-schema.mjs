@@ -92,6 +92,25 @@ const statements = [
      events_synced_at  timestamp with time zone
    )`,
 
+  // ── Notifications (rappels de sortie) ──────────────────────────────
+  `CREATE TABLE IF NOT EXISTS notification_prefs (
+     discord_id        text PRIMARY KEY NOT NULL
+       REFERENCES discord_users(discord_id) ON DELETE CASCADE,
+     release_reminders boolean NOT NULL DEFAULT false,
+     updated_at        timestamp with time zone NOT NULL DEFAULT now()
+   )`,
+  `CREATE TABLE IF NOT EXISTS release_notifications (
+     appid        integer NOT NULL,
+     discord_id   text NOT NULL,
+     release_date text NOT NULL,
+     sent_at      timestamp with time zone NOT NULL DEFAULT now(),
+     PRIMARY KEY (appid, discord_id, release_date)
+   )`,
+  `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS release_notify_enabled boolean NOT NULL DEFAULT false`,
+  `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS release_notify_hour integer NOT NULL DEFAULT 6`,
+  `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS release_channel_id text`,
+  `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS last_release_notify_at timestamp with time zone`,
+
   // ── Chaînes Twitch des membres ─────────────────────────────────────
   `CREATE TABLE IF NOT EXISTS twitch_links (
      discord_id   text PRIMARY KEY NOT NULL

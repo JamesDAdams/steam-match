@@ -330,6 +330,40 @@ export const gameCache = pgTable(
 );
 
 /**
+ * Préférences de notification d'un membre.
+ *
+ * Aujourd'hui : les rappels de sortie (« ce jeu de ta wishlist sort
+ * aujourd'hui »), envoyés dans un salon Discord à l'heure configurée.
+ */
+export const notificationPrefs = pgTable('notification_prefs', {
+  discordId: text('discord_id')
+    .primaryKey()
+    .references(() => discordUsers.discordId, { onDelete: 'cascade' }),
+  releaseReminders: boolean('release_reminders').notNull().default(false),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * Rappels déjà envoyés.
+ *
+ * La clé (appid, membre, jour) rend l'envoi idempotent : si le batch tourne
+ * deux fois, personne ne reçoit deux fois la même annonce.
+ */
+export const releaseNotifications = pgTable(
+  'release_notifications',
+  {
+    appid: integer('appid').notNull(),
+    discordId: text('discord_id').notNull(),
+    /** Jour concerné (YYYY-MM-DD). */
+    releaseDate: text('release_date').notNull(),
+    sentAt: timestamp('sent_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.appid, t.discordId, t.releaseDate] }),
+  }),
+);
+
+/**
  * Chaîne Twitch d'un membre.
  *
  * Le live n'est pas stocké : il change trop vite. On garde seulement le lien,
@@ -362,6 +396,14 @@ export const appSettings = pgTable('app_settings', {
   lastSteamSyncAt: timestamp('last_steam_sync_at', { withTimezone: true }),
   /** Résumé lisible du dernier passage (comptes traités, erreurs). */
   lastSteamSyncResult: text('last_steam_sync_result'),
+
+  /** Rappels Discord des sorties de jeux. */
+  releaseNotifyEnabled: boolean('release_notify_enabled').notNull().default(false),
+  /** Heure d'envoi (0-23, heure de Paris). */
+  releaseNotifyHour: integer('release_notify_hour').notNull().default(6),
+  /** Salon Discord cible ; vide = recherche du salon nommé « games ». */
+  releaseChannelId: text('release_channel_id'),
+  lastReleaseNotifyAt: timestamp('last_release_notify_at', { withTimezone: true }),
 });
 
 /**

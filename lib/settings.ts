@@ -13,6 +13,13 @@ export interface AppSettings {
   steamSyncIntervalHours: number;
   lastSteamSyncAt: Date | null;
   lastSteamSyncResult: string | null;
+  /** Rappels Discord des sorties. */
+  releaseNotifyEnabled: boolean;
+  /** Heure d'envoi, 0-23 (heure de Paris). */
+  releaseNotifyHour: number;
+  /** Salon cible ; null = chercher le salon nommé « games ». */
+  releaseChannelId: string | null;
+  lastReleaseNotifyAt: Date | null;
 }
 
 const ROW_ID = 'app';
@@ -26,6 +33,10 @@ const DEFAULTS: AppSettings = {
   steamSyncIntervalHours: 1,
   lastSteamSyncAt: null,
   lastSteamSyncResult: null,
+  releaseNotifyEnabled: false,
+  releaseNotifyHour: 6,
+  releaseChannelId: null,
+  lastReleaseNotifyAt: null,
 };
 
 export async function getSettings(): Promise<AppSettings> {
@@ -47,11 +58,27 @@ export async function getSettings(): Promise<AppSettings> {
     steamSyncIntervalHours: row.steamSyncIntervalHours,
     lastSteamSyncAt: row.lastSteamSyncAt ?? null,
     lastSteamSyncResult: row.lastSteamSyncResult ?? null,
+    releaseNotifyEnabled: row.releaseNotifyEnabled,
+    releaseNotifyHour: row.releaseNotifyHour,
+    releaseChannelId: row.releaseChannelId ?? null,
+    lastReleaseNotifyAt: row.lastReleaseNotifyAt ?? null,
   };
 }
 
 export async function updateSettings(
-  patch: Partial<Pick<AppSettings, 'steamSyncEnabled' | 'steamSyncIntervalHours' | 'lastSteamSyncAt' | 'lastSteamSyncResult'>>,
+  patch: Partial<
+    Pick<
+      AppSettings,
+      | 'steamSyncEnabled'
+      | 'steamSyncIntervalHours'
+      | 'lastSteamSyncAt'
+      | 'lastSteamSyncResult'
+      | 'releaseNotifyEnabled'
+      | 'releaseNotifyHour'
+      | 'releaseChannelId'
+      | 'lastReleaseNotifyAt'
+    >
+  >,
 ): Promise<AppSettings> {
   const db = getDb();
 
@@ -61,6 +88,10 @@ export async function updateSettings(
       STEAM_SYNC_MAX_HOURS,
       Math.max(STEAM_SYNC_MIN_HOURS, Math.round(clamped.steamSyncIntervalHours)),
     );
+  }
+
+  if (typeof clamped.releaseNotifyHour === 'number') {
+    clamped.releaseNotifyHour = Math.min(23, Math.max(0, Math.round(clamped.releaseNotifyHour)));
   }
 
   await db

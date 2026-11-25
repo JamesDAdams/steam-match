@@ -152,6 +152,8 @@ export interface SteamPrice {
   currency: string;
   /** Date de sortie telle qu'affichée par Steam (ex. « 24 févr. 2022 »). */
   releaseDate: string | null;
+  /** Jaquette du jeu, quand le Store la renvoie. */
+  headerImage?: string | null;
   /** Modes de jeu lisibles : Solo, Multijoueur, Coopération… */
   playModes: string[];
 }
@@ -198,7 +200,7 @@ export async function fetchSteamPrice(appid: number): Promise<SteamPrice | null>
   try {
     const res = await rateLimitedFetch(
       `https://store.steampowered.com/api/appdetails?appids=${appid}` +
-        `&filters=price_overview,release_date,categories&cc=fr&l=french`,
+        `&filters=basic,price_overview,release_date,categories&cc=fr&l=french`,
       { signal: AbortSignal.timeout(5000) },
     );
     if (res.status === 429 || !res.ok) return null;
@@ -222,6 +224,7 @@ export async function fetchSteamPrice(appid: number): Promise<SteamPrice | null>
         discountPercent: 0,
         currency: 'EUR',
         releaseDate,
+        headerImage: data.header_image ?? null,
         playModes,
       };
     }
@@ -232,6 +235,7 @@ export async function fetchSteamPrice(appid: number): Promise<SteamPrice | null>
       discountPercent: Number(p.discount_percent ?? 0),
       currency: String(p.currency ?? 'EUR'),
       releaseDate,
+      headerImage: data.header_image ?? null,
       playModes,
     };
   } catch {

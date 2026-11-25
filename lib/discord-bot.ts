@@ -207,6 +207,84 @@ export async function listEventChannels(): Promise<DiscordChannel[]> {
  * Récupère tous les événements programmés du serveur.
  * `with_user_count=true` donne le nombre de personnes intéressées.
  */
+/** Salons où le bot peut écrire (texte et annonces). */
+export interface TextChannel {
+  id: string;
+  name: string;
+}
+
+/** Liste des salons texte du serveur (pour un sélecteur côté admin). */
+export async function listTextChannels(): Promise<TextChannel[]> {
+  const res = await discordFetch(`/guilds/${guildId()}/channels`);
+  if (!res.ok) return [];
+
+  const channels = (await res.json()) as { id: string; name: string; type: number; position?: number }[];
+  if (!Array.isArray(channels)) return [];
+
+  return channels
+    .filter((c) => c.type === 0 || c.type === 5)
+    .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+    .map((c) => ({ id: c.id, name: c.name }));
+}
+
+/**
+ * Cherche un salon par son nom.
+ *
+ * Les salons du serveur sont préfixés d'émojis (« 🎮games ») : on compare donc
+ * les noms une fois réduits aux lettres et chiffres, sinon « games » ne
+ * correspondrait jamais.
+ */
+export async function findGuildChannelByName(
+  name: string,
+): Promise<{ id: string; name: string } | null> {
+  const channels = await listTextChannels();
+  if (channels.length === 0) return null;
+
+  const normalize = (v: string) => v.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const target = normalize(name);
+  if (!target) return null;
+
+  const found =
+    channels.find((c) => normalize(c.name) === target) ??
+    channels.find((c) => normalize(c.name).endsWith(target));
+
+  return found ? { id: found.id, name: found.name } : null;
+}
+
+/** Poste un message dans un salon et renvoie son identifiant. */
+export async function sendChannelMessage(
+  channelId: string,
+  content: string,
+): Promise<string> {
+  const res = await discordFetch(`/channels/${channelId}/messages`, {
+    method: 'POST',
+    body: JSON.stringify({
+      content,
+      // Pas de ping massif : on mentionne des personnes précises uniquement.
+      allowed_mentions: { parse: [], users: [...content.matchAll(/<(?:@!?|@)(\d{17,20})>/g)].map((m) => m[1]) },
+    }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`Discord a refusé le message (HTTP ${res.status}) ${body.slice(0, 120)}`);
+  }
+
+  const message = (await res.json()) as { id?: string };
+  return message.id ?? '';
+}
+
+/** Supprime un message (utilisé par les tests de configuration). */
+export async function deleteChannelMessage(
+  channelId: string,
+  messageId: string,
+): Promise<boolean> {
+  const res = await discordFetch(`/channels/${channelId}/messages/${messageId}`, {
+    method: 'DELETE',
+  });
+  return res.ok;
+}
+
 /** Personne ayant coché « Intéressé » sur un événement. */
 export interface EventInterestedUser {
   id: string;

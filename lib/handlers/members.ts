@@ -185,7 +185,9 @@ export default async function handler(req: any, res: any) {
         games = rows.map((r) => ({
           appid: r.appid,
           name: r.name ?? `App ${r.appid}`,
-          headerImage: r.headerImage ?? null,
+          headerImage:
+            r.headerImage ??
+            `https://cdn.cloudflare.steamstatic.com/steam/apps/${r.appid}/header.jpg`,
           genres: r.genres ?? [],
           enriched: Boolean(r.enrichedAt),
           source: r.source ?? 'owned',

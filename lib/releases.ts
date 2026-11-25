@@ -103,8 +103,9 @@ export function parseReleaseDate(raw: string | null | undefined): ParsedRelease 
   return { date: null, upcoming: true, label };
 }
 
-/** Fenêtre des sorties « récentes » affichées. */
-const RECENT_DAYS = 60;
+/** Fenêtres affichées : prochains 30 jours, sorties des 90 derniers jours. */
+const UPCOMING_DAYS = 30;
+const RECENT_DAYS = 90;
 
 export interface ReleaseEntry {
   appid: number;
@@ -123,9 +124,14 @@ export interface ReleaseEntry {
 }
 
 export interface ReleaseCalendar {
+  /** Sorties dans les 30 prochains jours. */
   upcoming: ReleaseEntry[];
-  undated: ReleaseEntry[];
+  /** Sorties des 90 derniers jours. */
   recent: ReleaseEntry[];
+  /** Datées mais au-delà de 30 jours. */
+  later: ReleaseEntry[];
+  /** Annoncées sans date ferme. */
+  undated: ReleaseEntry[];
 }
 
 export async function getReleaseCalendar(): Promise<ReleaseCalendar> {
@@ -152,8 +158,9 @@ export async function getReleaseCalendar(): Promise<ReleaseCalendar> {
   const todayUtc = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
 
   const upcoming: ReleaseEntry[] = [];
-  const undated: ReleaseEntry[] = [];
   const recent: ReleaseEntry[] = [];
+  const later: ReleaseEntry[] = [];
+  const undated: ReleaseEntry[] = [];
 
   for (const raw of rows.rows ?? rows) {
     const parsed = parseReleaseDate(raw.release_date as string);
@@ -162,7 +169,11 @@ export async function getReleaseCalendar(): Promise<ReleaseCalendar> {
     const entry: ReleaseEntry = {
       appid: Number(raw.appid),
       name: String(raw.name),
-      headerImage: (raw.header_image as string) ?? null,
+      // Repli déterministe : la jaquette d'un jeu Steam est toujours au même
+      // endroit sur le CDN, inutile d'afficher une carte vide.
+      headerImage:
+        (raw.header_image as string) ??
+        `https://cdn.cloudflare.steamstatic.com/steam/apps/${Number(raw.appid)}/header.jpg`,
       releaseDate: parsed.label,
       dateIso: parsed.date ? parsed.date.toISOString().slice(0, 10) : null,
       upcoming: parsed.upcoming,
@@ -178,12 +189,14 @@ export async function getReleaseCalendar(): Promise<ReleaseCalendar> {
 
     if (parsed.date) {
       const diff = entry.daysUntil ?? 0;
-      if (diff > 0) {
+      if (diff > 0 && diff <= UPCOMING_DAYS) {
         upcoming.push(entry);
+      } else if (diff > UPCOMING_DAYS) {
+        later.push(entry);
       } else if (diff >= -RECENT_DAYS) {
         recent.push(entry);
       }
-      // Plus vieux que la fenêtre : on ignore (ce n'est plus une sortie).
+      // Plus vieux que 90 jours : on ignore (ce n'est plus une sortie).
     } else if (parsed.upcoming) {
       undated.push(entry);
     }
@@ -194,8 +207,13 @@ export async function getReleaseCalendar(): Promise<ReleaseCalendar> {
       (a.daysUntil ?? Number.MAX_SAFE_INTEGER) - (b.daysUntil ?? Number.MAX_SAFE_INTEGER) ||
       b.wishCount - a.wishCount,
   );
+  later.sort(
+    (a, b) =>
+      (a.daysUntil ?? Number.MAX_SAFE_INTEGER) - (b.daysUntil ?? Number.MAX_SAFE_INTEGER) ||
+      b.wishCount - a.wishCount,
+  );
   undated.sort((a, b) => b.wishCount - a.wishCount || a.name.localeCompare(b.name, 'fr'));
   recent.sort((a, b) => (b.daysUntil ?? 0) - (a.daysUntil ?? 0));
 
-  return { upcoming, undated, recent };
+  return { upcoming, recent, later, undated };
 }
