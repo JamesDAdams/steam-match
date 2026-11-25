@@ -104,9 +104,11 @@ export async function syncDiscordEvents(): Promise<{
  *
  * Le garde-fou est double : un horodatage en mémoire (par instance) et le
  * `synced_at` le plus récent en base, pour ne pas marteler l'API Discord quand
- * plusieurs instances tournent.
+ * plusieurs instances tournent. L'intervalle est court (15 s) parce qu'un
+ * événement supprimé juste avant doit disparaître tout de suite : c'est le cas
+ * d'usage, pas l'exception.
  */
-const AUTO_SYNC_MIN_INTERVAL_MS = 45_000;
+const AUTO_SYNC_MIN_INTERVAL_MS = 15_000;
 let lastAttemptAt = 0;
 
 export async function syncDiscordEventsIfStale(

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { apiGet, apiPost } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import EventCreateModal from '../components/EventCreateModal.vue';
@@ -165,9 +165,57 @@ function duration(e: DiscordEvent) {
 
 const nextEvent = computed(() => upcoming.value[0] ?? null);
 
+/* ── Rafraîchissement automatique ────────────────────────────────── */
+
+/**
+ * Un événement supprimé sur Discord doit disparaître sans que l'utilisateur
+ * ait à recharger la page. Deux déclencheurs suffisent :
+ *   - le retour sur l'onglet (le cas réel : on supprime sur Discord puis on
+ *     revient sur le site) ;
+ *   - un rafraîchissement discret toutes les 30 s tant que la page est visible.
+ *
+ * On recharge sans repasser par les squelettes : sinon la liste clignote à
+ * chaque passage, ce qui est plus gênant que le problème d'origine.
+ */
+const REFRESH_MS = 30_000;
+let refreshTimer: ReturnType<typeof setInterval> | undefined;
+
+async function refreshQuietly() {
+  // Inutile d'interroger le serveur quand l'onglet est en arrière-plan.
+  if (document.visibilityState !== 'visible' || syncing.value || loading.value) return;
+  try {
+    const data = await apiGet<{
+      ok: boolean;
+      upcoming: DiscordEvent[];
+      past: DiscordEvent[];
+      lastSyncAt: string | null;
+      configured: boolean;
+    }>('/api/events');
+    upcoming.value = data.upcoming ?? [];
+    past.value = data.past ?? [];
+    lastSyncAt.value = data.lastSyncAt ?? null;
+    configured.value = data.configured;
+  } catch {
+    /* silencieux : la prochaine tentative réessaiera */
+  }
+}
+
+function onVisibilityChange() {
+  if (document.visibilityState === 'visible') refreshQuietly();
+}
+
 // Sans cet appel, `loading` restait à true et les squelettes s'affichaient
 // indéfiniment (le rendu SSR ne l'exécute pas, d'où le bug passé inaperçu).
-onMounted(load);
+onMounted(() => {
+  load();
+  refreshTimer = setInterval(refreshQuietly, REFRESH_MS);
+  document.addEventListener('visibilitychange', onVisibilityChange);
+});
+
+onBeforeUnmount(() => {
+  if (refreshTimer) clearInterval(refreshTimer);
+  document.removeEventListener('visibilitychange', onVisibilityChange);
+});
 </script>
 
 <template>
