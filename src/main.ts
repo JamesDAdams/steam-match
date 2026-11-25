@@ -8,7 +8,6 @@ import EventsView from './views/EventsView.vue';
 import ProfileView from './views/ProfileView.vue';
 import CommonView from './views/CommonView.vue';
 import RecommendView from './views/RecommendView.vue';
-import HelpView from './views/HelpView.vue';
 import AdminView from './views/AdminView.vue';
 import TwitchView from './views/TwitchView.vue';
 import MembersView from './views/MembersView.vue';
@@ -52,12 +51,6 @@ const routes = [
     path: '/membres/:discordId',
     name: 'member',
     component: MemberView,
-    meta: { requiresAccess: true },
-  },
-  {
-    path: '/aide',
-    name: 'help',
-    component: HelpView,
     meta: { requiresAccess: true },
   },
   {

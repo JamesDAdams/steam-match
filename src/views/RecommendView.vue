@@ -119,7 +119,7 @@ onMounted(load);
         Sans temps de jeu, on ne peut deviner que grossièrement les goûts — les
         propositions resteront génériques. Active
         <em>« Toujours afficher les détails du jeu »</em> sur Steam puis
-        resynchronise (voir <router-link to="/aide" class="text-brand hover:underline">l'aide</router-link>).
+        resynchronise depuis <router-link to="/profil" class="text-brand hover:underline">ton profil</router-link>.
       </p>
     </div>
 

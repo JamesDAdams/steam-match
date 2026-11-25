@@ -270,8 +270,7 @@ onBeforeUnmount(() => {
       <p class="mt-1 text-xs">
         Renseigne <code class="text-fg-strong">DISCORD_BOT_TOKEN</code> et
         <code class="text-fg-strong">DISCORD_GUILD_ID</code> dans les variables
-        d'environnement, puis relance la synchronisation. Voir l'aide pour la
-        procédure.
+        d'environnement du site, puis redéploie.
       </p>
     </div>
 

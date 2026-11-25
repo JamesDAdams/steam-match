@@ -268,8 +268,8 @@ onUnmounted(stopAutoRefresh);
           >
             Ouvrir mes paramètres de confidentialité Steam ↗
           </a>
-          <router-link to="/aide" class="text-sm text-fg-muted hover:underline">
-            Voir le guide pas à pas
+          <router-link to="/profil" class="text-sm text-fg-muted hover:underline">
+            Synchroniser depuis mon profil
           </router-link>
         </div>
       </template>

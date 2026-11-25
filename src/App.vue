@@ -41,7 +41,6 @@ const links = computed(() => [
       ]
     : []),
   { to: '/twitch', label: 'Twitch' },
-  ...(canUseSite.value ? [{ to: '/aide', label: 'Aide' }] : []),
 ]);
 </script>
 
@@ -223,7 +222,6 @@ const links = computed(() => [
             <div class="space-y-1">
               <p class="mb-2 font-semibold uppercase tracking-wide text-fg-faint">Compte</p>
               <router-link v-if="canUseSite" to="/profil" class="block hover:text-fg-strong">Mon profil</router-link>
-              <router-link v-if="canUseSite" to="/aide" class="block hover:text-fg-strong">Aide</router-link>
               <a href="/api/auth/discord" class="block hover:text-fg-strong">Connexion</a>
             </div>
           </div>
