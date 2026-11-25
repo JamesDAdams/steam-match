@@ -72,8 +72,15 @@ export async function getScheduledEvents(): Promise<DiscordScheduledEvent[]> {
   }
   if (res.status === 403) {
     throw new Error(
-      'Le bot n’a pas accès aux événements (403). Autorise l’intention ' +
-        'GUILD_SCHEDULED_EVENTS dans le portail Discord et vérifie que le bot est sur le serveur.',
+      'Le bot n’a pas la permission de lire les événements (403). ' +
+        'Vérifie qu’il est bien membre du serveur et qu’il a la permission ' +
+        '« Gérer les événements ». Aucune intention privilégiée n’est requise.',
+    );
+  }
+  if (res.status === 404) {
+    throw new Error(
+      'Le bot n’est pas membre du serveur indiqué (404). Réinvite-le avec le ' +
+        'scope « bot » sur ce serveur, ou vérifie DISCORD_GUILD_ID.',
     );
   }
   if (!res.ok) {
