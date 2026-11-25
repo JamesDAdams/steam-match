@@ -74,7 +74,9 @@ export default async function handler(req: any, res: any) {
     // choisir un salon qui échouera en 403.
     let access: Record<string, { canView: boolean; canConnect: boolean }> = {};
     try {
-      access = await getBotChannelAccess();
+      // Relecture forcée : l'admin ouvre ce modal après avoir corrigé des
+      // permissions, il doit voir l'état réel et non un cache de 2 minutes.
+      access = await getBotChannelAccess({ force: true });
     } catch {
       /* accès inconnu : on ne bloque pas, Discord tranchera */
     }
