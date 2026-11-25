@@ -8,20 +8,23 @@ import { runEnrich } from '../../lib/enrich-worker.ts';
  * l'enrichissement (nom, genres, prix) ne doit pas dépendre d'un clic. Cette
  * fonction planifiée Netlify traite la file en arrière-plan, sans intervention.
  *
- * POURQUOI TOUTES LES 2 MINUTES :
- * le worker est désormais parallèle et limité par les API (Steam ~350 ms,
- * CheapShark 800 ms entre deux appels), pas par sa propre latence. Un passage
- * de 20 s traite donc beaucoup plus de jeux qu'avant. Un intervalle de 2 min
- * évite les passages à vide tout en restant économe en invocations : quand la
- * file est vide, la fonction rend la main en quelques centaines de ms.
+ * POURQUOI TOUTES LES MINUTES :
+ * le worker est parallèle et limité par les API (Steam ~350 ms, CheapShark
+ * 800 ms entre deux appels), pas par sa propre latence. Un passage traite donc
+ * beaucoup plus de jeux qu'avant. Quand la file est vide, la fonction rend la
+ * main en quelques centaines de ms : le coût d'un intervalle court est
+ * négligeable, alors que le gain est réel tant qu'il reste des jeux.
  *
- * Le budget de 20 s reste sous la limite d'exécution des fonctions planifiées.
+ * POURQUOI 9 SECONDES :
+ * les fonctions planifiées sont tuées à 10 s sur les plans sans marge
+ * d'exécution. Un budget plus long n'apportait rien et laissait des
+ * réclamations orphelines à chaque passage.
  */
 export default async () => {
   const started = Date.now();
 
   try {
-    const result = await runEnrich({ budgetMs: 20_000, withPrices: true });
+    const result = await runEnrich({ budgetMs: 9_000, withPrices: true });
 
     console.log('[cron enrich]', {
       ...result,
@@ -42,6 +45,6 @@ export default async () => {
 };
 
 export const config: Config = {
-  // Toutes les 2 minutes (Netlify : granularité d'une minute).
-  schedule: '*/2 * * * *',
+  // Toutes les minutes (granularité minimale de Netlify).
+  schedule: '* * * * *',
 };
