@@ -3,6 +3,7 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { apiGet, apiPost } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import EventCreateModal from '../components/EventCreateModal.vue';
+import EventInterested from '../components/EventInterested.vue';
 
 interface DiscordEvent {
   id: string;
@@ -15,6 +16,7 @@ interface DiscordEvent {
   location: string | null;
   coverImage: string | null;
   interestedCount: number;
+  interestedUsers: { id: string; name: string; avatarUrl: string | null }[];
   startAt: string;
   endAt: string | null;
   isPast: boolean;
@@ -341,9 +343,11 @@ onBeforeUnmount(() => {
               </p>
 
               <div class="mt-3 flex flex-wrap items-center gap-3 text-xs text-fg-faint">
-                <span v-if="nextEvent.interestedCount > 0">
-                  {{ nextEvent.interestedCount }} intéressé(s)
-                </span>
+                <EventInterested
+                  v-if="nextEvent.interestedCount > 0 || nextEvent.interestedUsers.length"
+                  :users="nextEvent.interestedUsers"
+                  :count="nextEvent.interestedCount"
+                />
                 <span v-if="nextEvent.location" class="truncate">
                   📍 {{ nextEvent.location }}
                 </span>
@@ -411,7 +415,12 @@ onBeforeUnmount(() => {
                 </p>
                 <div class="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-fg-faint">
                   <span>{{ e.entityLabel }}</span>
-                  <span v-if="e.interestedCount">{{ e.interestedCount }} intéressé(s)</span>
+                  <EventInterested
+                    v-if="e.interestedCount || e.interestedUsers.length"
+                    :users="e.interestedUsers"
+                    :count="e.interestedCount"
+                    compact
+                  />
                 </div>
               </div>
             </article>

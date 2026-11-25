@@ -126,6 +126,20 @@ export const ownedGames = pgTable(
     appid: integer('appid').notNull(),
     playtimeForever: integer('playtime_forever').notNull().default(0),
     playtime2Weeks: integer('playtime_2weeks').notNull().default(0),
+    /**
+     * Origine du jeu :
+     *   'owned'  → acheté par le membre (renvoyé par GetOwnedGames)
+     *   'family' → rendu jouable par sa famille Steam, déclaré à la main
+     *
+     * POURQUOI À LA MAIN : IPlayerService/GetOwnedGames ignore les jeux
+     * partagés, et IFamilyGroupsService/GetSharedLibraryApps exige un
+     * `access_token` de session navigateur (JWT court), pas la clé Web API du
+     * site. Aucun appel serveur ne peut donc les découvrir.
+     *
+     * La synchronisation ne touche jamais les lignes 'family' : elles
+     * disparaîtraient à chaque sync puisque GetOwnedGames ne les renvoie pas.
+     */
+    source: text('source').notNull().default('owned'),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
@@ -186,6 +200,17 @@ export const discordEvents = pgTable(
     coverImage: text('cover_image'),
     /** Nombre de personnes intéressées côté Discord. */
     interestedCount: integer('interested_count').notNull().default(0),
+    /**
+     * Personnes ayant coché « Intéressé » sur Discord, recopiées pour être
+     * affichées sur le site (Discord ne les expose que via une route dédiée,
+     * une fois par événement).
+     */
+    interestedUsers: jsonb('interested_users')
+      .$type<{ id: string; name: string; avatarUrl: string | null }[]>()
+      .notNull()
+      .default([]),
+    /** Dernière lecture de cette liste (on ne la relit pas à chaque sync). */
+    interestedSyncedAt: timestamp('interested_synced_at', { withTimezone: true }),
     scheduledStartAt: timestamp('scheduled_start_at', { withTimezone: true }).notNull(),
     scheduledEndAt: timestamp('scheduled_end_at', { withTimezone: true }),
     syncedAt: timestamp('synced_at', { withTimezone: true }).notNull().defaultNow(),
@@ -257,6 +282,19 @@ export const gameCache = pgTable(
     byPending: index('game_cache_pending_idx').on(t.enrichedAt),
   }),
 );
+
+/**
+ * État des synchronisations périodiques.
+ *
+ * Une ligne unique : elle porte la date de la dernière synchronisation des
+ * événements, y compris quand Discord n'en renvoie AUCUN. Sans elle, `max(synced_at)`
+ * sur `discord_events` vaut NULL dès que la liste est vide et chaque appel à
+ * /api/events redéclenche un appel Discord — jusqu'au 429.
+ */
+export const syncState = pgTable('sync_state', {
+  id: text('id').primaryKey(),
+  eventsSyncedAt: timestamp('events_synced_at', { withTimezone: true }),
+});
 
 /** File d'attente d'enrichissement. */
 export const enrichQueue = pgTable(

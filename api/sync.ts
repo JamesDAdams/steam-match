@@ -72,6 +72,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         set: {
           playtimeForever: sql`excluded.playtime_forever`,
           playtime2Weeks: sql`excluded.playtime_2weeks`,
+          // Le jeu est désormais réellement possédé : il n'est plus « famille ».
+          source: sql`'owned'`,
           updatedAt: now,
         },
       });
@@ -79,9 +81,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // 2. Supprime les jeux qui ne sont plus possédés (revendus/masqués).
     const currentIds = games.map((g) => g.appid);
     if (currentIds.length > 0) {
+      // `source = 'owned'` est indispensable : GetOwnedGames ne renvoie jamais
+      // les jeux de la famille Steam, qui seraient donc supprimés à chaque
+      // synchronisation alors qu'ils sont parfaitement jouables.
       await db.execute(sql`
         DELETE FROM owned_games
         WHERE steamid = ${steamid}
+          AND source = 'owned'
           AND appid NOT IN (${sql.join(
             currentIds.map((id) => sql`${id}`),
             sql`, `,

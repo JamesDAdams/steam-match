@@ -4,7 +4,7 @@ import {
   isBotConfigured,
   listEventChannels,
 } from '../discord-bot.ts';
-import { syncDiscordEvents } from '../events-sync.ts';
+import { storeEvent } from '../events-sync.ts';
 import { gameBannerDataUri } from '../game-banner.ts';
 
 /**
@@ -174,12 +174,16 @@ export default async function handler(req: any, res: any) {
     // On recopie immédiatement en base pour que la page se rafraîchisse sans
     // attendre le prochain clic sur « Synchroniser ». Un échec ici ne remet
     // pas en cause la création : l'événement existe bel et bien sur Discord.
+    //
+    // Écriture directe plutôt que synchronisation complète : un GET des
+    // événements juste après la création tombe dans le même bucket Discord
+    // (1 requête toutes les ~4 s) et récoltait un 429.
     let synced = false;
     try {
-      await syncDiscordEvents();
+      await storeEvent(created);
       synced = true;
     } catch (err: any) {
-      console.warn('[events/create] synchronisation après création échouée', err?.message);
+      console.warn('[events/create] enregistrement local échoué', err?.message);
     }
 
     return res.status(201).json({

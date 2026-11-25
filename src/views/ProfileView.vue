@@ -3,6 +3,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue';
 import {
   apiGet,
   apiPost,
+  apiDelete,
   formatPlaytime,
   steamStoreUrl,
   steamHeaderUrl,
@@ -72,6 +73,71 @@ const { me, displayName, refresh } = useAuth();
 const games = ref<ProfileGame[]>([]);
 const stats = ref<Stats | null>(null);
 const wishlist = ref<WishItem[]>([]);
+
+/* ── Jeux de la famille Steam ───────────────────────────────────────── */
+
+/**
+ * GetOwnedGames ne renvoie jamais les jeux empruntés à un groupe familial, et
+ * l'API qui les expose exige un jeton de session navigateur (impossible côté
+ * serveur). Le membre les déclare donc ici, à partir d'un lien Steam.
+ */
+interface FamilyGame {
+  appid: number;
+  name: string;
+  headerImage: string | null;
+}
+
+const familyGames = ref<FamilyGame[]>([]);
+const familyInput = ref('');
+const familyBusy = ref(false);
+const familyError = ref<string | null>(null);
+const familyMessage = ref<string | null>(null);
+
+async function loadFamily() {
+  try {
+    const r = await apiGet<{ games: FamilyGame[] }>('/api/family');
+    familyGames.value = r.games ?? [];
+  } catch {
+    /* pas bloquant : le reste du profil s'affiche */
+  }
+}
+
+async function addFamilyGame() {
+  familyError.value = null;
+  familyMessage.value = null;
+  const value = familyInput.value.trim();
+  if (!value || familyBusy.value) return;
+
+  familyBusy.value = true;
+  try {
+    const r = await apiPost<{ game: FamilyGame; already?: boolean }>('/api/family', { value });
+    familyInput.value = '';
+    if (r.already) {
+      familyMessage.value = 'Ce jeu est déjà dans ta liste.';
+    } else {
+      familyGames.value = [...familyGames.value, r.game].sort((a, b) =>
+        a.name.localeCompare(b.name, 'fr'),
+      );
+      familyMessage.value = `« ${r.game.name} » ajouté.`;
+    }
+  } catch (e: any) {
+    familyError.value = e.message ?? 'Ajout impossible.';
+  } finally {
+    familyBusy.value = false;
+  }
+}
+
+async function removeFamilyGame(g: FamilyGame) {
+  familyError.value = null;
+  familyMessage.value = null;
+  try {
+    await apiDelete('/api/family', { appid: g.appid });
+    familyGames.value = familyGames.value.filter((x) => x.appid !== g.appid);
+    familyMessage.value = `« ${g.name} » retiré.`;
+  } catch (e: any) {
+    familyError.value = e.message ?? 'Retrait impossible.';
+  }
+}
 const loading = ref(true);
 const error = ref<string | null>(null);
 const syncing = ref(false);
@@ -87,7 +153,7 @@ const selectedGenre = ref<string | null>(null);
  * Onglet actif : la ludothèque ou la wishlist.
  * Les deux listes empilées devenaient illisibles (177 + 293 entrées).
  */
-const tab = ref<'games' | 'wishlist'>('games');
+const tab = ref<'games' | 'wishlist' | 'family'>('games');
 
 async function load(silent = false) {
   if (!silent) loading.value = true;
@@ -286,7 +352,7 @@ function startPump() {
 }
 
 onMounted(async () => {
-  await load();
+  await Promise.all([load(), loadFamily()]);
   if (unidentifiedCount.value > 0) {
     startPolling();
     startPump();
@@ -437,8 +503,8 @@ onUnmounted(() => {
         </div>
       </section>
 
-      <!-- Sélecteur : ludothèque / wishlist -->
-      <section class="mb-6 grid gap-4 sm:grid-cols-2">
+      <!-- Sélecteur : ludothèque / wishlist / famille -->
+      <section class="mb-6 grid gap-4 sm:grid-cols-3">
         <button
           class="card-flat text-left transition hover:border-brand/50"
           :class="tab === 'games' ? '!border-brand ring-1 ring-brand/30' : ''"
@@ -480,6 +546,86 @@ onUnmounted(() => {
             <span class="text-2xl">⭐</span>
           </div>
         </button>
+
+        <button
+          class="card-flat text-left transition hover:border-brand/50"
+          :class="tab === 'family' ? '!border-brand ring-1 ring-brand/30' : ''"
+          @click="tab = 'family'"
+        >
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <p class="text-xs uppercase tracking-wide text-fg-faint">Famille Steam</p>
+              <p class="mt-1 font-display text-2xl font-bold text-fg-strong">
+                {{ familyGames.length }}
+              </p>
+              <p class="mt-0.5 text-xs text-fg-muted">
+                {{ familyGames.length ? 'jeux empruntés à ta famille' : 'jeux partagés' }}
+              </p>
+            </div>
+            <span class="text-2xl">👪</span>
+          </div>
+        </button>
+      </section>
+
+      <!-- Jeux de la famille Steam -->
+      <section v-if="tab === 'family'" class="card mb-6">
+        <h2 class="font-semibold text-fg-strong">Jeux de ma famille Steam</h2>
+        <p class="mt-1 max-w-2xl text-sm text-fg-muted">
+          Steam ne transmet <strong class="text-fg">que les jeux achetés</strong> par un
+          compte : les jeux empruntés à un groupe familial (Steam Families) en sont
+          absents. Ajoute-les ici en collant leur lien Steam — ils compteront ensuite
+          dans les jeux en commun et les recommandations.
+        </p>
+
+        <div class="mt-4 flex flex-wrap gap-2">
+          <input
+            v-model="familyInput"
+            type="text"
+            class="input min-w-[240px] flex-1"
+            placeholder="https://store.steampowered.com/app/892970/Valheim/"
+            @keydown.enter.prevent="addFamilyGame"
+          />
+          <button
+            class="btn-primary text-sm"
+            :disabled="familyBusy || !familyInput.trim()"
+            @click="addFamilyGame"
+          >
+            {{ familyBusy ? 'Ajout…' : 'Ajouter' }}
+          </button>
+        </div>
+
+        <p v-if="familyError" class="mt-2 text-xs text-danger">{{ familyError }}</p>
+        <p v-else-if="familyMessage" class="mt-2 text-xs text-ok">{{ familyMessage }}</p>
+
+        <ul v-if="familyGames.length" class="mt-4 space-y-2">
+          <li
+            v-for="g in familyGames"
+            :key="g.appid"
+            class="flex items-center gap-3 rounded-lg border border-line bg-app-elevated p-2"
+          >
+            <img
+              v-if="g.headerImage"
+              :src="g.headerImage"
+              alt=""
+              class="h-10 w-20 shrink-0 rounded object-cover"
+              loading="lazy"
+              @error="hideBrokenImage"
+            />
+            <div class="min-w-0 flex-1">
+              <p class="truncate text-sm font-medium text-fg-strong">{{ g.name }}</p>
+              <p class="text-[11px] text-fg-faint">appid {{ g.appid }}</p>
+            </div>
+            <button
+              class="rounded px-2 py-1 text-xs text-danger transition hover:bg-danger-soft"
+              @click="removeFamilyGame(g)"
+            >
+              Retirer
+            </button>
+          </li>
+        </ul>
+        <p v-else class="mt-4 text-sm text-fg-faint">
+          Aucun jeu de famille ajouté pour l'instant.
+        </p>
       </section>
 
       <!-- Ma wishlist -->

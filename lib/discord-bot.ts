@@ -207,10 +207,106 @@ export async function listEventChannels(): Promise<DiscordChannel[]> {
  * Récupère tous les événements programmés du serveur.
  * `with_user_count=true` donne le nombre de personnes intéressées.
  */
+/** Personne ayant coché « Intéressé » sur un événement. */
+export interface EventInterestedUser {
+  id: string;
+  /** Nom affichable : pseudo global s'il existe, sinon le nom du compte. */
+  name: string;
+  avatarUrl: string | null;
+}
+
+/** Avatar Discord, avec la pastille par défaut quand le compte n'en a pas. */
+function avatarUrl(userId: string, avatar: string | null | undefined): string | null {
+  if (avatar) {
+    const ext = avatar.startsWith('a_') ? 'gif' : 'png';
+    return `https://cdn.discordapp.com/avatars/${userId}/${avatar}.${ext}?size=64`;
+  }
+  // Les avatars par défaut sont indexés sur l'identifiant du compte.
+  const index = Number((BigInt(userId) >> 22n) % 6n);
+  return `https://cdn.discordapp.com/embed/avatars/${index}.png`;
+}
+
+/**
+ * Liste des personnes intéressées par un événement programmé.
+ *
+ * Pourquoi une route dédiée : Discord ne renvoie que le NOMBRE d'intéressés
+ * dans l'objet événement. La liste des membres demande un appel supplémentaire
+ * par événement — d'où le cache côté base dans la synchronisation.
+ */
+export async function getEventInterestedUsers(
+  eventId: string,
+): Promise<EventInterestedUser[]> {
+  let res = await discordFetch(
+    `/guilds/${guildId()}/scheduled-events/${eventId}/users?limit=100&with_member=false`,
+  );
+
+  if (res.status === 429) {
+    await waitRetryAfter(res);
+    res = await discordFetch(
+      `/guilds/${guildId()}/scheduled-events/${eventId}/users?limit=100&with_member=false`,
+    );
+  }
+
+  // 404 : l'événement a été supprimé entre-temps, ce n'est pas une erreur.
+  if (res.status === 404) return [];
+  if (!res.ok) {
+    throw new Error(
+      `Discord a répondu HTTP ${res.status} en lisant les intéressés de l’événement.`,
+    );
+  }
+
+  const list = (await res.json()) as {
+    user?: {
+      id: string;
+      username: string;
+      global_name?: string | null;
+      avatar?: string | null;
+    };
+  }[];
+
+  return (Array.isArray(list) ? list : [])
+    .map((entry) => entry.user)
+    .filter((u): u is NonNullable<typeof u> => Boolean(u?.id))
+    .map((u) => ({
+      id: u.id,
+      name: u.global_name?.trim() || u.username,
+      avatarUrl: avatarUrl(u.id, u.avatar),
+    }));
+}
+
+/**
+ * Attend le délai demandé par Discord, plafonné pour ne pas expirer la fonction.
+ * Les 429 de cet endpoint arrivent quand deux chargements de page se croisent :
+ * quelques secondes de patience valent mieux qu'une page périmée.
+ */
+async function waitRetryAfter(res: Response, maxMs = 4_000): Promise<number> {
+  let delay = 0;
+  try {
+    const body = (await res.clone().json()) as { retry_after?: number };
+    delay = Math.round((body.retry_after ?? 0) * 1000);
+  } catch {
+    const header = Number(res.headers.get('retry-after') ?? 0);
+    delay = Number.isFinite(header) ? header * 1000 : 0;
+  }
+  if (delay <= 0) delay = 1_000;
+  const capped = Math.min(delay + 250, maxMs);
+  await new Promise((r) => setTimeout(r, capped));
+  return capped;
+}
+
 export async function getScheduledEvents(): Promise<DiscordScheduledEvent[]> {
-  const res = await discordFetch(
+  let res = await discordFetch(
     `/guilds/${guildId()}/scheduled-events?with_user_count=true`,
   );
+
+  // Bucket très serré côté Discord (1 requête toutes les ~4 s) : une seule
+  // nouvelle tentative, après le délai indiqué.
+  if (res.status === 429) {
+    await waitRetryAfter(res);
+    res = await discordFetch(
+      `/guilds/${guildId()}/scheduled-events?with_user_count=true`,
+    );
+  }
 
   if (res.status === 401) {
     throw new Error(

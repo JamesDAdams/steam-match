@@ -79,6 +79,9 @@ export default async function handler(req: any, res: any) {
       location: e.location,
       coverImage: e.coverImage,
       interestedCount: e.interestedCount,
+      // Une liste vide peut simplement signifier « personne », affichée comme
+      // telle ; le décompte Discord reste la référence.
+      interestedUsers: e.interestedUsers ?? [],
       startAt: e.scheduledStartAt,
       endAt: e.scheduledEndAt,
       isPast: e.scheduledStartAt.getTime() < now.getTime(),

@@ -1,7 +1,12 @@
 import { getDb } from '../db/index.ts';
-import { discordEvents } from '../db/schema.ts';
-import { max, sql } from 'drizzle-orm';
-import { getScheduledEvents, eventCoverUrl, guildId } from './discord-bot.ts';
+import { discordEvents, syncState } from '../db/schema.ts';
+import { sql } from 'drizzle-orm';
+import {
+  getScheduledEvents,
+  getEventInterestedUsers,
+  eventCoverUrl,
+  guildId,
+} from './discord-bot.ts';
 import type { DiscordScheduledEvent } from './discord-bot.ts';
 
 /**
@@ -14,6 +19,52 @@ import type { DiscordScheduledEvent } from './discord-bot.ts';
  * Discord reste la source de vérité : on met à jour, on insère, et on
  * supprime ce qui n'existe plus côté Discord.
  */
+/**
+ * Écrit (ou met à jour) un événement Discord en base.
+ *
+ * Exporté pour que la création depuis le site n'ait pas à relancer une
+ * synchronisation complète : un POST suivi d'un GET immédiat sur les
+ * événements tombe dans le même bucket très serré de Discord et récolte un 429.
+ */
+export async function storeEvent(e: DiscordScheduledEvent, now = new Date()): Promise<void> {
+  const start = new Date(e.scheduled_start_time);
+  if (Number.isNaN(start.getTime())) return;
+
+  const values = {
+    id: e.id,
+    guildId: e.guild_id ?? guildId(),
+    name: e.name,
+    description: e.description ?? null,
+    status: e.status ?? 1,
+    entityType: e.entity_type ?? 3,
+    location: e.entity_metadata?.location ?? null,
+    coverImage: eventCoverUrl(e.id, e.image),
+    interestedCount: e.user_count ?? 0,
+    scheduledStartAt: start,
+    scheduledEndAt: e.scheduled_end_time ? new Date(e.scheduled_end_time) : null,
+    syncedAt: now,
+  };
+
+  await getDb()
+    .insert(discordEvents)
+    .values(values)
+    .onConflictDoUpdate({
+      target: discordEvents.id,
+      set: {
+        name: values.name,
+        description: values.description,
+        status: values.status,
+        entityType: values.entityType,
+        location: values.location,
+        coverImage: values.coverImage,
+        interestedCount: values.interestedCount,
+        scheduledStartAt: values.scheduledStartAt,
+        scheduledEndAt: values.scheduledEndAt,
+        syncedAt: now,
+      },
+    });
+}
+
 export async function syncDiscordEvents(): Promise<{
   synced: number;
   syncedAt: Date;
@@ -23,43 +74,61 @@ export async function syncDiscordEvents(): Promise<{
   const db = getDb();
   const now = new Date();
 
+  // Âge de la dernière lecture des « intéressés », pour ne pas relancer un
+  // appel Discord par événement à chaque synchronisation (toutes les 15 s).
+  const known = new Map<string, Date | null>();
+  try {
+    const rows = await db
+      .select({
+        id: discordEvents.id,
+        at: discordEvents.interestedSyncedAt,
+      })
+      .from(discordEvents);
+    for (const r of rows) known.set(r.id, r.at ?? null);
+  } catch {
+    /* lecture impossible : on relira les intéressés */
+  }
+
   for (const e of events) {
-    const start = new Date(e.scheduled_start_time);
-    if (Number.isNaN(start.getTime())) continue;
+    await storeEvent(e, now);
+  }
 
-    const values = {
-      id: e.id,
-      guildId: e.guild_id ?? guildId(),
-      name: e.name,
-      description: e.description ?? null,
-      status: e.status ?? 1,
-      entityType: e.entity_type ?? 3,
-      location: e.entity_metadata?.location ?? null,
-      coverImage: eventCoverUrl(e.id, e.image),
-      interestedCount: e.user_count ?? 0,
-      scheduledStartAt: start,
-      scheduledEndAt: e.scheduled_end_time ? new Date(e.scheduled_end_time) : null,
-      syncedAt: now,
-    };
+  // Liste des personnes intéressées : une requête Discord par événement, donc
+  // rafraîchie avec parcimonie (5 min) et plafonnée par synchronisation.
+  const INTERESTED_TTL_MS = 5 * 60_000;
+  // Discord limite fortement les appels par événement (bucket « 1 requête
+  // toutes les quelques secondes ») : on en rafraîchit donc peu à la fois, en
+  // commençant par les plus anciens. La liste est stable, inutile d'insister.
+  const MAX_INTERESTED_FETCH = 3;
+  const INTERESTED_SPACING_MS = 1_200;
 
-    await db
-      .insert(discordEvents)
-      .values(values)
-      .onConflictDoUpdate({
-        target: discordEvents.id,
-        set: {
-          name: values.name,
-          description: values.description,
-          status: values.status,
-          entityType: values.entityType,
-          location: values.location,
-          coverImage: values.coverImage,
-          interestedCount: values.interestedCount,
-          scheduledStartAt: values.scheduledStartAt,
-          scheduledEndAt: values.scheduledEndAt,
-          syncedAt: now,
-        },
-      });
+  const needUsers = events
+    .filter((e) => e.status !== 3 && e.status !== 4) // terminés / annulés : figés
+    .filter((e) => {
+      const at = known.get(e.id);
+      return !at || now.getTime() - at.getTime() > INTERESTED_TTL_MS;
+    })
+    .sort((a, b) => {
+      const ta = known.get(a.id)?.getTime() ?? 0;
+      const tb = known.get(b.id)?.getTime() ?? 0;
+      return ta - tb; // jamais lus (0) d'abord, puis les plus anciens
+    })
+    .slice(0, MAX_INTERESTED_FETCH);
+
+  for (const [i, e] of needUsers.entries()) {
+    if (i > 0) await new Promise((r) => setTimeout(r, INTERESTED_SPACING_MS));
+    try {
+      const users = await getEventInterestedUsers(e.id);
+      await db
+        .update(discordEvents)
+        .set({ interestedUsers: users, interestedSyncedAt: now })
+        .where(sql`${discordEvents.id} = ${e.id}`);
+    } catch (err: any) {
+      // Un événement illisible ne doit pas empêcher la synchronisation des
+      // autres : on réessaiera au prochain passage.
+      console.warn(`[events-sync] intéressés de ${e.id} :`, err?.message);
+      break; // limite de débit probable : on s'arrête là pour cette fois
+    }
   }
 
   // Réconciliation : tout ce que Discord ne renvoie plus disparaît de la base.
@@ -91,6 +160,19 @@ export async function syncDiscordEvents(): Promise<{
     `);
   }
 
+  // Trace de la synchronisation, même sans aucun événement : c'est ce qui
+  // évite de rappeler Discord à chaque chargement de page quand la liste est vide.
+  await db
+    .insert(syncState)
+    .values({ id: 'events', eventsSyncedAt: now })
+    .onConflictDoUpdate({
+      target: syncState.id,
+      set: { eventsSyncedAt: now },
+    })
+    .catch((err: any) => {
+      console.warn('[events-sync] état non enregistré :', err?.message);
+    });
+
   return { synced: events.length, syncedAt: now, events };
 }
 
@@ -108,7 +190,10 @@ export async function syncDiscordEvents(): Promise<{
  * événement supprimé juste avant doit disparaître tout de suite : c'est le cas
  * d'usage, pas l'exception.
  */
-const AUTO_SYNC_MIN_INTERVAL_MS = 15_000;
+const AUTO_SYNC_MIN_INTERVAL_MS = 20_000;
+
+/** Pause imposée après un 429 de Discord (au-delà de l'intervalle normal). */
+const RATE_LIMIT_COOLDOWN_MS = 2 * 60_000;
 let lastAttemptAt = 0;
 
 export async function syncDiscordEventsIfStale(
@@ -121,8 +206,10 @@ export async function syncDiscordEventsIfStale(
   try {
     const db = getDb();
     const [row] = await db
-      .select({ at: max(discordEvents.syncedAt) })
-      .from(discordEvents);
+      .select({ at: syncState.eventsSyncedAt })
+      .from(syncState)
+      .where(sql`${syncState.id} = 'events'`)
+      .limit(1);
     if (row?.at && now - new Date(row.at).getTime() < minIntervalMs) {
       lastAttemptAt = now;
       return { skipped: true };
@@ -135,8 +222,11 @@ export async function syncDiscordEventsIfStale(
   try {
     const { synced } = await syncDiscordEvents();
     return { skipped: false, synced };
-  } catch (err) {
-    lastAttemptAt = 0; // échec : on réessaiera au prochain appel
+  } catch (err: any) {
+    // 429 : Discord demande une pause. On se cale bien au-delà de l'intervalle
+    // plutôt que de retenter à chaque affichage de page et d'aggraver la limite.
+    const rateLimited = /429/.test(String(err?.message ?? ''));
+    lastAttemptAt = rateLimited ? Date.now() + RATE_LIMIT_COOLDOWN_MS : 0;
     throw err;
   }
 }

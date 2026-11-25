@@ -86,6 +86,21 @@ const statements = [
    )`,
   `CREATE INDEX IF NOT EXISTS discord_events_start_idx ON discord_events (scheduled_start_at)`,
 
+  // ── État des synchronisations ──────────────────────────────────────
+  `CREATE TABLE IF NOT EXISTS sync_state (
+     id                text PRIMARY KEY NOT NULL,
+     events_synced_at  timestamp with time zone
+   )`,
+
+  // ── Jeux partagés par la famille Steam ─────────────────────────────
+  // GetOwnedGames ne renvoie jamais les jeux empruntés à un groupe familial :
+  // ils sont donc ajoutés à la main et marqués, pour survivre aux synchros.
+  `ALTER TABLE owned_games ADD COLUMN IF NOT EXISTS source text NOT NULL DEFAULT 'owned'`,
+
+  // ── Intéressés des événements Discord ──────────────────────────────
+  `ALTER TABLE discord_events ADD COLUMN IF NOT EXISTS interested_users jsonb NOT NULL DEFAULT '[]'::jsonb`,
+  `ALTER TABLE discord_events ADD COLUMN IF NOT EXISTS interested_synced_at timestamp with time zone`,
+
   // ── Prix des jeux (colonnes ajoutées après coup) ───────────────────
   `ALTER TABLE game_cache ADD COLUMN IF NOT EXISTS cheapest_price integer`,
   `ALTER TABLE game_cache ADD COLUMN IF NOT EXISTS cheapest_store text`,

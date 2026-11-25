@@ -55,6 +55,18 @@ export function apiPost<T>(url: string, body?: any): Promise<T> {
   );
 }
 
+/** DELETE avec corps JSON (les identifiants passent mieux dans le corps). */
+export function apiDelete<T>(url: string, body?: any): Promise<T> {
+  return handle<T>(
+    fetch(url, {
+      method: 'DELETE',
+      credentials: 'same-origin',
+      headers: JSON_HEADERS,
+      body: body ? JSON.stringify(body) : undefined,
+    }),
+  );
+}
+
 /* ── Formatage ── */
 
 /** Minutes → « 12 h 30 » ou « 45 min ». */
