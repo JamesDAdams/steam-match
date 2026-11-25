@@ -243,6 +243,14 @@ export const gameCache = pgTable(
     // déjà traités quand on ajoute de nouveaux champs (date, avis, modes…),
     // sans toucher aux jeux déjà à jour.
     enrichVersion: integer('enrich_version').notNull().default(0),
+    /**
+     * Réclamation temporaire par un worker.
+     *
+     * Le cron et un appel manuel peuvent tourner en même temps : sans cette
+     * marque, les deux traitent les mêmes jeux et doublent les appels aux API
+     * externes. La marque expire au bout de quelques minutes si le worker meurt.
+     */
+    enrichClaimedAt: timestamp('enrich_claimed_at', { withTimezone: true }),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({

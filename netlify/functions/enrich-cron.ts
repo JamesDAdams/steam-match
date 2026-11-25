@@ -1,29 +1,27 @@
 import type { Config } from '@netlify/functions';
-import { runEnrichUntilBudget } from '../../lib/enrich-worker.ts';
+import { runEnrich } from '../../lib/enrich-worker.ts';
 
 /**
  * Enrichissement automatique et périodique.
  *
  * POURQUOI CE FICHIER :
  * l'enrichissement (nom, genres, prix) ne doit pas dépendre d'un clic. Cette
- * fonction planifiée Netlify traite la file en arrière-plan toutes les
- * 10 minutes, sans aucune intervention.
+ * fonction planifiée Netlify traite la file en arrière-plan, sans intervention.
  *
- * POURQUOI 10 MINUTES :
- * SteamSpy et CheapShark tolèrent mal les rafales. Un lot de ~50 jeux toutes
- * les 10 minutes remplit une base de plusieurs centaines de jeux en quelques
- * heures, sans jamais déclencher de blocage. Le budget de temps empêche de
- * dépasser la limite d'exécution de Netlify.
+ * POURQUOI TOUTES LES 2 MINUTES :
+ * le worker est désormais parallèle et limité par les API (Steam ~350 ms,
+ * CheapShark 800 ms entre deux appels), pas par sa propre latence. Un passage
+ * de 20 s traite donc beaucoup plus de jeux qu'avant. Un intervalle de 2 min
+ * évite les passages à vide tout en restant économe en invocations : quand la
+ * file est vide, la fonction rend la main en quelques centaines de ms.
+ *
+ * Le budget de 20 s reste sous la limite d'exécution des fonctions planifiées.
  */
 export default async () => {
   const started = Date.now();
 
   try {
-    const result = await runEnrichUntilBudget(
-      5, // maximum 5 lots
-      10, // de 10 jeux chacun
-      20_000, // budget : 20 s (les fonctions planifiées ont plus de marge)
-    );
+    const result = await runEnrich({ budgetMs: 20_000, withPrices: true });
 
     console.log('[cron enrich]', {
       ...result,
@@ -44,6 +42,6 @@ export default async () => {
 };
 
 export const config: Config = {
-  // Toutes les 10 minutes. Netlify utilise une syntaxe cron classique.
-  schedule: '*/10 * * * *',
+  // Toutes les 2 minutes (Netlify : granularité d'une minute).
+  schedule: '*/2 * * * *',
 };

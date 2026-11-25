@@ -101,6 +101,7 @@ const statements = [
   `ALTER TABLE game_cache ADD COLUMN IF NOT EXISTS release_date text`,
   `ALTER TABLE game_cache ADD COLUMN IF NOT EXISTS play_modes jsonb NOT NULL DEFAULT '[]'::jsonb`,
   `ALTER TABLE game_cache ADD COLUMN IF NOT EXISTS enrich_version integer NOT NULL DEFAULT 0`,
+  `ALTER TABLE game_cache ADD COLUMN IF NOT EXISTS enrich_claimed_at timestamp with time zone`,
 
   // ── Sessions ─────────────────────────────────────────────��─────────
   // NON destructif : on ne supprime jamais la table, sinon tous les membres

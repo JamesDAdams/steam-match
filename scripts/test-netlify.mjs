@@ -37,6 +37,7 @@ const cases = [
   ['GET', 'http://localhost/api/common?mode=wishlist', null, 401],
   ['GET', 'http://localhost/api/recommendations', null, 401],
   ['POST', 'http://localhost/api/sync', null, 401],
+  ['POST', 'http://localhost/api/enrich', null, 401],
   ['GET', 'http://localhost/api/events', null, 401],
   ['GET', 'http://localhost/api/events/channels', null, 401],
   ['POST', 'http://localhost/api/events/create', null, 401],

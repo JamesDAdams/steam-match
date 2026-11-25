@@ -84,13 +84,14 @@ try {
     process.exit(process.exitCode ?? 0);
   }
 
-  console.log('\n=== LOT D ENRICHISSEMENT ===');
+  console.log('\n=== LOT D ENRICHISSEMENT (10 s) ===');
   const worker = await vite.ssrLoadModule('/lib/enrich-worker.ts');
-  const r = await worker.runEnrichBatch(3, true);
-  console.log(`  traités : ${r.processed}`);
-  console.log(`  enrichis: ${r.enriched}`);
-  console.log(`  différés: ${r.deferred}`);
-  console.log(`  restants: ${r.remaining}`);
+  const r = await worker.runEnrich({ budgetMs: 10_000 });
+  console.log(`  identifiés      : ${r.metaDone}`);
+  console.log(`  prix récupérés  : ${r.priceDone}`);
+  console.log(`  restants (noms) : ${r.metaPending}`);
+  console.log(`  restants (prix) : ${r.pricePending}`);
+  console.log(`  durée           : ${r.durationMs} ms`);
 } catch (err) {
   console.error('\n  ✗ ÉCHEC :', err.message);
   process.exitCode = 1;

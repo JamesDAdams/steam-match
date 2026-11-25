@@ -11,6 +11,8 @@
  * Steam reste en secours pour les appids absents de SteamSpy.
  */
 
+import { rateLimitedFetch } from './rate-limit.ts';
+
 const STEAMSPY = 'https://steamspy.com/api.php';
 const STORE = 'https://store.steampowered.com/api/appdetails';
 
@@ -58,12 +60,12 @@ function topTags(tags?: Record<string, number> | string[]): string[] {
 
 async function fromSteamSpy(appid: number): Promise<GameMetadata | null> {
   try {
-    const res = await fetch(`${STEAMSPY}?request=appdetails&appid=${appid}`, {
+    const res = await rateLimitedFetch(`${STEAMSPY}?request=appdetails&appid=${appid}`, {
       headers: {
         // SteamSpy renvoie {} sans User-Agent identifiable.
         'User-Agent': 'BastionDesGamers/1.0',
       },
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(5000),
     });
     if (!res.ok) return null;
 
@@ -92,9 +94,9 @@ async function fromSteamSpy(appid: number): Promise<GameMetadata | null> {
 
 async function fromSteamStore(appid: number): Promise<GameMetadata | null> {
   try {
-    const res = await fetch(
+    const res = await rateLimitedFetch(
       `${STORE}?appids=${appid}&l=french&filters=genres,basic,categories,short_description`,
-      { signal: AbortSignal.timeout(8000) },
+      { signal: AbortSignal.timeout(5000) },
     );
     if (res.status === 429 || !res.ok) return null;
 

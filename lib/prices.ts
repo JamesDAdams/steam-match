@@ -9,6 +9,8 @@
  * Le prix est stocké en CENTIMES pour éviter les erreurs d'arrondi flottant.
  */
 
+import { rateLimitedFetch } from './rate-limit.ts';
+
 const CHEAPSHARK = 'https://www.cheapshark.com/api/1.0';
 
 export interface GamePrice {
@@ -39,35 +41,25 @@ async function fromCheapShark(appid: number): Promise<GamePrice | null> {
   try {
     const headers = { 'User-Agent': 'BastionDesGamers/1.0 (+association gaming)' };
 
-    // 1. L'identifiant interne CheapShark.
-    const searchRes = await fetch(`${CHEAPSHARK}/games?steamAppID=${appid}`, {
-      headers,
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!searchRes.ok) return null;
+    // UN SEUL appel : /deals?steamAppID= renvoie déjà toutes les boutiques.
+    // L'ancienne méthode (games?steamAppID pour obtenir le gameID, puis
+    // games?id pour les offres) coûtait deux requêtes par jeu — c'était le
+    // principal goulot de l'enrichissement.
+    const res = await rateLimitedFetch(
+      `${CHEAPSHARK}/deals?steamAppID=${appid}&pageSize=60`,
+      { headers, signal: AbortSignal.timeout(5000) },
+    );
+    if (!res.ok) return null;
 
-    const search = (await searchRes.json()) as any;
-    if (!Array.isArray(search) || search.length === 0) return null;
+    const deals = (await res.json()) as any[];
+    if (!Array.isArray(deals) || deals.length === 0) return null;
 
-    const gameID = search[0]?.gameID;
-    if (!gameID) return null;
-
-    // 2. Détail de toutes les offres.
-    const detailRes = await fetch(`${CHEAPSHARK}/games?id=${gameID}`, {
-      headers,
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!detailRes.ok) return null;
-
-    const detail = (await detailRes.json()) as any;
-    const deals: any[] = detail?.deals ?? [];
-
-    // 3. On écarte Steam et on prend la moins chère des boutiques de clés.
+    // On écarte Steam et on prend la moins chère des boutiques de clés.
     const thirdParty = deals
       .filter((d) => String(d?.storeID) !== STEAM_STORE_ID)
       .map((d) => ({
         storeID: String(d.storeID ?? ''),
-        price: Number(d.price),
+        price: Number(d.salePrice),
       }))
       .filter((d) => Number.isFinite(d.price) && d.price > 0)
       .sort((a, b) => a.price - b.price);
@@ -119,9 +111,9 @@ async function fromGGDeals(appid: number): Promise<GamePrice | null> {
   if (!key) return null;
 
   try {
-    const res = await fetch(
+    const res = await rateLimitedFetch(
       `https://api.gg.deals/v1/prices/by-steam-app-id/${appid}/?key=${encodeURIComponent(key)}`,
-      { signal: AbortSignal.timeout(8000) },
+      { signal: AbortSignal.timeout(5000) },
     );
     if (!res.ok) return null;
 
@@ -204,10 +196,10 @@ function extractPlayModes(categories: { description?: string }[] = []): string[]
  */
 export async function fetchSteamPrice(appid: number): Promise<SteamPrice | null> {
   try {
-    const res = await fetch(
+    const res = await rateLimitedFetch(
       `https://store.steampowered.com/api/appdetails?appids=${appid}` +
         `&filters=price_overview,release_date,categories&cc=fr&l=french`,
-      { signal: AbortSignal.timeout(8000) },
+      { signal: AbortSignal.timeout(5000) },
     );
     if (res.status === 429 || !res.ok) return null;
 

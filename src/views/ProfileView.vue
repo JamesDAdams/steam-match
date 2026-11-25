@@ -212,12 +212,91 @@ const autoUpdating = computed(
   () => pollTimer !== null && unidentifiedCount.value > 0,
 );
 
+/**
+ * ACCÉLÉRATION DE L'ENRICHISSEMENT
+ * -------------------------------
+ * Le cron traite la file en arrière-plan, mais son débit est plafonné par les
+ * API externes (Steam, CheapShark). Quand un membre vient de synchroniser sa
+ * ludothèque, on enchaîne donc des appels courts depuis le navigateur : ils
+ * utilisent la même file, avec la même protection contre les doublons, et
+ * multiplient le débit pendant la visite.
+ *
+ * La boucle s'arrête d'elle-même : plus rien en attente, onglet masqué, ou
+ * plafond d'appels atteint (pour ne pas tourner indéfiniment).
+ */
+const PUMP_INTERVAL_MS = 400;
+const PUMP_MAX_CALLS = 60;
+let pumpTimer: ReturnType<typeof setTimeout> | null = null;
+let pumpCalls = 0;
+
+function stopPump() {
+  if (pumpTimer) {
+    clearTimeout(pumpTimer);
+    pumpTimer = null;
+  }
+}
+
+async function pumpEnrichment() {
+  pumpTimer = null;
+
+  if (pumpCalls >= PUMP_MAX_CALLS) return;
+
+  // Onglet en arrière-plan : on ralentit au lieu de marteler le serveur.
+  if (document.hidden) {
+    pumpTimer = setTimeout(pumpEnrichment, 3000);
+    return;
+  }
+
+  pumpCalls++;
+
+  try {
+    const r = await apiPost<{
+      ok: boolean;
+      metaDone: number;
+      priceDone: number;
+      metaPending: number;
+      pricePending: number;
+    }>('/api/enrich');
+
+    const left = (r.metaPending ?? 0) + (r.pricePending ?? 0);
+
+    // Rafraîchit l'affichage régulièrement, sans recharger à chaque appel.
+    if (r.metaDone > 0 || r.priceDone > 0 || pumpCalls % 3 === 0) {
+      await load(true);
+    }
+
+    if (left === 0) {
+      stopPolling();
+      return;
+    }
+
+    pumpTimer = setTimeout(pumpEnrichment, PUMP_INTERVAL_MS);
+  } catch {
+    // Erreur réseau ou 429 : on retente une fois, plus tard.
+    if (pumpCalls < PUMP_MAX_CALLS) {
+      pumpTimer = setTimeout(pumpEnrichment, 3000);
+    }
+  }
+}
+
+function startPump() {
+  if (pumpTimer) return;
+  pumpCalls = 0;
+  pumpTimer = setTimeout(pumpEnrichment, 0);
+}
+
 onMounted(async () => {
   await load();
-  if (unidentifiedCount.value > 0) startPolling();
+  if (unidentifiedCount.value > 0) {
+    startPolling();
+    startPump();
+  }
 });
 
-onUnmounted(stopPolling);
+onUnmounted(() => {
+  stopPolling();
+  stopPump();
+});
 </script>
 
 <template>
@@ -293,8 +372,13 @@ onUnmounted(stopPolling);
         <p class="text-xs">
           <strong>{{ unidentifiedCount }} jeu(x)</strong> sont en cours d'identification
           et s'affichent provisoirement sous la forme « App 12345 ». Les noms,
-          genres et prix se remplissent automatiquement en arrière-plan — rien
-          à faire de ton côté, reviens un peu plus tard.
+          genres et prix se remplissent automatiquement —
+          <template v-if="autoUpdating">
+            accéléré tant que tu restes sur cette page.
+          </template>
+          <template v-else>
+            tu peux revenir un peu plus tard.
+          </template>
         </p>
       </div>
 
