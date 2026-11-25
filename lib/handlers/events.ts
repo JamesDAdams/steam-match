@@ -47,10 +47,17 @@ export default async function handler(req: any, res: any) {
     // Discord reste la source de vérité : on rafraîchit la base avant de lire,
     // au plus une fois toutes les 45 s. Sans ça, un événement supprimé sur
     // Discord continuait d'apparaître sur le site.
+    let syncInfo: { skipped: boolean; synced?: number; error?: string } | null = null;
     if (isBotConfigured()) {
-      await syncDiscordEventsIfStale().catch((err: any) => {
+      try {
+        syncInfo = await syncDiscordEventsIfStale();
+      } catch (err: any) {
+        // On n'empêche pas l'affichage, mais on remonte la raison : sans elle
+        // un échec de synchronisation est invisible et ressemble à un bug de
+        // suppression.
+        syncInfo = { skipped: false, error: err?.message ?? String(err) };
         console.warn('[events] synchronisation de fond ignorée :', err?.message);
-      });
+      }
     }
 
     const db = getDb();
@@ -98,6 +105,7 @@ export default async function handler(req: any, res: any) {
       past: all.filter((e) => e.isPast || e.isCancelled).slice(0, 12),
       total: all.length,
       lastSyncAt: lastSyncRow?.syncedAt ?? null,
+      sync: syncInfo,
       isAdmin: ctx.isAdmin,
       // Le bouton « Créer un événement » n'a de sens que pour un admin avec
       // un bot configuré.
