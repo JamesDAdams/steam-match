@@ -525,7 +525,7 @@ export async function getBotPermissions(
 
   const guild = (await guildRes.json()) as {
     id: string;
-    roles?: { id: string; permissions: string }[];
+    roles?: { id: string; name: string; permissions: string }[];
   };
   const member = memberRes.ok
     ? ((await memberRes.json()) as { roles?: string[] })
@@ -558,6 +558,13 @@ export interface BotChannelAccess {
   canView: boolean;
   /** Le bot peut rejoindre le salon (« Se connecter »). */
   canConnect: boolean;
+  /**
+   * Rôles qui, dans les surcharges du salon, accordent « Se connecter » alors
+   * que le bot ne les porte pas. C'est la réponse actionnable à un 403 : il
+   * suffit d'attribuer l'un de ces rôles au bot, sans toucher aux permissions
+   * du salon (auxquelles il n'a justement pas accès).
+   */
+  grantingRoles: { id: string; name: string }[];
 }
 
 const CHANNEL_ACCESS_TTL_MS = 2 * 60_000;
@@ -609,7 +616,7 @@ export async function getBotChannelAccess(
 
   const guild = (await guildRes.json()) as {
     id: string;
-    roles?: { id: string; permissions: string }[];
+    roles?: { id: string; name: string; permissions: string }[];
   };
   const member = memberRes.ok
     ? ((await memberRes.json()) as { roles?: string[] })
@@ -667,10 +674,25 @@ export async function getBotChannelAccess(
       bits = ~0n;
     }
 
-    value[channel.id] = {
-      canView: has(bits, 10n),
-      canConnect: has(bits, 20n),
-    };
+    const canView = has(bits, 10n);
+    const canConnect = has(bits, 20n);
+
+    // Rôles du salon qui ouvrent « Se connecter » et que le bot ne porte pas :
+    // le seul levier réellement disponible quand il n'a pas accès au salon.
+    const grantingRoles =
+      canConnect || isAdmin
+        ? []
+        : (channel.permission_overwrites ?? [])
+            .filter(
+              (o) =>
+                o.type === 0 &&
+                o.id !== guild.id &&
+                !(member.roles ?? []).includes(o.id) &&
+                has(BigInt(o.allow), 20n),
+            )
+            .map((o) => ({ id: o.id, name: roles.get(o.id)?.name ?? o.id }));
+
+    value[channel.id] = { canView, canConnect, grantingRoles };
   }
 
   channelAccessCache = { value, at: Date.now() };

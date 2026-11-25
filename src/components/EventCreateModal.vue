@@ -21,6 +21,12 @@ interface Channel {
   /** Permissions effectives du bot sur ce salon (calculées côté serveur). */
   canView?: boolean;
   canConnect?: boolean;
+  /**
+   * Rôles qui ouvrent « Se connecter » sur ce salon sans que le bot les porte.
+   * Attribuer l'un d'eux au bot suffit : pas besoin de toucher aux permissions
+   * d'un salon que le bot ne peut justement pas administrer.
+   */
+  grantingRoles?: { id: string; name: string }[];
 }
 
 interface BotInfo {
@@ -73,10 +79,18 @@ const blockedChannels = computed(() =>
   channels.value.filter((c) => c.canView === false || c.canConnect === false),
 );
 
+/** Y a-t-il au moins un salon que le bot peut réellement rejoindre ? */
+const hasUsableChannel = computed(() => usableChannels.value.length > 0);
+
 function channelWarning(c: Channel): string | null {
   if (c.canView === false) return 'bot sans accès';
   if (c.canConnect === false) return 'bot sans « Se connecter »';
   return null;
+}
+
+/** Rôles à attribuer au bot pour débloquer ce salon, en clair. */
+function grantingRoleNames(c: Channel): string {
+  return (c.grantingRoles ?? []).map((r) => r.name).join(' ou ');
 }
 
 async function loadChannels() {
@@ -97,12 +111,15 @@ async function loadChannels() {
     bot.value = r.bot ?? null;
     guildId.value = r.guildId ?? null;
 
-    if (!channelId.value) {
-      // On privilégie un salon accessible, mais on ne vide pas la liste quand
-      // aucun ne l'est : l'admin doit pouvoir tenter sa chance (le calcul des
-      // permissions est une aide, pas un couperet).
-      const preferred = usableChannels.value[0] ?? channels.value[0];
-      if (preferred) channelId.value = preferred.id;
+    // Le salon retenu doit être réellement utilisable : sinon l'envoi finirait
+    // en 403 après avoir laissé croire que tout était en ordre. Les salons
+    // bloqués restent visibles dans la liste (grisés) avec la raison.
+    const stillUsable = usableChannels.value.some((c) => c.id === channelId.value);
+    if (!stillUsable) {
+      // Aucun salon utilisable : on garde le premier pour laisser l'admin
+      // tenter (Discord tranchera), la liste n'est grisée que s'il existe une
+      // alternative qui marche.
+      channelId.value = usableChannels.value[0]?.id ?? channels.value[0]?.id ?? '';
     }
 
     // Aucun salon du tout : « lieu externe » est la seule option possible.
@@ -541,8 +558,13 @@ onBeforeUnmount(() => {
               <option v-else-if="channels.length === 0" value="">
                 Aucun salon vocal disponible
               </option>
-              <option v-for="c in channels" :key="c.id" :value="c.id">
-                {{ c.name }}<template v-if="channelWarning(c)"> — ⚠ {{ channelWarning(c) }}</template>
+              <option
+                v-for="c in channels"
+                :key="c.id"
+                :value="c.id"
+                :disabled="hasUsableChannel && channelWarning(c) !== null"
+              >
+                {{ c.name }}<template v-if="channelWarning(c)"> — {{ channelWarning(c) }}</template>
               </option>
             </select>
             <p v-if="channelsError" class="mt-1 text-xs text-danger">{{ channelsError }}</p>
@@ -550,14 +572,22 @@ onBeforeUnmount(() => {
               v-else-if="!loadingChannels && blockedChannels.length > 0"
               class="mt-1 text-xs text-warn"
             >
-              ⚠ {{ blockedChannels.length }} salon(s) où le bot n'a pas « Se connecter ».
-              Discord exige cette permission <strong>sur le salon</strong> pour un
-              événement vocal. Dans le salon : Permissions → « Ajouter des membres ou
-              des rôles » → choisir le rôle <strong>Robots</strong> (ou steam-match) →
-              cocher <strong>Se connecter</strong> → Enregistrer. Puis
+              <span v-for="c in blockedChannels" :key="c.id" class="block">
+                <strong>{{ c.name }}</strong> :
+                <template v-if="grantingRoleNames(c)">
+                  donne le rôle <strong>{{ grantingRoleNames(c) }}</strong> au bot —
+                  Paramètres du serveur → Membres → steam-match → Rôles.
+                </template>
+                <template v-else-if="c.canView === false">
+                  le bot ne voit pas ce salon.
+                </template>
+                <template v-else>
+                  aucun rôle du salon n'accorde « Se connecter » au bot.
+                </template>
+              </span>
               <button type="button" class="underline hover:no-underline" @click="loadChannels">
-                actualise la liste
-              </button>. « Lieu externe » fonctionne sans cette permission.
+                actualiser la liste
+              </button>
             </p>
             <p v-else-if="!loadingChannels && channels.length === 0" class="mt-1 text-xs text-fg-faint">
               Aucun salon vocal n'est visible par le bot. Utilise « Lieu externe », ou

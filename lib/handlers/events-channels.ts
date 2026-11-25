@@ -72,7 +72,7 @@ export default async function handler(req: any, res: any) {
     // Accès par salon : Discord exige « Voir » et « Se connecter » pour un
     // événement vocal. Une liste sans cette information laisserait l'admin
     // choisir un salon qui échouera en 403.
-    let access: Record<string, { canView: boolean; canConnect: boolean }> = {};
+    let access: Awaited<ReturnType<typeof getBotChannelAccess>> = {};
     try {
       // Relecture forcée : l'admin ouvre ce modal après avoir corrigé des
       // permissions, il doit voir l'état réel et non un cache de 2 minutes.
@@ -91,6 +91,7 @@ export default async function handler(req: any, res: any) {
         type: c.type,
         canView: access[c.id]?.canView ?? true,
         canConnect: access[c.id]?.canConnect ?? true,
+        grantingRoles: access[c.id]?.grantingRoles ?? [],
       })),
       bot,
       error: permissionsError,
