@@ -691,21 +691,21 @@ onUnmounted(() => {
 
       <!-- Goûts par genre -->
       <section v-if="stats && stats.topGenres.length" class="card mb-6">
-        <h2 class="font-semibold text-fg-strong">Tes styles de jeu</h2>
-        <p class="mt-1 text-xs text-fg-faint">
-          Pondéré par le temps de jeu réellement passé, pas par le nombre de jeux.
-        </p>
-        <!-- Deux colonnes : la version pleine largeur étirait chaque ligne sur
-             toute la page pour deux informations seulement. -->
-        <ol class="mt-4 grid gap-x-10 gap-y-1.5 sm:grid-cols-2">
+        <div class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+          <h2 class="font-semibold text-fg-strong">Tes styles de jeu</h2>
+          <p class="text-[11px] text-fg-faint">par temps de jeu réel</p>
+        </div>
+        <!-- Grille compacte : en pleine largeur, chaque ligne étirait le nom
+             jusqu'aux heures et laissait un vide immense au milieu. -->
+        <ol class="mt-4 grid grid-cols-2 gap-x-6 gap-y-1 sm:grid-cols-3 lg:grid-cols-4">
           <li
             v-for="(g, i) in stats.topGenres"
             :key="g.name"
-            class="flex items-baseline gap-3 text-sm"
+            class="flex items-baseline gap-2 text-xs"
           >
-            <span class="w-5 shrink-0 text-right text-xs text-fg-faint">{{ i + 1 }}</span>
+            <span class="w-3 shrink-0 text-right text-[10px] text-fg-faint">{{ i + 1 }}</span>
             <span class="min-w-0 flex-1 truncate text-fg">{{ g.name }}</span>
-            <span class="shrink-0 text-xs text-fg-muted">{{ formatPlaytime(g.minutes) }}</span>
+            <span class="shrink-0 text-[11px] text-fg-muted">{{ formatPlaytime(g.minutes) }}</span>
           </li>
         </ol>
       </section>

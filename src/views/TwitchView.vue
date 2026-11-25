@@ -97,9 +97,12 @@ onBeforeUnmount(stopRefresh);
         </p>
       </div>
       <div class="ml-auto flex items-center gap-2">
-        <router-link to="/profil" class="btn-primary text-sm">
+        <router-link v-if="me.authenticated" to="/profil" class="btn-primary text-sm">
           {{ mine ? 'Gérer ma chaîne' : 'Lier ma chaîne' }}
         </router-link>
+        <a v-else href="/api/auth/discord" class="btn-primary text-sm">
+          Rejoindre le serveur
+        </a>
       </div>
     </div>
 
@@ -280,6 +283,9 @@ onBeforeUnmount(stopRefresh);
         <router-link v-if="me.authenticated" to="/profil" class="btn-primary mt-4 text-sm">
           Lier ma chaîne Twitch
         </router-link>
+        <a v-else href="/api/auth/discord" class="btn-primary mt-4 text-sm">
+          Rejoindre le serveur
+        </a>
       </div>
 
     </section>

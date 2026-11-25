@@ -342,6 +342,75 @@ export async function requireAccess(
   };
 }
 
+/**
+ * Comme `requireAccess`, mais SANS refuser : renvoie null si le visiteur n'est
+ * pas connecté ou n'a pas accès, sans écrire de réponse.
+ *
+ * Utilisé par les pages publiques (événements, Twitch) : un visiteur non
+ * connecté voit le contenu, et un membre voit en plus ses propres actions.
+ */
+export async function optionalAccess(req: {
+  headers: Record<string, any>;
+}): Promise<AccessContext | null> {
+  try {
+    const cookies = parseCookies(req.headers?.cookie);
+    const sess = await readSession(cookies[COOKIE_NAME]);
+    if (!sess) return null;
+
+    const db = getDb();
+    const [du] = await db
+      .select()
+      .from(discordUsers)
+      .where(eq(discordUsers.discordId, sess.discordId))
+      .limit(1);
+    if (!du) return null;
+
+    const decision = await resolveAccess(du.discordId);
+    if (!decision.allowed) return null;
+
+    let steamid: string | null = null;
+    let personaName: string | null = null;
+    let profileVisible = false;
+    let gamesVisible = false;
+    let lastSyncAt: Date | null = null;
+
+    const [link] = await db
+      .select({ steamid: steamLinks.steamid })
+      .from(steamLinks)
+      .where(eq(steamLinks.discordId, du.discordId))
+      .limit(1);
+
+    if (link?.steamid) {
+      steamid = link.steamid;
+      const [u] = await db.select().from(users).where(eq(users.steamid, steamid)).limit(1);
+      if (u) {
+        personaName = u.personaName;
+        profileVisible = u.profileVisible;
+        gamesVisible = u.gamesVisible;
+        lastSyncAt = u.lastSyncAt;
+      }
+    }
+
+    return {
+      discordId: du.discordId,
+      username: du.username,
+      globalName: du.globalName,
+      avatarUrl: du.avatarUrl,
+      isAdmin: decision.source === 'admin',
+      isMember: decision.membership.state === 'member',
+      accessSource: decision.source ?? 'whitelist',
+      steamid,
+      personaName,
+      profileVisible,
+      gamesVisible,
+      lastSyncAt,
+    };
+  } catch (err: any) {
+    console.warn('[access] session illisible :', err?.message);
+    return null;
+  }
+}
+
 /** Réponse 403 homogène, avec la marche à suivre. */
 export function deny(
   res: any,

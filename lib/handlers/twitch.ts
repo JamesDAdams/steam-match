@@ -1,7 +1,7 @@
 import { getDb } from '../../db/index.ts';
 import { twitchLinks, discordUsers } from '../../db/schema.ts';
 import { eq } from 'drizzle-orm';
-import { requireAccess } from '../access.ts';
+import { optionalAccess, requireAccess } from '../access.ts';
 import { checkChannelExists, getChannelsState, parseTwitchLogin } from '../twitch.ts';
 
 /**
@@ -15,10 +15,15 @@ import { checkChannelExists, getChannelsState, parseTwitchLogin } from '../twitc
  * l'est, et le statut est interrogé à la demande.
  */
 export default async function handler(req: any, res: any) {
-  const ctx = await requireAccess(req, res);
-  if (!ctx) return;
-
   const method = (req.method || 'GET').toUpperCase();
+
+  // Lecture publique (la page Twitch est ouverte à tous) ; les modifications
+  // exigent une session.
+  let ctx = await optionalAccess(req);
+  if (method !== 'GET') {
+    ctx = await requireAccess(req, res);
+    if (!ctx) return;
+  }
 
   try {
     const db = getDb();
@@ -66,7 +71,7 @@ export default async function handler(req: any, res: any) {
           return a.displayName.localeCompare(b.displayName, 'fr');
         });
 
-      const mine = rows.find((r) => r.discordId === ctx.discordId) ?? null;
+      const mine = ctx ? (rows.find((r) => r.discordId === ctx!.discordId) ?? null) : null;
 
       return res.status(200).json({
         ok: true,
@@ -105,7 +110,7 @@ export default async function handler(req: any, res: any) {
       }
 
       const values = {
-        discordId: ctx.discordId,
+        discordId: ctx!.discordId,
         login,
         displayName: channel.displayName ?? login,
         avatarUrl: channel.avatarUrl ?? null,
@@ -127,7 +132,7 @@ export default async function handler(req: any, res: any) {
 
     /* ── Délier ────────────────────────────────────────────────────── */
     if (method === 'DELETE') {
-      await db.delete(twitchLinks).where(eq(twitchLinks.discordId, ctx.discordId));
+      await db.delete(twitchLinks).where(eq(twitchLinks.discordId, ctx!.discordId));
       return res.status(200).json({ ok: true });
     }
 

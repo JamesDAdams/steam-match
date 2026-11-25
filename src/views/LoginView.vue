@@ -325,7 +325,7 @@ onMounted(refresh);
 
           <span class="chip mx-auto mb-5 !border-gold/40 !text-gold">
             <span class="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-ok"></span>
-            Communauté multigaming
+            Communauté PC · 18 ans et plus
           </span>
 
           <h1 class="mx-auto max-w-3xl font-display text-4xl font-bold leading-tight text-fg-strong sm:text-6xl">
@@ -336,10 +336,23 @@ onMounted(refresh);
           </h1>
 
           <p class="mx-auto mt-5 max-w-2xl text-base text-fg-muted sm:text-lg">
-            On rassemble nos ludothèques Steam pour trouver les jeux qu'on a
-            vraiment en commun — et surtout celui auquel on va jouer ensemble
-            ce soir.
+            Le Bastion des Gamers est une communauté <strong class="text-fg">PC</strong>,
+            réservée aux <strong class="text-fg">majeurs de 18 ans et plus</strong>. On y
+            rassemble nos ludothèques Steam pour trouver les jeux qu'on a vraiment en
+            commun — et surtout celui auquel on va jouer ensemble ce soir.
           </p>
+
+          <p class="mx-auto mt-3 max-w-2xl text-sm text-fg-muted">
+            Ici on discute normalement : on sait aligner trois phrases sans
+            « wesh » ni « frère ». Si ce n'est pas ton style, tu ne seras pas à
+            ta place.
+          </p>
+
+          <div class="mx-auto mt-5 flex max-w-2xl flex-wrap items-center justify-center gap-2">
+            <span class="chip">🖥️ PC uniquement</span>
+            <span class="chip">🔞 18 ans et plus</span>
+            <span class="chip">💬 Langage correct</span>
+          </div>
 
           <div class="mt-8 flex flex-wrap items-center justify-center gap-3">
             <a href="/api/auth/discord" class="btn-primary px-6 py-3 text-base">

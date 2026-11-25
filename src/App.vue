@@ -26,12 +26,20 @@ async function logout() {
 }
 
 // Ferme le menu mobile à chaque navigation.
+/**
+ * Événements et Twitch sont PUBLICS : visibles avant même la connexion, pour
+ * donner envie de rejoindre. Le reste demande l'accès au site.
+ */
 const links = computed(() => [
   { to: '/evenements', label: 'Événements' },
-  { to: '/commun', label: 'Jeux en commun' },
-  { to: '/recommandations', label: 'Recommandations' },
+  ...(canUseSite.value
+    ? [
+        { to: '/commun', label: 'Jeux en commun' },
+        { to: '/recommandations', label: 'Recommandations' },
+      ]
+    : []),
   { to: '/twitch', label: 'Twitch' },
-  { to: '/aide', label: 'Aide' },
+  ...(canUseSite.value ? [{ to: '/aide', label: 'Aide' }] : []),
 ]);
 </script>
 
@@ -60,10 +68,7 @@ const links = computed(() => [
         </router-link>
 
         <!-- Navigation bureau : alignée, libellés sur une ligne -->
-        <nav
-          v-if="canUseSite"
-          class="hidden items-center gap-1 lg:flex"
-        >
+        <nav class="hidden items-center gap-1 lg:flex">
           <router-link
             v-for="l in links"
             :key="l.to"
@@ -153,7 +158,6 @@ const links = computed(() => [
 
           <!-- Menu mobile (nav masquée sous lg pour éviter le wrap) -->
           <button
-            v-if="canUseSite"
             class="flex h-8 w-8 items-center justify-center rounded-md border border-line text-fg-muted lg:hidden"
             aria-label="Ouvrir le menu"
             @click="menuOpen = !menuOpen"
@@ -166,7 +170,7 @@ const links = computed(() => [
       </div>
 
       <!-- Navigation mobile -->
-      <nav v-if="canUseSite && menuOpen" class="border-t border-line px-3 py-2 lg:hidden">
+      <nav v-if="menuOpen" class="border-t border-line px-3 py-2 lg:hidden">
         <router-link
           v-for="l in links"
           :key="l.to"
@@ -207,10 +211,10 @@ const links = computed(() => [
           <div class="flex flex-wrap gap-8 text-xs text-fg-muted">
             <div class="space-y-1">
               <p class="mb-2 font-semibold uppercase tracking-wide text-fg-faint">Navigation</p>
-              <router-link v-if="canUseSite" to="/evenements" class="block hover:text-fg-strong">Événements</router-link>
+              <router-link to="/evenements" class="block hover:text-fg-strong">Événements</router-link>
               <router-link v-if="canUseSite" to="/commun" class="block hover:text-fg-strong">Jeux en commun</router-link>
               <router-link v-if="canUseSite" to="/recommandations" class="block hover:text-fg-strong">Recommandations</router-link>
-              <router-link v-if="canUseSite" to="/twitch" class="block hover:text-fg-strong">Twitch</router-link>
+              <router-link to="/twitch" class="block hover:text-fg-strong">Twitch</router-link>
             </div>
             <div class="space-y-1">
               <p class="mb-2 font-semibold uppercase tracking-wide text-fg-faint">Compte</p>

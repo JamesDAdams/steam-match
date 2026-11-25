@@ -1,7 +1,7 @@
 import { getDb } from '../../db/index.ts';
 import { discordEvents } from '../../db/schema.ts';
 import { desc } from 'drizzle-orm';
-import { requireAccess, requireAdmin } from '../access.ts';
+import { optionalAccess, requireAdmin } from '../access.ts';
 import { isBotConfigured, inviteUrl } from '../discord-bot.ts';
 import { syncDiscordEvents, syncDiscordEventsIfStale } from '../events-sync.ts';
 
@@ -40,8 +40,9 @@ export default async function handler(req: any, res: any) {
     return sync(req, res);
   }
 
-  const ctx = await requireAccess(req, res);
-  if (!ctx) return;
+  // Page publique : un visiteur non connecté voit les événements, un membre
+  // voit en plus les actions réservées (création, suppression).
+  const ctx = await optionalAccess(req);
 
   try {
     // Discord reste la source de vérité : on rafraîchit la base avant de lire,
@@ -109,10 +110,10 @@ export default async function handler(req: any, res: any) {
       total: all.length,
       lastSyncAt: lastSyncRow?.syncedAt ?? null,
       sync: syncInfo,
-      isAdmin: ctx.isAdmin,
+      isAdmin: ctx?.isAdmin ?? false,
       // Le bouton « Créer un événement » n'a de sens que pour un admin avec
       // un bot configuré.
-      canCreate: ctx.isAdmin && configured,
+      canCreate: (ctx?.isAdmin ?? false) && configured,
       configured,
       inviteUrl: inviteUrl(),
     });

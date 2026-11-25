@@ -16,12 +16,8 @@ import { refreshAuth } from './lib/guard.ts';
 
 const routes = [
   { path: '/', name: 'login', component: LoginView },
-  {
-    path: '/evenements',
-    name: 'events',
-    component: EventsView,
-    meta: { requiresAccess: true },
-  },
+  // Page publique : consultable sans compte.
+  { path: '/evenements', name: 'events', component: EventsView },
   {
     path: '/profil',
     name: 'profile',
@@ -35,12 +31,8 @@ const routes = [
     component: RecommendView,
     meta: { requiresAccess: true },
   },
-  {
-    path: '/twitch',
-    name: 'twitch',
-    component: TwitchView,
-    meta: { requiresAccess: true },
-  },
+  // Page publique : consultable sans compte.
+  { path: '/twitch', name: 'twitch', component: TwitchView },
   {
     path: '/aide',
     name: 'help',
