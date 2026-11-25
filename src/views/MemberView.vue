@@ -18,6 +18,21 @@ interface Game {
   steamCurrency: string | null;
 }
 
+interface Wish {
+  appid: number;
+  name: string;
+  headerImage: string | null;
+  genres: string[];
+  playableNow: boolean;
+  owners: string[];
+  steamPrice: number | null;
+  steamCurrency: string | null;
+  cheapestPrice: number | null;
+  cheapestCurrency: string | null;
+  cheapestStore: string | null;
+  releaseDate: string | null;
+}
+
 interface Member {
   discordId: string;
   name: string;
@@ -38,7 +53,9 @@ const steam = ref<{ steamid: string; personaName: string; avatarUrl: string | nu
 const stats = ref<{ totalGames: number; playedGames: number; totalMinutes: number; family: number; secondary: number } | null>(null);
 const topGenres = ref<{ name: string; minutes: number }[]>([]);
 const games = ref<Game[]>([]);
+const wishlist = ref<Wish[]>([]);
 const isMe = ref(false);
+const tab = ref<'games' | 'wishlist'>('games');
 
 const search = ref('');
 const sortBy = ref<'playtime' | 'name'>('playtime');
@@ -49,6 +66,16 @@ const filtered = computed(() => {
   list.sort((a, b) =>
     sortBy.value === 'name' ? a.name.localeCompare(b.name, 'fr') : b.playtime - a.playtime,
   );
+  return list;
+});
+
+const filteredWishlist = computed(() => {
+  const q = search.value.trim().toLowerCase();
+  const list = q
+    ? wishlist.value.filter((w) => w.name.toLowerCase().includes(q))
+    : [...wishlist.value];
+  // Ce que quelqu'un d'autre possède déjà d'abord : c'est jouable ce soir.
+  list.sort((a, b) => Number(b.playableNow) - Number(a.playableNow) || a.name.localeCompare(b.name, 'fr'));
   return list;
 });
 
@@ -70,6 +97,7 @@ async function load() {
     stats.value = r.stats;
     topGenres.value = r.topGenres ?? [];
     games.value = r.games ?? [];
+    wishlist.value = (r as any).wishlist ?? [];
     isMe.value = r.isMe;
   } catch (e: any) {
     error.value = e.message;
@@ -196,11 +224,27 @@ watch(discordId, load);
           </ol>
         </section>
 
-        <!-- Ludothèque -->
+        <!-- Onglets ludothèque / wishlist -->
         <section class="card mb-6">
           <div class="flex flex-wrap items-center gap-3">
-            <h2 class="font-semibold text-fg-strong">Sa ludothèque</h2>
-            <span class="text-xs text-fg-faint">{{ games.length }} jeux</span>
+            <div class="flex rounded border border-line p-0.5 text-sm">
+              <button
+                class="rounded px-3 py-1 transition"
+                :class="tab === 'games' ? 'bg-brand-soft text-fg-strong' : 'text-fg-muted'"
+                @click="tab = 'games'"
+              >
+                Ludothèque
+                <span class="ml-1 text-[11px] opacity-70">{{ games.length }}</span>
+              </button>
+              <button
+                class="rounded px-3 py-1 transition"
+                :class="tab === 'wishlist' ? 'bg-brand-soft text-fg-strong' : 'text-fg-muted'"
+                @click="tab = 'wishlist'"
+              >
+                Wishlist
+                <span class="ml-1 text-[11px] opacity-70">{{ wishlist.length }}</span>
+              </button>
+            </div>
             <div class="ml-auto flex flex-wrap items-center gap-2">
               <input
                 v-model="search"
@@ -219,7 +263,8 @@ watch(discordId, load);
           </div>
         </section>
 
-        <div v-if="filtered.length" class="space-y-2">
+        <!-- Ludothèque -->
+        <div v-if="tab === 'games' && filtered.length" class="space-y-2">
           <a
             v-for="g in filtered.slice(0, 300)"
             :key="g.appid"
@@ -258,8 +303,61 @@ watch(discordId, load);
           </p>
         </div>
 
-        <div v-else class="card py-8 text-center text-fg-muted">
+        <div v-else-if="tab === 'games'" class="card py-8 text-center text-fg-muted">
           Aucun jeu ne correspond à cette recherche.
+        </div>
+
+        <!-- Wishlist -->
+        <div v-if="tab === 'wishlist'">
+          <div v-if="filteredWishlist.length" class="space-y-2">
+            <a
+              v-for="w in filteredWishlist.slice(0, 300)"
+              :key="w.appid"
+              :href="steamStoreUrl(w.appid)"
+              target="_blank"
+              rel="noopener"
+              class="card flex items-center gap-4 p-2 transition hover:border-brand/40"
+            >
+              <div class="h-12 w-28 shrink-0 overflow-hidden rounded bg-app-surface2">
+                <img
+                  :src="w.headerImage || steamHeaderUrl(w.appid)"
+                  :alt="w.name"
+                  loading="lazy"
+                  class="h-full w-full object-cover"
+                  @error="hideBrokenImage"
+                />
+              </div>
+              <div class="min-w-0 flex-1">
+                <p class="flex flex-wrap items-baseline gap-2">
+                  <span class="truncate text-sm font-medium text-fg-strong">{{ w.name }}</span>
+                  <span v-if="w.playableNow" class="badge bg-ok-soft text-ok">
+                    déjà possédé
+                  </span>
+                </p>
+                <p class="truncate text-[11px] text-fg-faint">
+                  <template v-if="w.owners.length">
+                    Possédé par {{ w.owners.slice(0, 3).join(', ') }}
+                    <template v-if="w.owners.length > 3"> et {{ w.owners.length - 3 }} autre(s)</template>
+                  </template>
+                  <template v-else>Personne du groupe ne l'a encore</template>
+                </p>
+              </div>
+              <span class="shrink-0 text-right text-xs text-fg-muted">
+                <template v-if="w.cheapestPrice !== null">
+                  clé {{ formatPrice(w.cheapestPrice, w.cheapestCurrency ?? 'EUR') }}
+                </template>
+                <template v-else-if="w.steamPrice !== null">
+                  Steam {{ formatPrice(w.steamPrice, w.steamCurrency ?? 'EUR') }}
+                </template>
+              </span>
+            </a>
+            <p v-if="filteredWishlist.length > 300" class="pt-2 text-center text-xs text-fg-faint">
+              {{ filteredWishlist.length - 300 }} autres jeux — affine la recherche.
+            </p>
+          </div>
+          <div v-else class="card py-8 text-center text-fg-muted">
+            Aucun jeu ne correspond à cette recherche.
+          </div>
         </div>
       </template>
     </template>

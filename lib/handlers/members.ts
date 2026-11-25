@@ -5,8 +5,9 @@ import {
   users,
   ownedGames,
   gameCache,
+  wishlistItems,
 } from '../../db/schema.ts';
-import { eq, sql } from 'drizzle-orm';
+import { desc, eq, inArray, sql } from 'drizzle-orm';
 import { requireAccess } from '../access.ts';
 import { guildId, isBotConfigured } from '../discord-bot.ts';
 
@@ -222,8 +223,90 @@ export default async function handler(req: any, res: any) {
           .slice(0, 8)
           .map(([name, minutes]) => ({ name, minutes }));
 
+        // ── Sa wishlist, croisée avec ce que les AUTRES possèdent ──────
+        const wishRows = await db
+          .select({
+            appid: wishlistItems.appid,
+            own: wishlistItems.steamid,
+            name: gameCache.name,
+            headerImage: gameCache.headerImage,
+            genres: gameCache.genres,
+            steamPrice: gameCache.steamPrice,
+            steamCurrency: gameCache.steamCurrency,
+            steamDiscount: gameCache.steamDiscount,
+            cheapestPrice: gameCache.cheapestPrice,
+            cheapestCurrency: gameCache.cheapestCurrency,
+            cheapestStore: gameCache.cheapestStore,
+            releaseDate: gameCache.releaseDate,
+          })
+          .from(wishlistItems)
+          .leftJoin(gameCache, eq(gameCache.appid, wishlistItems.appid))
+          .where(eq(wishlistItems.steamid, link.steamid))
+          .orderBy(desc(wishlistItems.priority));
+
+        let wishlist: any[] = [];
+
+        if (wishRows.length > 0) {
+          const ids = wishRows.map((w) => w.appid);
+
+          const ownerRows = await db
+            .select({ appid: ownedGames.appid, steamid: ownedGames.steamid })
+            .from(ownedGames)
+            .where(inArray(ownedGames.appid, ids));
+
+          const people = await db
+            .select({
+              steamid: steamLinks.steamid,
+              personaName: users.personaName,
+              discordName: discordUsers.globalName,
+              discordUsername: discordUsers.username,
+            })
+            .from(steamLinks)
+            .innerJoin(users, eq(users.steamid, steamLinks.steamid))
+            .leftJoin(discordUsers, eq(discordUsers.discordId, steamLinks.discordId));
+
+          const nameBySteam = new Map(
+            people.map((x) => [
+              x.steamid,
+              x.discordName || x.discordUsername || x.personaName,
+            ]),
+          );
+
+          const ownersByApp = new Map<number, string[]>();
+          for (const row of ownerRows) {
+            // Le propriétaire lui-même n'est pas une info : on cherche qui
+            // d'AUTRE l'a déjà, c'est ça qui rend le jeu jouable ce soir.
+            if (row.steamid === link.steamid) continue;
+            const list = ownersByApp.get(row.appid) ?? [];
+            list.push(nameBySteam.get(row.steamid) ?? 'Membre');
+            ownersByApp.set(row.appid, list);
+          }
+
+          wishlist = wishRows.map((w) => {
+            const owners = ownersByApp.get(w.appid) ?? [];
+            return {
+              appid: w.appid,
+              name: w.name ?? `App ${w.appid}`,
+              headerImage:
+                w.headerImage ??
+                `https://cdn.cloudflare.steamstatic.com/steam/apps/${w.appid}/header.jpg`,
+              genres: w.genres ?? [],
+              playableNow: owners.length > 0,
+              owners,
+              steamPrice: w.steamPrice ?? null,
+              steamCurrency: w.steamCurrency ?? null,
+              steamDiscount: w.steamDiscount ?? null,
+              cheapestPrice: w.cheapestPrice ?? null,
+              cheapestCurrency: w.cheapestCurrency ?? null,
+              cheapestStore: w.cheapestStore ?? null,
+              releaseDate: w.releaseDate ?? null,
+            };
+          });
+        }
+
         return res.status(200).json({
           ok: true,
+          wishlist,
           member: {
             discordId: wanted,
             name:
@@ -257,6 +340,7 @@ export default async function handler(req: any, res: any) {
         stats,
         topGenres: [],
         games: [],
+        wishlist: [],
         isMe: wanted === ctx.discordId,
       });
     }
