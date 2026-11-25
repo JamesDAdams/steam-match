@@ -17,7 +17,10 @@ process.env.DISCORD_BOT_TOKEN = 'jeton-de-test';
 process.env.DISCORD_GUILD_ID = '111111111111111111';
 
 const GUILD = '111111111111111111';
-const BOT_ID = '1574874920289050777';
+// Identifiant FICTIF du bot : ce test ne parle à aucun serveur. Ne jamais y
+// mettre le vrai identifiant d'application, Netlify bloque le build quand la
+// valeur d'une variable d'environnement apparaît dans le dépôt.
+const BOT_ID = '123456789012345678';
 
 const MANAGE_EVENTS = 1n << 33n;
 const CREATE_EVENTS = 1n << 44n;

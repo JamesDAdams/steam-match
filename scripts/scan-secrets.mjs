@@ -10,6 +10,7 @@
  * Sort en code 1 dès la première détection, avec le fichier et la ligne.
  */
 import { execSync } from 'node:child_process';
+import { readFileSync, existsSync } from 'node:fs';
 
 // Une clé Steam = 32 caractères hexadécimaux.
 const PATTERNS = [
@@ -69,6 +70,40 @@ function readStaged(file) {
 const files = stagedFiles();
 const findings = [];
 
+/**
+ * Valeurs de .env.local à rechercher dans le dépôt.
+ *
+ * POURQUOI : Netlify bloque un déploiement lorsque la valeur d'une variable
+ * d'environnement de production apparaît dans le code (« Exposed secrets
+ * detected »). Ça arrive même avec un identifiant public — un identifiant
+ * d'application Discord collé dans un test, par exemple. On reproduit donc ce
+ * contrôle en local, pour échouer au commit plutôt qu'au déploiement.
+ *
+ * On ignore les valeurs qui ne peuvent pas être des secrets (adresse locale,
+ * valeur courte) pour ne pas bloquer sur des faux positifs.
+ */
+function envValues() {
+  if (!existsSync('.env.local')) return [];
+  try {
+    const raw = readFileSync('.env.local', 'utf8');
+    const out = [];
+    for (const line of raw.split('\n')) {
+      const m = /^([A-Z0-9_]+)\s*=\s*(.*)$/.exec(line.trim());
+      if (!m) continue;
+      const key = m[1];
+      const value = m[2].replace(/^["']|["']$/g, '').trim();
+      if (value.length < 12) continue;
+      if (/localhost|127\.0\.0\.1|example\.(com|net)|ton-site/i.test(value)) continue;
+      out.push({ key, value });
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+const liveValues = envValues();
+
 for (const file of files) {
   // .env.example est volontairement commité avec des valeurs VIDES.
   if (file === '.env.example') continue;
@@ -98,6 +133,22 @@ for (const file of files) {
         findings.push({ file, line: i + 1, name: p.name, hint: p.hint });
       }
     }
+  }
+
+  // Valeur d'une variable d'environnement recopiée dans le dépôt.
+  for (const { key, value } of liveValues) {
+    const idx = content.indexOf(value);
+    if (idx === -1) continue;
+    findings.push({
+      file,
+      line: content.slice(0, idx).split('\n').length,
+      name: `Valeur de ${key} recopiée dans le fichier`,
+      hint:
+        'Netlify refuse le build quand la valeur d’une variable d’environnement ' +
+        'apparaît dans le dépôt. Remplace-la par une valeur fictive ' +
+        '(ex. 123456789012345678) ; le test n’a pas besoin de la vraie.',
+    });
+    break;
   }
 }
 
