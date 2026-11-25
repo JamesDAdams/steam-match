@@ -630,12 +630,11 @@ onUnmounted(() => {
       <section v-if="stats && stats.topGenres.length" class="card mb-6">
         <h2 class="font-semibold text-fg-strong">Tes styles de jeu</h2>
         <p class="mt-1 text-xs text-fg-faint">
-          Pondéré par le temps de jeu : ce n'est pas le nombre de jeux possédés,
-          mais le temps réellement passé.
+          Pondéré par le temps de jeu réellement passé, pas par le nombre de jeux.
         </p>
-        <!-- Classement simple : le temps de jeu suffit à comparer les styles.
-             Les barres n'apportaient rien (et restaient vides à l'écran). -->
-        <ol class="mt-4 space-y-1.5">
+        <!-- Deux colonnes : la version pleine largeur étirait chaque ligne sur
+             toute la page pour deux informations seulement. -->
+        <ol class="mt-4 grid gap-x-10 gap-y-1.5 sm:grid-cols-2">
           <li
             v-for="(g, i) in stats.topGenres"
             :key="g.name"
