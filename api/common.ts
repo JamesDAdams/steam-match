@@ -1,8 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getDb } from '../db/index.ts';
-import { users, ownedGames, gameCache, steamLinks, discordUsers } from '../db/schema.ts';
+import { getDb } from '../db/index';
+import { users, ownedGames, gameCache, steamLinks, discordUsers } from '../db/schema';
 import { sql, eq, inArray, and, gt } from 'drizzle-orm';
-import { requireAccess } from '../lib/access.ts';
+import { requireAccess } from '../lib/access';
 
 /**
  * GET /api/common?genres=Survie,Aventure&min=2&sort=players

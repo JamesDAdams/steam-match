@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { randomBytes } from 'node:crypto';
-import { buildAuthorizeUrl } from '../../lib/discord.ts';
-import { buildStateCookie } from '../../lib/session.ts';
+import { buildAuthorizeUrl } from '../../lib/discord';
+import { buildStateCookie } from '../../lib/session';
 
 /**
  * GET /api/auth/discord

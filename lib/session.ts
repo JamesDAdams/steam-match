@@ -1,5 +1,5 @@
-import { getDb } from '../db/index.ts';
-import { sessions } from '../db/schema.ts';
+import { getDb } from '../db/index';
+import { sessions } from '../db/schema';
 import { eq } from 'drizzle-orm';
 import { randomBytes, createHmac, timingSafeEqual } from 'node:crypto';
 
