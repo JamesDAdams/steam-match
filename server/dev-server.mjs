@@ -46,6 +46,7 @@ const ROUTES = [
   ['GET', '/api/admin/users', '/api/admin/users.ts'],
   ['POST', '/api/admin/users', '/api/admin/users.ts'],
   ['DELETE', '/api/admin/users', '/api/admin/users.ts'],
+  ['GET', '/api/ping', '/api/ping.ts'],
   ['GET', '/api/me', '/api/me.ts'],
   ['POST', '/api/me', '/api/me.ts'],
   ['GET', '/api/group', '/api/group.ts'],
