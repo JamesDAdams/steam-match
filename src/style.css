@@ -2,51 +2,264 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   THÈMES
+   Deux jeux de variables : sombre par défaut (html), clair via html.light.
+   Les couleurs Tailwind pointent vers ces variables (voir tailwind.config.js),
+   donc un seul jeu de classes fonctionne dans les deux thèmes.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  color-scheme: dark;
+
+  --bg: #080a18;
+  --bg-elevated: #0e1020;
+  --surface: #12142a;
+  --surface-2: #1a1c3a;
+  --surface-3: #23264a;
+
+  --border: rgba(189, 198, 230, 0.14);
+  --border-strong: rgba(189, 198, 230, 0.28);
+
+  --text: #bdc6e6;
+  --text-strong: #ffffff;
+  --text-muted: #7d86a8;
+  --text-faint: #5a6284;
+
+  --brand: #9146ff;
+  --brand-strong: #7b2fbf;
+  --brand-soft: rgba(145, 70, 255, 0.16);
+
+  --gold: #f0d978;
+  --gold-strong: #c9a23a;
+  --gold-soft: rgba(201, 162, 58, 0.14);
+
+  --ok: #34d399;
+  --ok-soft: rgba(52, 211, 153, 0.14);
+  --warn: #f5a623;
+  --warn-soft: rgba(245, 166, 35, 0.14);
+  --danger: #f87171;
+  --danger-soft: rgba(248, 113, 113, 0.14);
+  --discord: #5865f2;
+  --steam: #66c0f4;
+
+  --shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  --glow: 0 0 40px rgba(145, 70, 255, 0.25);
+}
+
+html.light {
+  color-scheme: light;
+
+  --bg: #f6f6fb;
+  --bg-elevated: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #eff0f8;
+  --surface-3: #e4e6f2;
+
+  --border: rgba(26, 28, 58, 0.12);
+  --border-strong: rgba(26, 28, 58, 0.24);
+
+  --text: #343856;
+  --text-strong: #12142a;
+  --text-muted: #666c8e;
+  --text-faint: #8b90ad;
+
+  --brand: #6a28a8;
+  --brand-strong: #551f88;
+  --brand-soft: rgba(106, 40, 168, 0.1);
+
+  --gold: #8a6d1f;
+  --gold-strong: #6f5717;
+  --gold-soft: rgba(138, 109, 31, 0.12);
+
+  --ok: #0f9d6e;
+  --ok-soft: rgba(15, 157, 110, 0.12);
+  --warn: #b26a00;
+  --warn-soft: rgba(178, 106, 0, 0.12);
+  --danger: #c02626;
+  --danger-soft: rgba(192, 38, 38, 0.1);
+  --discord: #4752c4;
+  --steam: #1b6f9c;
+
+  --shadow: 0 10px 28px rgba(26, 28, 58, 0.12);
+  --glow: 0 0 32px rgba(106, 40, 168, 0.15);
+}
+
 @layer base {
   html {
     scroll-behavior: smooth;
   }
+
   body {
-    font-family: 'Motiva Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI',
-      Roboto, Helvetica, Arial, sans-serif;
+    background-color: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+      Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+    letter-spacing: -0.01em;
+    color: var(--text-strong);
+  }
+
+  /* Transition douce au changement de thème, sans animer au chargement. */
+  html.theme-transition * {
+    transition: background-color 0.25s ease, border-color 0.25s ease,
+      color 0.25s ease;
+  }
+
+  ::selection {
+    background: var(--brand-soft);
+    color: var(--text-strong);
+  }
+
+  /* Barres de défilement discrètes */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: var(--bg-elevated);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--surface-3);
+    border-radius: 6px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--border-strong);
   }
 }
 
 @layer components {
   .card {
-    @apply rounded-lg border border-white/10 bg-steam-dark/80 p-4 shadow-lg;
+    @apply rounded-xl border p-4;
+    background-color: var(--surface);
+    border-color: var(--border);
+    box-shadow: var(--shadow);
   }
+
+  .card-flat {
+    @apply rounded-xl border p-4;
+    background-color: var(--surface);
+    border-color: var(--border);
+  }
+
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded px-4 py-2 font-medium transition disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2
+      text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50;
   }
+
   .btn-primary {
-    @apply btn bg-steam-navy text-steam-blue hover:bg-steam-navy/80;
+    @apply btn text-white;
+    background-color: var(--brand);
   }
+  .btn-primary:hover:not(:disabled) {
+    background-color: var(--brand-strong);
+  }
+
+  .btn-gold {
+    @apply btn font-semibold;
+    background-color: var(--gold);
+    color: #1a1200;
+  }
+  .btn-gold:hover:not(:disabled) {
+    background-color: var(--gold-strong);
+    color: #fff;
+  }
+
   .btn-ghost {
-    @apply btn border border-white/15 text-slate-300 hover:border-white/30 hover:text-white;
+    @apply btn border;
+    border-color: var(--border-strong);
+    color: var(--text);
   }
+  .btn-ghost:hover:not(:disabled) {
+    background-color: var(--surface-2);
+    color: var(--text-strong);
+  }
+
   .chip {
-    @apply inline-flex items-center rounded-full border border-white/15 px-2.5 py-1 text-xs text-slate-300 transition hover:border-steam-blue hover:text-steam-blue;
+    @apply inline-flex items-center rounded-full border px-2.5 py-1 text-xs transition;
+    border-color: var(--border-strong);
+    color: var(--text-muted);
+  }
+  .chip:hover {
+    border-color: var(--brand);
+    color: var(--text-strong);
   }
   .chip-active {
-    @apply border-steam-blue bg-steam-blue/15 text-steam-blue;
+    background-color: var(--brand-soft);
+    border-color: var(--brand);
+    color: var(--text-strong);
   }
-  .badge {
-    @apply inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide;
-  }
-}
 
-/* Barre de progression de l'enrichissement */
-.stripes {
-  background-image: linear-gradient(
-    45deg,
-    rgba(102, 192, 244, 0.25) 25%,
-    transparent 25%,
-    transparent 50%,
-    rgba(102, 192, 244, 0.25) 50%,
-    rgba(102, 192, 244, 0.25) 75%,
-    transparent 75%,
-    transparent
-  );
-  background-size: 1rem 1rem;
+  .badge {
+    @apply inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold
+      uppercase tracking-wide;
+  }
+
+  .input {
+    @apply w-full rounded-lg border px-3 py-2 text-sm outline-none transition;
+    background-color: var(--bg-elevated);
+    border-color: var(--border);
+    color: var(--text-strong);
+  }
+  .input::placeholder {
+    color: var(--text-faint);
+  }
+  .input:focus {
+    border-color: var(--brand);
+    box-shadow: 0 0 0 3px var(--brand-soft);
+  }
+
+  /* Bandeau d'état */
+  .alert {
+    @apply rounded-lg border p-3 text-sm;
+  }
+  .alert-error {
+    background-color: var(--danger-soft);
+    border-color: var(--danger);
+    color: var(--danger);
+  }
+  .alert-warn {
+    background-color: var(--warn-soft);
+    border-color: var(--warn);
+    color: var(--warn);
+  }
+  .alert-ok {
+    background-color: var(--ok-soft);
+    border-color: var(--ok);
+    color: var(--ok);
+  }
+  .alert-info {
+    background-color: var(--brand-soft);
+    border-color: var(--brand);
+    color: var(--text-strong);
+  }
+
+  /* Effet de halo derrière le hero */
+  .hero-glow {
+    background: radial-gradient(
+      60% 60% at 50% 0%,
+      rgba(145, 70, 255, 0.22) 0%,
+      transparent 70%
+    );
+  }
+
+  .stripes {
+    background-image: linear-gradient(
+      45deg,
+      rgba(145, 70, 255, 0.3) 25%,
+      transparent 25%,
+      transparent 50%,
+      rgba(145, 70, 255, 0.3) 50%,
+      rgba(145, 70, 255, 0.3) 75%,
+      transparent 75%,
+      transparent
+    );
+    background-size: 1rem 1rem;
+  }
 }

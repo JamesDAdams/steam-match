@@ -54,6 +54,9 @@ const ROUTES = [
   ['POST', '/api/sync', '/api/sync.ts'],
   ['POST', '/api/enrich', '/api/enrich.ts'],
   ['GET', '/api/recommendations', '/api/recommendations.ts'],
+  // Événements : handler hors de api/ (limite de fonctions Vercel)
+  ['GET', '/api/events', '/lib/handlers/events.ts'],
+  ['POST', '/api/events', '/lib/handlers/events.ts'],
 ];
 
 const vite = await createViteServer({

@@ -151,6 +151,41 @@ export const wishlistItems = pgTable(
 );
 
 /**
+ * Événements du serveur Discord.
+ *
+ * Source de vérité : Discord (Guild Scheduled Events). On ne crée rien ici,
+ * on recopie ce que le serveur expose pour pouvoir l'afficher sur le site.
+ *
+ * Le bot doit avoir l'intention GUILD_SCHEDULED_EVENTS et être membre du
+ * serveur pour lire les événements.
+ */
+export const discordEvents = pgTable(
+  'discord_events',
+  {
+    /** Identifiant Discord du scheduled event (snowflake). */
+    id: text('id').primaryKey(),
+    guildId: text('guild_id').notNull(),
+    name: text('name').notNull(),
+    description: text('description'),
+    /** 1 = programmé, 2 = en cours, 3 = terminé, 4 = annulé (valeurs Discord). */
+    status: integer('status').notNull().default(1),
+    /** 1 = scène, 2 = vocal, 3 = externe. */
+    entityType: integer('entity_type').notNull().default(3),
+    /** Lien externe, ou identifiant du salon vocal/scène. */
+    location: text('location'),
+    coverImage: text('cover_image'),
+    /** Nombre de personnes intéressées côté Discord. */
+    interestedCount: integer('interested_count').notNull().default(0),
+    scheduledStartAt: timestamp('scheduled_start_at', { withTimezone: true }).notNull(),
+    scheduledEndAt: timestamp('scheduled_end_at', { withTimezone: true }),
+    syncedAt: timestamp('synced_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    byStart: index('discord_events_start_idx').on(t.scheduledStartAt),
+  }),
+);
+
+/**
  * Cache partagé des métadonnées de jeu.
  * GetOwnedGames ne renvoie PAS les genres : il faut appeler l'API du Store,
  * lente et limitée (~200 req / 5 min). On enrichit donc chaque appid une fois.
@@ -192,5 +227,6 @@ export type SteamLink = typeof steamLinks.$inferSelect;
 export type User = typeof users.$inferSelect;
 export type OwnedGame = typeof ownedGames.$inferSelect;
 export type WishlistItem = typeof wishlistItems.$inferSelect;
+export type DiscordEvent = typeof discordEvents.$inferSelect;
 export type GameCacheRow = typeof gameCache.$inferSelect;
 export type Session = typeof sessions.$inferSelect;

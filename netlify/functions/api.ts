@@ -26,6 +26,7 @@ import authCallbackHandler from '../../api/auth/callback.ts';
 import authDiscordHandler from '../../api/auth/discord.ts';
 import authDiscordCallbackHandler from '../../api/auth/discord-callback.ts';
 import adminUsersHandler from '../../api/admin/users.ts';
+import eventsHandler from '../../lib/handlers/events.ts';
 
 interface Route {
   /** Méthodes acceptées. Vide = toutes. */
@@ -50,6 +51,7 @@ const ROUTES: Record<string, Route> = {
   '/auth/discord': { methods: ['GET'], module: authDiscordHandler },
   '/auth/discord-callback': { methods: ['GET'], module: authDiscordCallbackHandler },
   '/admin/users': { methods: ['GET', 'POST', 'DELETE'], module: adminUsersHandler },
+  '/events': { methods: ['GET', 'POST'], module: eventsHandler },
 };
 
 /**

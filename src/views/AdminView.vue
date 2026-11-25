@@ -137,24 +137,24 @@ onMounted(load);
 <template>
   <div class="mx-auto max-w-5xl">
     <div class="mb-6">
-      <h1 class="text-2xl font-bold text-white">Administration</h1>
-      <p class="mt-1 text-sm text-slate-400">
+      <h1 class="text-2xl font-bold text-fg-strong">Administration</h1>
+      <p class="mt-1 text-sm text-fg-muted">
         Gère les comptes Discord autorisés à accéder au site.
       </p>
     </div>
 
     <!-- Alerte erreur / succès -->
-    <div v-if="error" class="card mb-4 border-red-500/40 bg-red-500/5 text-sm text-red-300">
+    <div v-if="error" class="card mb-4 border-danger bg-danger-soft text-sm text-danger">
       {{ error }}
     </div>
-    <div v-if="success" class="card mb-4 border-emerald-500/40 bg-emerald-500/5 text-sm text-emerald-300">
+    <div v-if="success" class="card mb-4 border-emerald-500/40 bg-emerald-500/5 text-sm text-ok">
       {{ success }}
     </div>
 
     <!-- Ajout -->
     <section class="card mb-6">
-      <h2 class="font-semibold text-white">Autoriser un ou plusieurs comptes</h2>
-      <p class="mt-1 text-xs text-slate-500">
+      <h2 class="font-semibold text-fg-strong">Autoriser un ou plusieurs comptes</h2>
+      <p class="mt-1 text-xs text-fg-faint">
         Un ID Discord = 17 à 20 chiffres. Sur Discord : clic droit sur le pseudo →
         <em>Copier l'identifiant</em>. Tu peux coller plusieurs IDs séparés par
         des espaces ou des virgules.
@@ -166,12 +166,12 @@ onMounted(load);
             v-model="input"
             rows="2"
             placeholder="123456789012345678"
-            class="w-full rounded border border-white/15 bg-steam-darker px-3 py-2 font-mono text-sm text-slate-200 placeholder:text-slate-600 focus:border-steam-blue focus:outline-none"
+            class="w-full rounded border border-line bg-app-bg px-3 py-2 font-mono text-sm text-fg placeholder:text-fg-faint focus:border-brand focus:outline-none"
           ></textarea>
           <input
             v-model="note"
             placeholder="Note (optionnel) — ex. pseudo Discord"
-            class="w-full rounded border border-white/15 bg-steam-darker px-3 py-2 text-sm text-slate-200 placeholder:text-slate-600 focus:border-steam-blue focus:outline-none"
+            class="w-full rounded border border-line bg-app-bg px-3 py-2 text-sm text-fg placeholder:text-fg-faint focus:border-brand focus:outline-none"
           />
         </div>
         <button class="btn-primary h-fit text-sm" :disabled="saving || !input.trim()" @click="addIds">
@@ -181,21 +181,21 @@ onMounted(load);
     </section>
 
     <!-- Admins définis dans l'env -->
-    <section class="card mb-6 border-amber-500/30 bg-amber-500/5">
-      <h2 class="font-semibold text-amber-300">Administrateur(s)</h2>
-      <p class="mt-1 text-xs text-slate-400">
-        Défini(s) par la variable <code class="text-amber-300">DISCORD_ADMIN_ID</code>.
+    <section class="card mb-6 border-warn bg-warn-soft">
+      <h2 class="font-semibold text-warn">Administrateur(s)</h2>
+      <p class="mt-1 text-xs text-fg-muted">
+        Défini(s) par la variable <code class="text-warn">DISCORD_ADMIN_ID</code>.
         Toujours autorisé(s), non modifiable(s) depuis cette page.
       </p>
       <div class="mt-2 flex flex-wrap gap-2">
         <code
           v-for="a in admins"
           :key="a"
-          class="rounded border border-amber-500/30 bg-black/20 px-2 py-1 font-mono text-xs text-amber-200"
+          class="rounded border border-warn bg-app-bg/40 px-2 py-1 font-mono text-xs text-warn"
         >
           {{ a }}
         </code>
-        <span v-if="admins.length === 0" class="text-xs text-red-300">
+        <span v-if="admins.length === 0" class="text-xs text-danger">
           Aucun admin configuré — renseigne DISCORD_ADMIN_ID.
         </span>
       </div>
@@ -203,29 +203,29 @@ onMounted(load);
 
     <!-- Liste des autorisés -->
     <section class="card mb-6">
-      <h2 class="font-semibold text-white">
+      <h2 class="font-semibold text-fg-strong">
         Autorisations actives
-        <span class="ml-1 text-sm font-normal text-slate-500">({{ allowed.length }})</span>
+        <span class="ml-1 text-sm font-normal text-fg-faint">({{ allowed.length }})</span>
       </h2>
 
-      <div v-if="loading" class="mt-3 h-12 animate-pulse rounded bg-white/5"></div>
-      <p v-else-if="allowed.length === 0" class="mt-3 text-sm text-slate-500">
+      <div v-if="loading" class="mt-3 h-12 animate-pulse rounded bg-app-surface2"></div>
+      <p v-else-if="allowed.length === 0" class="mt-3 text-sm text-fg-faint">
         Aucun identifiant autorisé pour le moment. Les personnes qui tentent de se
         connecter apparaîtront ci-dessous avec leur ID.
       </p>
-      <ul v-else class="mt-3 divide-y divide-white/10">
+      <ul v-else class="mt-3 divide-y divide-line">
         <li
           v-for="a in allowed"
           :key="a.discordId"
           class="flex flex-wrap items-center gap-3 py-2"
         >
-          <code class="font-mono text-sm text-slate-200">{{ a.discordId }}</code>
-          <span v-if="a.note" class="text-xs text-slate-500">{{ a.note }}</span>
-          <span v-if="knownIds.has(a.discordId) === false" class="badge bg-white/10 text-slate-400">
+          <code class="font-mono text-sm text-fg">{{ a.discordId }}</code>
+          <span v-if="a.note" class="text-xs text-fg-faint">{{ a.note }}</span>
+          <span v-if="knownIds.has(a.discordId) === false" class="badge bg-app-surface2 text-fg-muted">
             jamais connecté
           </span>
           <button
-            class="ml-auto text-xs text-red-400 hover:text-red-300 hover:underline"
+            class="ml-auto text-xs text-danger hover:text-danger hover:underline"
             @click="removeId(a.discordId)"
           >
             Retirer
@@ -237,19 +237,19 @@ onMounted(load);
     <!-- Comptes déjà vus -->
     <section class="card">
       <div class="flex flex-wrap items-center gap-3">
-        <h2 class="font-semibold text-white">Comptes déjà connectés</h2>
+        <h2 class="font-semibold text-fg-strong">Comptes déjà connectés</h2>
         <input
           v-model="search"
           placeholder="Rechercher…"
-          class="ml-auto rounded border border-white/15 bg-steam-darker px-3 py-1.5 text-sm text-slate-200 placeholder:text-slate-600 focus:border-steam-blue focus:outline-none"
+          class="ml-auto rounded border border-line bg-app-bg px-3 py-1.5 text-sm text-fg placeholder:text-fg-faint focus:border-brand focus:outline-none"
         />
       </div>
 
-      <div v-if="loading" class="mt-3 h-20 animate-pulse rounded bg-white/5"></div>
-      <p v-else-if="known.length === 0" class="mt-3 text-sm text-slate-500">
+      <div v-if="loading" class="mt-3 h-20 animate-pulse rounded bg-app-surface2"></div>
+      <p v-else-if="known.length === 0" class="mt-3 text-sm text-fg-faint">
         Personne ne s'est encore connecté.
       </p>
-      <ul v-else class="mt-3 divide-y divide-white/10">
+      <ul v-else class="mt-3 divide-y divide-line">
         <li
           v-for="k in filteredKnown"
           :key="k.discordId"
@@ -259,37 +259,37 @@ onMounted(load);
             v-if="k.avatarUrl"
             :src="k.avatarUrl"
             :alt="k.username"
-            class="h-8 w-8 rounded-full border border-white/15"
+            class="h-8 w-8 rounded-full border border-line"
           />
-          <div v-else class="h-8 w-8 rounded-full border border-white/15 bg-steam-navy"></div>
+          <div v-else class="h-8 w-8 rounded-full border border-line bg-app-surface2"></div>
 
           <div class="min-w-0">
-            <p class="truncate text-sm text-slate-200">
+            <p class="truncate text-sm text-fg">
               {{ k.globalName || k.username }}
-              <span class="text-xs text-slate-500">@{{ k.username }}</span>
+              <span class="text-xs text-fg-faint">@{{ k.username }}</span>
             </p>
-            <p class="font-mono text-xs text-slate-500">{{ k.discordId }}</p>
+            <p class="font-mono text-xs text-fg-faint">{{ k.discordId }}</p>
           </div>
 
           <div class="ml-auto flex flex-wrap items-center gap-1">
-            <span v-if="k.isAdmin" class="badge bg-amber-500/20 text-amber-300">admin</span>
+            <span v-if="k.isAdmin" class="badge bg-warn-soft text-warn">admin</span>
             <span
               v-else-if="k.isAllowed"
-              class="badge bg-emerald-500/20 text-emerald-300"
+              class="badge bg-ok-soft text-ok"
             >autorisé</span>
-            <span v-else class="badge bg-red-500/20 text-red-300">refusé</span>
+            <span v-else class="badge bg-danger-soft text-danger">refusé</span>
 
             <span
               v-if="k.hasSteam"
-              class="badge bg-steam-navy/60 text-steam-blue"
+              class="badge bg-app-surface2 text-brand"
             >{{ k.steam?.personaName || 'steam lié' }}</span>
-            <span v-else class="badge bg-white/10 text-slate-400">sans steam</span>
+            <span v-else class="badge bg-app-surface2 text-fg-muted">sans steam</span>
 
-            <span class="text-[10px] text-slate-600">{{ since(k.lastLoginAt) }}</span>
+            <span class="text-[10px] text-fg-faint">{{ since(k.lastLoginAt) }}</span>
 
             <button
               v-if="!k.isAllowed && !k.isAdmin"
-              class="ml-2 text-xs text-steam-blue hover:underline"
+              class="ml-2 text-xs text-brand hover:underline"
               @click="addKnown(k.discordId)"
             >
               Autoriser

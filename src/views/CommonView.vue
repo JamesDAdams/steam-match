@@ -175,22 +175,22 @@ onMounted(async () => {
   <div>
     <!-- Barre d'actions -->
     <div class="mb-6 flex flex-wrap items-center gap-3">
-      <h1 class="text-2xl font-bold text-white">Jeux en commun</h1>
-      <span class="text-sm text-slate-500">
+      <h1 class="text-2xl font-bold text-fg-strong">Jeux en commun</h1>
+      <span class="text-sm text-fg-faint">
         {{ memberCount }} membre{{ memberCount > 1 ? 's' : '' }} dans le groupe
       </span>
 
-      <div class="flex rounded border border-white/15 p-0.5 text-sm">
+      <div class="flex rounded border border-line p-0.5 text-sm">
         <button
           class="rounded px-3 py-1 transition"
-          :class="mode === 'owned' ? 'bg-steam-blue/15 text-steam-blue' : 'text-slate-400 hover:text-white'"
+          :class="mode === 'owned' ? 'bg-brand-soft text-brand' : 'text-fg-muted hover:text-fg-strong'"
           @click="mode = 'owned'"
         >
           Possédés
         </button>
         <button
           class="rounded px-3 py-1 transition"
-          :class="mode === 'wishlist' ? 'bg-steam-blue/15 text-steam-blue' : 'text-slate-400 hover:text-white'"
+          :class="mode === 'wishlist' ? 'bg-brand-soft text-brand' : 'text-fg-muted hover:text-fg-strong'"
           @click="mode = 'wishlist'"
         >
           Wishlist
@@ -210,20 +210,20 @@ onMounted(async () => {
     </div>
 
     <!-- Retour du sync -->
-    <div v-if="syncResult" class="card mb-6" :class="syncResult.ok ? 'border-emerald-500/40 bg-emerald-500/5' : 'border-red-500/40 bg-red-500/5'">
+    <div v-if="syncResult" class="card mb-6" :class="syncResult.ok ? 'border-emerald-500/40 bg-emerald-500/5' : 'border-danger bg-danger-soft'">
       <template v-if="syncResult.ok">
-        <p class="text-sm text-emerald-300">
+        <p class="text-sm text-ok">
           ✅ {{ syncResult.gamesCount }} jeux synchronisés
           <template v-if="syncResult.playedCount">
             — {{ syncResult.playedCount }} avec temps de jeu
           </template>
         </p>
-        <p v-if="syncResult.warning" class="mt-2 text-sm text-amber-300">
+        <p v-if="syncResult.warning" class="mt-2 text-sm text-warn">
           ⚠️ {{ syncResult.warning }}
         </p>
       </template>
       <template v-else>
-        <p class="text-sm text-red-300">
+        <p class="text-sm text-danger">
           ❌ {{ syncResult.message || syncResult.error }}
         </p>
         <div v-if="syncResult.needsPublicProfile" class="mt-2 flex flex-wrap gap-3">
@@ -231,11 +231,11 @@ onMounted(async () => {
             href="https://steamcommunity.com/my/edit/settings"
             target="_blank"
             rel="noopener"
-            class="text-sm text-steam-blue hover:underline"
+            class="text-sm text-brand hover:underline"
           >
             Ouvrir mes paramètres de confidentialité Steam ↗
           </a>
-          <router-link to="/aide" class="text-sm text-slate-400 hover:underline">
+          <router-link to="/aide" class="text-sm text-fg-muted hover:underline">
             Voir le guide pas à pas
           </router-link>
         </div>
@@ -245,15 +245,15 @@ onMounted(async () => {
     <!-- Progression de l'enrichissement -->
     <div v-if="cacheState && cacheState.pending > 0" class="card mb-6">
       <div class="flex items-center justify-between text-sm">
-        <span class="text-slate-300">
+        <span class="text-fg">
           Enrichissement des genres — {{ cacheState.enriched }} / {{ cacheState.total }} jeux
         </span>
-        <span class="text-steam-blue">{{ enrichmentPct }} %</span>
+        <span class="text-brand">{{ enrichmentPct }} %</span>
       </div>
-      <div class="mt-2 h-2 overflow-hidden rounded bg-white/10">
-        <div class="stripes h-full rounded bg-steam-blue/60 transition-all" :style="{ width: enrichmentPct + '%' }"></div>
+      <div class="mt-2 h-2 overflow-hidden rounded bg-app-surface2">
+        <div class="stripes h-full rounded bg-brand/60 transition-all" :style="{ width: enrichmentPct + '%' }"></div>
       </div>
-      <p class="mt-2 text-xs text-slate-500">
+      <p class="mt-2 text-xs text-fg-faint">
         Les genres viennent de l'API du Store Steam, limitée à ~200 requêtes
         par 5 min. Les filtres se remplissent donc progressivement. Les jeux
         non enrichis ne matchent aucun filtre de genre.
@@ -261,8 +261,8 @@ onMounted(async () => {
     </div>
 
     <!-- Explication wishlist -->
-    <div v-if="mode === 'wishlist'" class="card mb-6 border-white/5 text-xs text-slate-400">
-      Les jeux <strong class="text-slate-200">souhaités</strong> par les membres, croisés avec
+    <div v-if="mode === 'wishlist'" class="card mb-6 border-white/5 text-xs text-fg-muted">
+      Les jeux <strong class="text-fg">souhaités</strong> par les membres, croisés avec
       ce que les autres possèdent déjà. Un jeu « jouable » est déjà dans la
       bibliothèque de quelqu'un : pas besoin de l'acheter pour y jouer ensemble.
     </div>
@@ -271,8 +271,8 @@ onMounted(async () => {
     <div class="card mb-6">
       <div class="flex flex-wrap items-end gap-4">
         <div>
-          <label class="block text-xs font-medium text-slate-400">Possédé par au moins</label>
-          <select v-model.number="minMembers" class="mt-1 rounded border border-white/15 bg-steam-darker px-3 py-1.5 text-sm text-slate-200">
+          <label class="block text-xs font-medium text-fg-muted">Possédé par au moins</label>
+          <select v-model.number="minMembers" class="mt-1 rounded border border-line bg-app-bg px-3 py-1.5 text-sm text-fg">
             <option :value="2">2 membres</option>
             <option :value="3">3 membres</option>
             <option :value="4">4 membres</option>
@@ -281,19 +281,19 @@ onMounted(async () => {
           </select>
         </div>
         <div>
-          <label class="block text-xs font-medium text-slate-400">Trier par</label>
-          <select v-model="sortBy" class="mt-1 rounded border border-white/15 bg-steam-darker px-3 py-1.5 text-sm text-slate-200">
+          <label class="block text-xs font-medium text-fg-muted">Trier par</label>
+          <select v-model="sortBy" class="mt-1 rounded border border-line bg-app-bg px-3 py-1.5 text-sm text-fg">
             <option value="players">Nombre de possesseurs</option>
             <option value="playtime">Temps de jeu cumulé</option>
             <option value="name">Nom (A→Z)</option>
           </select>
         </div>
-        <label v-if="mode === 'owned'" class="flex items-center gap-2 text-sm text-slate-300">
-          <input v-model="onlyEnriched" type="checkbox" class="rounded border-white/20 bg-steam-darker" />
+        <label v-if="mode === 'owned'" class="flex items-center gap-2 text-sm text-fg">
+          <input v-model="onlyEnriched" type="checkbox" class="rounded border-line-strong bg-app-bg" />
           Masquer les jeux non enrichis
         </label>
-        <label v-if="mode === 'wishlist'" class="flex items-center gap-2 text-sm text-slate-300">
-          <input v-model="playableOnly" type="checkbox" class="rounded border-white/20 bg-steam-darker" />
+        <label v-if="mode === 'wishlist'" class="flex items-center gap-2 text-sm text-fg">
+          <input v-model="playableOnly" type="checkbox" class="rounded border-line-strong bg-app-bg" />
           Jouable immédiatement (déjà possédé)
         </label>
         <button v-if="selectedGenres.length || selectedTags.length" class="btn-ghost text-xs" @click="resetFilters">
@@ -303,7 +303,7 @@ onMounted(async () => {
 
       <!-- Genres -->
       <div v-if="availableGenres.length" class="mt-4">
-        <p class="mb-2 text-xs font-medium text-slate-400">Style / genre</p>
+        <p class="mb-2 text-xs font-medium text-fg-muted">Style / genre</p>
         <div class="flex flex-wrap gap-2">
           <button
             v-for="g in availableGenres"
@@ -320,7 +320,7 @@ onMounted(async () => {
 
       <!-- Tags -->
       <div v-if="availableTags.length" class="mt-4">
-        <p class="mb-2 text-xs font-medium text-slate-400">Tags</p>
+        <p class="mb-2 text-xs font-medium text-fg-muted">Tags</p>
         <div class="flex flex-wrap gap-2">
           <button
             v-for="[t, c] in availableTags.slice(0, 30)"
@@ -337,23 +337,23 @@ onMounted(async () => {
     </div>
 
     <!-- Message wishlist -->
-    <div v-if="mode === 'wishlist' && wishMessage" class="card mb-6 border-sky-500/30 bg-sky-500/5 text-sm text-sky-200">
+    <div v-if="mode === 'wishlist' && wishMessage" class="card mb-6 border-brand bg-brand-soft text-sm text-fg">
       {{ wishMessage }}
     </div>
 
     <!-- Erreur -->
-    <div v-if="error" class="card border-red-500/40 bg-red-500/5 text-sm text-red-300">
+    <div v-if="error" class="card border-danger bg-danger-soft text-sm text-danger">
       {{ error }}
     </div>
 
     <!-- Résultats -->
     <div v-if="loading" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      <div v-for="i in 9" :key="i" class="h-48 animate-pulse rounded-lg bg-white/5"></div>
+      <div v-for="i in 9" :key="i" class="h-48 animate-pulse rounded-lg bg-app-surface2"></div>
     </div>
 
     <div v-else-if="games.length === 0" class="card py-12 text-center">
-      <p class="text-slate-400">Aucun jeu ne correspond à ces critères.</p>
-      <p class="mt-2 text-sm text-slate-500">
+      <p class="text-fg-muted">Aucun jeu ne correspond à ces critères.</p>
+      <p class="mt-2 text-sm text-fg-faint">
         Synchronise ta ludothèque, ou élargis les filtres.
       </p>
     </div>
@@ -361,7 +361,7 @@ onMounted(async () => {
     <div v-else class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       <article v-for="g in games" :key="g.appid" class="card group overflow-hidden p-0">
         <a :href="steamStoreUrl(g.appid)" target="_blank" rel="noopener" class="block">
-          <div class="relative aspect-[92/43] overflow-hidden bg-steam-navy/40">
+          <div class="relative aspect-[92/43] overflow-hidden bg-app-surface2">
             <img
               :src="g.headerImage || steamHeaderUrl(g.appid)"
               :alt="g.name"
@@ -369,7 +369,7 @@ onMounted(async () => {
               class="h-full w-full object-cover transition group-hover:scale-105"
               @error="hideBrokenImage"
             />
-            <span class="badge absolute left-2 top-2 bg-black/70 text-steam-blue">
+            <span class="badge absolute left-2 top-2 bg-app-bg/85 text-brand">
               <template v-if="mode === 'wishlist'">
                 {{ g.wishCount }} souhait{{ (g.wishCount ?? 0) > 1 ? 'ent' : '' }}
               </template>
@@ -381,21 +381,21 @@ onMounted(async () => {
             >
               jouable
             </span>
-            <span v-if="!g.enriched" class="badge absolute right-2 top-2 bg-black/70 text-slate-400">
+            <span v-if="!g.enriched" class="badge absolute right-2 top-2 bg-app-bg/85 text-fg-muted">
               genres ?
             </span>
           </div>
 
           <div class="p-3">
-            <h3 class="truncate font-semibold text-white" :title="g.name">{{ g.name }}</h3>
+            <h3 class="truncate font-semibold text-fg-strong" :title="g.name">{{ g.name }}</h3>
 
             <div v-if="g.genres.length" class="mt-2 flex flex-wrap gap-1">
-              <span v-for="gen in g.genres.slice(0, 3)" :key="gen" class="badge bg-steam-navy/60 text-steam-blue">
+              <span v-for="gen in g.genres.slice(0, 3)" :key="gen" class="badge bg-app-surface2 text-brand">
                 {{ gen }}
               </span>
             </div>
 
-            <div class="mt-3 flex items-center justify-between text-xs text-slate-400">
+            <div class="mt-3 flex items-center justify-between text-xs text-fg-muted">
               <span class="flex items-center gap-1">
                 🕐 {{ formatPlaytime(g.totalPlaytime) }}
               </span>
@@ -414,7 +414,7 @@ onMounted(async () => {
       </article>
     </div>
 
-    <p v-if="total > 0" class="mt-6 text-center text-sm text-slate-500">
+    <p v-if="total > 0" class="mt-6 text-center text-sm text-fg-faint">
       {{ total }} jeu{{ total > 1 ? 'x' : '' }} affiché{{ total > 1 ? 's' : '' }}
     </p>
   </div>

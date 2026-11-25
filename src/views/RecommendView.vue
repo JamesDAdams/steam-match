@@ -78,31 +78,31 @@ onMounted(load);
 <template>
   <div>
     <div class="mb-6">
-      <h1 class="text-2xl font-bold text-white">Recommandations pour le groupe</h1>
-      <p class="mt-1 text-sm text-slate-400">
+      <h1 class="text-2xl font-bold text-fg-strong">Recommandations pour le groupe</h1>
+      <p class="mt-1 text-sm text-fg-muted">
         Basées sur vos heures de jeu réelles — pas sur des notes.
       </p>
     </div>
 
     <!-- Explication de l'algo -->
     <div class="card mb-6">
-      <h2 class="font-semibold text-white">Comment c'est calculé</h2>
-      <ol class="mt-3 space-y-2 text-sm text-slate-400">
+      <h2 class="font-semibold text-fg-strong">Comment c'est calculé</h2>
+      <ol class="mt-3 space-y-2 text-sm text-fg-muted">
         <li>
-          <span class="text-steam-blue">1.</span> Pour chacun, on construit un
+          <span class="text-brand">1.</span> Pour chacun, on construit un
           profil d'affinité par style (survie, stratégie, co-op…), pondéré par le
-          <strong class="text-slate-200">temps de jeu</strong> — avec une
+          <strong class="text-fg">temps de jeu</strong> — avec une
           pondération logarithmique, pour qu'un jeu à 2000 h n'écrase pas tout
           le reste.
         </li>
         <li>
-          <span class="text-steam-blue">2.</span> Pour chaque jeu candidat, on
+          <span class="text-brand">2.</span> Pour chaque jeu candidat, on
           calcule le score de chaque membre, puis on retient le
-          <strong class="text-slate-200">score minimum</strong>. C'est ce qui
+          <strong class="text-fg">score minimum</strong>. C'est ce qui
           garantit « plaît à tout le monde » plutôt qu'à un seul.
         </li>
         <li>
-          <span class="text-steam-blue">3.</span> On propose les jeux qui
+          <span class="text-brand">3.</span> On propose les jeux qui
           maximisent ce minimum, avec un léger bonus pour ceux que certains
           possèdent déjà.
         </li>
@@ -110,38 +110,38 @@ onMounted(load);
     </div>
 
     <!-- Avertissement signal faible -->
-    <div v-if="meta?.weakSignal" class="card mb-6 border-amber-500/30 bg-amber-500/5">
-      <p class="text-sm text-amber-300">
+    <div v-if="meta?.weakSignal" class="card mb-6 border-warn bg-warn-soft">
+      <p class="text-sm text-warn">
         ⚠️ Signal faible : {{ meta.membersWithPlaytime }} / {{ meta.members }}
         membres exposent leurs temps de jeu.
       </p>
-      <p class="mt-2 text-sm text-slate-400">
+      <p class="mt-2 text-sm text-fg-muted">
         Sans temps de jeu, on ne peut deviner que grossièrement les goûts — les
         propositions resteront génériques. Active
         <em>« Toujours afficher les détails du jeu »</em> sur Steam puis
-        resynchronise (voir <router-link to="/aide" class="text-steam-blue hover:underline">l'aide</router-link>).
+        resynchronise (voir <router-link to="/aide" class="text-brand hover:underline">l'aide</router-link>).
       </p>
     </div>
 
     <!-- Besoin d'enrichissement -->
-    <div v-if="message && !error" class="card mb-6 border-sky-500/30 bg-sky-500/5">
-      <p class="text-sm text-sky-300">{{ message }}</p>
+    <div v-if="message && !error" class="card mb-6 border-brand bg-brand-soft">
+      <p class="text-sm text-brand">{{ message }}</p>
       <button class="btn-primary mt-3 text-sm" @click="runSync">Synchroniser et enrichir</button>
     </div>
 
-    <div v-if="error" class="card mb-6 border-red-500/40 bg-red-500/5 text-sm text-red-300">
+    <div v-if="error" class="card mb-6 border-danger bg-danger-soft text-sm text-danger">
       {{ error }}
     </div>
 
     <!-- Contrôles -->
     <div class="mb-4 flex flex-wrap items-center gap-4">
-      <label class="flex items-center gap-2 text-sm text-slate-300">
-        <input v-model="onlyPartiallyOwned" type="checkbox" class="rounded border-white/20 bg-steam-darker" />
+      <label class="flex items-center gap-2 text-sm text-fg">
+        <input v-model="onlyPartiallyOwned" type="checkbox" class="rounded border-line-strong bg-app-bg" />
         Seulement les jeux qu'au moins un membre possède déjà
       </label>
       <div class="ml-auto flex items-center gap-2 text-sm">
-        <label class="text-slate-400">Nombre</label>
-        <select v-model.number="limit" class="rounded border border-white/15 bg-steam-darker px-2 py-1 text-slate-200" @change="load">
+        <label class="text-fg-muted">Nombre</label>
+        <select v-model.number="limit" class="rounded border border-line bg-app-bg px-2 py-1 text-fg" @change="load">
           <option :value="10">10</option>
           <option :value="20">20</option>
           <option :value="50">50</option>
@@ -151,10 +151,10 @@ onMounted(load);
 
     <!-- Résultats -->
     <div v-if="loading" class="space-y-4">
-      <div v-for="i in 5" :key="i" class="h-32 animate-pulse rounded-lg bg-white/5"></div>
+      <div v-for="i in 5" :key="i" class="h-32 animate-pulse rounded-lg bg-app-surface2"></div>
     </div>
 
-    <div v-else-if="filtered.length === 0" class="card py-12 text-center text-slate-400">
+    <div v-else-if="filtered.length === 0" class="card py-12 text-center text-fg-muted">
       Pas encore assez de données. Synchronise les ludothèques puis réessaie.
     </div>
 
@@ -164,49 +164,49 @@ onMounted(load);
         :key="r.appid"
         class="card flex gap-4 p-0"
       >
-        <a :href="steamStoreUrl(r.appid)" target="_blank" rel="noopener" class="flex w-56 shrink-0 items-center overflow-hidden rounded-l-lg bg-steam-navy/40">
+        <a :href="steamStoreUrl(r.appid)" target="_blank" rel="noopener" class="flex w-56 shrink-0 items-center overflow-hidden rounded-l-lg bg-app-surface2">
           <img v-if="r.headerImage" :src="r.headerImage" :alt="r.name" loading="lazy" class="h-full w-full object-cover" />
-          <span v-else class="p-4 text-xs text-slate-600">{{ r.name }}</span>
+          <span v-else class="p-4 text-xs text-fg-faint">{{ r.name }}</span>
         </a>
 
         <div class="flex min-w-0 flex-1 flex-col p-4">
           <div class="flex items-start gap-2">
-            <span class="badge bg-steam-navy text-steam-blue">#{{ idx + 1 }}</span>
-            <h3 class="truncate font-semibold text-white">{{ r.name }}</h3>
+            <span class="badge bg-app-surface2 text-brand">#{{ idx + 1 }}</span>
+            <h3 class="truncate font-semibold text-fg-strong">{{ r.name }}</h3>
           </div>
 
           <div v-if="r.genres.length" class="mt-2 flex flex-wrap gap-1">
-            <span v-for="g in r.genres.slice(0, 4)" :key="g" class="badge bg-steam-navy/60 text-steam-blue">{{ g }}</span>
-            <span v-for="t in r.tags.slice(0, 3)" :key="t" class="badge bg-white/5 text-slate-400">{{ t }}</span>
+            <span v-for="g in r.genres.slice(0, 4)" :key="g" class="badge bg-app-surface2 text-brand">{{ g }}</span>
+            <span v-for="t in r.tags.slice(0, 3)" :key="t" class="badge bg-app-surface2 text-fg-muted">{{ t }}</span>
           </div>
 
           <!-- Score par membre -->
           <div class="mt-3 space-y-1.5">
             <div v-for="m in r.perMember" :key="m.steamid" class="flex items-center gap-2 text-xs">
-              <span class="w-28 shrink-0 truncate text-slate-400" :title="m.personaName">
+              <span class="w-28 shrink-0 truncate text-fg-muted" :title="m.personaName">
                 {{ m.personaName }}
               </span>
-              <div class="h-1.5 flex-1 overflow-hidden rounded bg-white/10">
+              <div class="h-1.5 flex-1 overflow-hidden rounded bg-app-surface2">
                 <div
                   class="h-full rounded transition-all"
-                  :class="m.owned ? 'bg-emerald-400/80' : 'bg-steam-blue/80'"
+                  :class="m.owned ? 'bg-ok/80' : 'bg-brand/80'"
                   :style="{ width: pct(m.score, maxScore) + '%' }"
                 ></div>
               </div>
-              <span class="w-14 shrink-0 text-right text-slate-500">
+              <span class="w-14 shrink-0 text-right text-fg-faint">
                 {{ m.owned ? 'possédé' : 'à acheter' }}
               </span>
             </div>
           </div>
 
-          <p class="mt-2 text-xs text-slate-500">
+          <p class="mt-2 text-xs text-fg-faint">
             Score groupe (minimum) : {{ r.minScore.toFixed(3) }} — possédé par {{ r.owners }} membre{{ r.owners > 1 ? 's' : '' }}
           </p>
         </div>
       </article>
     </div>
 
-    <p v-if="meta" class="mt-6 text-center text-xs text-slate-600">
+    <p v-if="meta" class="mt-6 text-center text-xs text-fg-faint">
       Catalogue enrichi : {{ meta.enrichedGames }} jeux — {{ meta.candidates ?? meta.candidateCount }} candidats évalués
     </p>
   </div>

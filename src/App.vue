@@ -1,15 +1,22 @@
 <script setup lang="ts">
-import { onMounted, computed } from 'vue';
+import { ref, onMounted, computed } from 'vue';
+import { useRoute } from 'vue-router';
 import { apiPost } from './lib/api';
 import { useAuth } from './lib/auth';
+import { useTheme } from './lib/theme';
 
 const { me, loading, refresh, canUseSite, displayName } = useAuth();
+const { theme, init: initTheme, toggle: toggleTheme } = useTheme();
+const route = useRoute();
 
-onMounted(refresh);
+const menuOpen = ref(false);
 
-const avatar = computed(
-  () => me.value.discord?.avatarUrl ?? null,
-);
+onMounted(() => {
+  initTheme();
+  refresh();
+});
+
+const avatar = computed(() => me.value.discord?.avatarUrl ?? null);
 const initial = computed(() => displayName.value.slice(0, 1).toUpperCase());
 
 async function logout() {
@@ -17,77 +24,119 @@ async function logout() {
   me.value = { authenticated: false };
   location.href = '/';
 }
+
+// Ferme le menu mobile à chaque navigation.
+const links = computed(() => {
+  const base = [
+    { to: '/evenements', label: 'Événements' },
+    { to: '/commun', label: 'Jeux en commun' },
+    { to: '/recommandations', label: 'Recommandations' },
+    { to: '/profil', label: 'Mon profil' },
+    { to: '/aide', label: 'Aide' },
+  ];
+  return base;
+});
 </script>
 
 <template>
-  <div class="min-h-screen">
-    <header class="border-b border-white/10 bg-steam-dark/95 backdrop-blur">
+  <div class="flex min-h-screen flex-col">
+    <!-- Bandeau association -->
+    <div class="border-b border-line bg-app-elevated">
+      <div class="mx-auto flex max-w-6xl items-center gap-2 px-4 py-1.5 text-[11px] text-fg-muted">
+        <span class="inline-block h-1.5 w-1.5 rounded-full bg-ok"></span>
+        Communauté multigaming — événements, jeux partagés, découvertes
+      </div>
+    </div>
+
+    <header
+      class="sticky top-0 z-40 border-b border-line bg-app-bg/85 backdrop-blur-md"
+    >
       <div class="mx-auto flex max-w-6xl items-center gap-4 px-4 py-3">
-        <router-link to="/" class="text-lg font-bold text-steam-blue">
-          Steam<span class="text-white">Match</span>
+        <!-- Logo -->
+        <router-link to="/" class="group flex items-center gap-2.5">
+          <span
+            class="flex h-9 w-9 items-center justify-center rounded-lg bg-brand text-fg-strong shadow-lg transition group-hover:rotate-6"
+          >
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path
+                d="M12 2a10 10 0 0 0-9.95 9h3.02a7 7 0 1 1 0 2H2.05A10 10 0 1 0 12 2Zm-.9 4.5 2.4 4.2 3.3.5-2.4 2.3.6 3.3-3-1.6-3 1.6.6-3.3-2.4-2.3 3.3-.5 2.4-4.2Z"
+              />
+            </svg>
+          </span>
+          <span class="leading-tight">
+            <span class="block font-display text-base font-bold tracking-tight text-fg-strong">
+              Steam<span class="text-gold">Match</span>
+            </span>
+            <span class="block text-[10px] uppercase tracking-[0.18em] text-fg-faint">
+              Association gaming
+            </span>
+          </span>
         </router-link>
 
-        <nav v-if="canUseSite" class="flex items-center gap-1 text-sm">
+        <!-- Navigation bureau -->
+        <nav v-if="canUseSite" class="hidden items-center gap-0.5 text-sm md:flex">
           <router-link
-            to="/profil"
-            class="rounded px-3 py-1.5 text-slate-300 transition hover:bg-white/5 hover:text-white"
-            active-class="bg-steam-blue/15 text-steam-blue"
+            v-for="l in links"
+            :key="l.to"
+            :to="l.to"
+            class="rounded-lg px-3 py-2 text-fg-muted transition hover:bg-app-surface2 hover:text-fg-strong"
+            active-class="!bg-brand-soft !text-fg-strong"
           >
-            Mon profil
-          </router-link>
-          <router-link
-            to="/commun"
-            class="rounded px-3 py-1.5 text-slate-300 transition hover:bg-white/5 hover:text-white"
-            active-class="bg-steam-blue/15 text-steam-blue"
-          >
-            Jeux en commun
-          </router-link>
-          <router-link
-            to="/recommandations"
-            class="rounded px-3 py-1.5 text-slate-300 transition hover:bg-white/5 hover:text-white"
-            active-class="bg-steam-blue/15 text-steam-blue"
-          >
-            Recommandations
-          </router-link>
-          <router-link
-            to="/aide"
-            class="rounded px-3 py-1.5 text-slate-300 transition hover:bg-white/5 hover:text-white"
-            active-class="bg-steam-blue/15 text-steam-blue"
-          >
-            Aide
+            {{ l.label }}
           </router-link>
           <router-link
             v-if="me.isAdmin"
             to="/admin"
-            class="rounded px-3 py-1.5 font-medium text-amber-300 transition hover:bg-amber-500/10"
-            active-class="bg-amber-500/15 text-amber-300"
+            class="rounded-lg px-3 py-2 font-medium text-gold transition hover:bg-gold-soft"
+            active-class="!bg-gold-soft"
           >
-            ⚙ Admin
+            Admin
           </router-link>
         </nav>
 
-        <div class="ml-auto flex items-center gap-3">
+        <div class="ml-auto flex items-center gap-2">
+          <!-- Bascule de thème -->
+          <button
+            class="rounded-lg border border-line p-2 text-fg-muted transition hover:border-line-strong hover:text-fg-strong"
+            :title="theme === 'dark' ? 'Passer en thème clair' : 'Passer en thème sombre'"
+            :aria-label="theme === 'dark' ? 'Activer le thème clair' : 'Activer le thème sombre'"
+            @click="toggleTheme"
+          >
+            <svg v-if="theme === 'dark'" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <circle cx="12" cy="12" r="4" />
+              <path d="M12 2v2m0 16v2M2 12h2m16 0h2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4" />
+            </svg>
+            <svg v-else class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" />
+            </svg>
+          </button>
+
           <template v-if="loading">
-            <div class="h-8 w-24 animate-pulse rounded bg-white/10"></div>
+            <div class="h-8 w-20 animate-pulse rounded-lg bg-app-surface2"></div>
           </template>
 
           <template v-else-if="me.authenticated">
-            <div class="flex items-center gap-2">
+            <router-link to="/profil" class="flex items-center gap-2">
               <img
                 v-if="avatar"
                 :src="avatar"
                 :alt="displayName"
-                class="h-8 w-8 rounded-full border border-white/15"
+                class="h-8 w-8 rounded-full border border-line-strong"
               />
-              <div
+              <span
                 v-else
-                class="flex h-8 w-8 items-center justify-center rounded-full border border-white/15 bg-steam-navy text-xs font-bold text-steam-blue"
+                class="flex h-8 w-8 items-center justify-center rounded-full bg-brand text-xs font-bold text-fg-strong"
               >
                 {{ initial }}
-              </div>
-              <span class="hidden text-sm text-slate-300 sm:inline">{{ displayName }}</span>
-            </div>
-            <button class="btn-ghost text-xs" @click="logout">Déconnexion</button>
+              </span>
+              <span class="hidden text-sm text-fg sm:inline">{{ displayName }}</span>
+            </router-link>
+            <button
+              class="hidden rounded-lg border border-line px-3 py-1.5 text-xs text-fg-muted transition hover:border-line-strong hover:text-fg-strong sm:inline-flex"
+              @click="logout"
+            >
+              Déconnexion
+            </button>
           </template>
 
           <template v-else>
@@ -95,19 +144,82 @@ async function logout() {
               <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                 <path d="M20.32 4.37a19.8 19.8 0 0 0-4.89-1.52.07.07 0 0 0-.08.04c-.21.38-.44.87-.6 1.26a18.27 18.27 0 0 0-5.49 0 12.6 12.6 0 0 0-.61-1.26.08.08 0 0 0-.08-.04 19.74 19.74 0 0 0-4.88 1.52.07.07 0 0 0-.04.03C.53 9.05-.32 13.58.1 18.06a.08.08 0 0 0 .03.05 19.9 19.9 0 0 0 6 3.03.08.08 0 0 0 .08-.03c.46-.63.87-1.3 1.22-1.99a.08.08 0 0 0-.04-.11 13.1 13.1 0 0 1-1.87-.89.08.08 0 0 1-.01-.13c.13-.09.25-.19.37-.29a.07.07 0 0 1 .08-.01c3.93 1.79 8.18 1.79 12.06 0a.07.07 0 0 1 .08.01c.12.1.24.2.37.29a.08.08 0 0 1-.01.13c-.6.35-1.22.64-1.87.89a.08.08 0 0 0-.04.11c.36.7.77 1.36 1.22 1.99a.08.08 0 0 0 .08.03 19.84 19.84 0 0 0 6.01-3.03.08.08 0 0 0 .03-.05c.5-5.18-.84-9.68-3.54-13.66a.06.06 0 0 0-.03-.03ZM8.02 15.33c-1.18 0-2.15-1.08-2.15-2.42 0-1.33.95-2.42 2.15-2.42 1.21 0 2.17 1.1 2.15 2.42 0 1.34-.95 2.42-2.15 2.42Zm7.97 0c-1.18 0-2.15-1.08-2.15-2.42 0-1.33.95-2.42 2.15-2.42 1.21 0 2.17 1.1 2.15 2.42 0 1.34-.94 2.42-2.15 2.42Z" />
               </svg>
-              Se connecter avec Discord
+              Connexion
             </a>
           </template>
+
+          <!-- Menu mobile -->
+          <button
+            v-if="canUseSite"
+            class="rounded-lg border border-line p-2 text-fg-muted md:hidden"
+            aria-label="Ouvrir le menu"
+            @click="menuOpen = !menuOpen"
+          >
+            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
         </div>
       </div>
+
+      <!-- Navigation mobile -->
+      <nav v-if="canUseSite && menuOpen" class="border-t border-line px-4 py-2 md:hidden">
+        <router-link
+          v-for="l in links"
+          :key="l.to"
+          :to="l.to"
+          class="block rounded-lg px-3 py-2 text-sm text-fg-muted hover:bg-app-surface2 hover:text-fg-strong"
+          active-class="!bg-brand-soft !text-fg-strong"
+          @click="menuOpen = false"
+        >
+          {{ l.label }}
+        </router-link>
+        <router-link
+          v-if="me.isAdmin"
+          to="/admin"
+          class="block rounded-lg px-3 py-2 text-sm text-gold hover:bg-gold-soft"
+          @click="menuOpen = false"
+        >
+          Admin
+        </router-link>
+      </nav>
     </header>
 
-    <main class="mx-auto max-w-6xl px-4 py-8">
+    <main class="mx-auto w-full max-w-6xl flex-1 px-4 py-8">
       <router-view />
     </main>
 
-    <footer class="mt-16 border-t border-white/10 py-6 text-center text-xs text-slate-500">
-      Steam Match — projet entre amis. Non affilié à Valve ni à Discord.
+    <footer class="mt-16 border-t border-line bg-app-elevated">
+      <div class="mx-auto max-w-6xl px-4 py-8">
+        <div class="flex flex-wrap items-start justify-between gap-6">
+          <div>
+            <p class="font-display text-sm font-bold text-fg-strong">
+              Steam<span class="text-gold">Match</span>
+            </p>
+            <p class="mt-1 max-w-xs text-xs text-fg-muted">
+              Association gaming — on rassemble les ludothèques pour trouver le
+              jeu qui plaît à tout le monde.
+            </p>
+          </div>
+          <div class="flex flex-wrap gap-8 text-xs text-fg-muted">
+            <div class="space-y-1">
+              <p class="mb-2 font-semibold uppercase tracking-wide text-fg-faint">Navigation</p>
+              <router-link v-if="canUseSite" to="/evenements" class="block hover:text-fg-strong">Événements</router-link>
+              <router-link v-if="canUseSite" to="/commun" class="block hover:text-fg-strong">Jeux en commun</router-link>
+              <router-link v-if="canUseSite" to="/recommandations" class="block hover:text-fg-strong">Recommandations</router-link>
+            </div>
+            <div class="space-y-1">
+              <p class="mb-2 font-semibold uppercase tracking-wide text-fg-faint">Compte</p>
+              <router-link v-if="canUseSite" to="/profil" class="block hover:text-fg-strong">Mon profil</router-link>
+              <router-link v-if="canUseSite" to="/aide" class="block hover:text-fg-strong">Aide</router-link>
+              <a href="/api/auth/discord" class="block hover:text-fg-strong">Connexion</a>
+            </div>
+          </div>
+        </div>
+        <p class="mt-8 border-t border-line pt-4 text-[11px] text-fg-faint">
+          SteamMatch — projet associatif entre amis. Non affilié à Valve.
+        </p>
+      </div>
     </footer>
   </div>
 </template>

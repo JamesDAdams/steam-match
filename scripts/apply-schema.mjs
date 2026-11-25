@@ -65,6 +65,23 @@ const statements = [
    )`,
   `CREATE INDEX IF NOT EXISTS wishlist_items_app_idx ON wishlist_items (appid)`,
 
+  // ── Événements Discord ─────────────────────────────────────────────
+  `CREATE TABLE IF NOT EXISTS discord_events (
+     id                 text PRIMARY KEY NOT NULL,
+     guild_id           text NOT NULL,
+     name               text NOT NULL,
+     description        text,
+     status             integer NOT NULL DEFAULT 1,
+     entity_type        integer NOT NULL DEFAULT 3,
+     location           text,
+     cover_image        text,
+     interested_count   integer NOT NULL DEFAULT 0,
+     scheduled_start_at timestamp with time zone NOT NULL,
+     scheduled_end_at   timestamp with time zone,
+     synced_at          timestamp with time zone NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS discord_events_start_idx ON discord_events (scheduled_start_at)`,
+
   // ── Sessions ─────────────────────────────────────────────��─────────
   // NON destructif : on ne supprime jamais la table, sinon tous les membres
   // connectés seraient déconnectés à chaque migration.

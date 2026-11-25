@@ -20,6 +20,7 @@ const FILES = [
   '/src/App.vue',
   '/src/views/LoginView.vue',
   '/src/views/ProfileView.vue',
+  '/src/views/EventsView.vue',
   '/src/views/CommonView.vue',
   '/src/views/RecommendView.vue',
   '/src/views/HelpView.vue',
