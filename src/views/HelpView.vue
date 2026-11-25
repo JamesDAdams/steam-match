@@ -75,23 +75,29 @@ function since(d: string | Date | null) {
           dans la variable <code class="text-brand">DISCORD_BOT_TOKEN</code>.
         </li>
         <li>
-          <span class="text-gold">3.</span> Dans <em>Privileged Gateway Intents</em>, l'intention
-          <strong class="text-fg">GUILD_SCHEDULED_EVENTS</strong> doit être autorisée.
+          <span class="text-gold">3.</span> Dans l'onglet <strong class="text-fg">Installation</strong>,
+          assure-toi que le scope <code class="text-brand">bot</code> est inclus, puis
+          invite le bot sur ton serveur avec la permission <em>Gérer les événements</em>.
         </li>
         <li>
-          <span class="text-gold">4.</span> Invite le bot sur ton serveur (scope <code class="text-brand">bot</code>,
-          permission <em>Gérer les événements</em>).
-        </li>
-        <li>
-          <span class="text-gold">5.</span> Récupère l'identifiant du serveur (mode développeur, clic droit
-          sur le serveur → Copier l'identifiant) et renseigne
+          <span class="text-gold">4.</span> Récupère l'identifiant du serveur : active le
+          <strong class="text-fg">mode développeur</strong> (Paramètres → Avancés), puis clic droit
+          sur l'icône du serveur → <em>Copier l'identifiant du serveur</em>. Renseigne
           <code class="text-brand">DISCORD_GUILD_ID</code>.
         </li>
         <li>
-          <span class="text-gold">6.</span> Redéploie, puis clique sur
+          <span class="text-gold">5.</span> Redéploie, puis clique sur
           <strong class="text-fg">Synchroniser</strong> en haut de la page Événements.
         </li>
       </ol>
+
+      <p class="mt-3 text-xs text-fg-muted">
+        <strong class="text-fg">Aucune intention privilégiée n'est nécessaire.</strong>
+        La lecture passe par l'API REST, pas par la passerelle temps réel : le bot
+        n'a pas besoin d'être en ligne. C'est aussi pour cela qu'il n'apparaît pas
+        dans la liste des membres — Discord masque les membres hors ligne. Vérifie
+        sa présence dans <em>Paramètres du serveur → Intégrations</em>.
+      </p>
       <p class="mt-3 text-xs text-fg-faint">
         Erreur 403 ? L'intention GUILD_SCHEDULED_EVENTS n'est pas autorisée ou le
         bot n'est pas sur le serveur. Erreur 401 ? Le jeton est invalide ou a été

@@ -4,8 +4,10 @@
  * PRÉREQUIS
  * ---------
  * - Un BOT Discord (pas l'application OAuth du site) : DISCORD_BOT_TOKEN
- * - Ce bot doit être membre du serveur et avoir l'intention
- *   GUILD_SCHEDULED_EVENTS autorisée dans le portail développeur
+ * - Ce bot doit être membre du serveur, avec la permission « Gérer les
+ *   événements ». AUCUNE intention privilégiée n'est requise : on passe par
+ *   l'API REST, pas par la passerelle temps réel — le bot n'a donc pas besoin
+ *   d'être en ligne (et n'apparaîtra pas dans la liste des membres).
  * - DISCORD_GUILD_ID : identifiant du serveur
  *
  * On lit les événements, on n'en crée pas : Discord reste la source de vérité.
