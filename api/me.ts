@@ -7,8 +7,9 @@ import {
   users,
   ownedGames,
   gameCache,
+  wishlistItems,
 } from '../db/schema.ts';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, sql, inArray } from 'drizzle-orm';
 import {
   COOKIE_NAME,
   parseCookies,
@@ -112,6 +113,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // plusieurs centaines de lignes, inutile de l'imposer à chaque appel.
     let games: any[] | null = null;
     let stats: any | null = null;
+    let wishlist: any[] = [];
 
     if (req.query.games === '1' && steam) {
       const rows = await db
@@ -142,6 +144,73 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }));
 
       stats = buildStats(games);
+
+      // ── Wishlist personnelle ────────────────────────────────────────
+      // Croisée avec ce que les AUTRES membres possèdent déjà : c'est
+      // l'information utile (« lui le veut, toi tu l'as »).
+      const wishRows = await db
+        .select({
+          appid: wishlistItems.appid,
+          priority: wishlistItems.priority,
+          name: gameCache.name,
+          headerImage: gameCache.headerImage,
+          genres: gameCache.genres,
+          enrichedAt: gameCache.enrichedAt,
+        })
+        .from(wishlistItems)
+        .leftJoin(gameCache, eq(gameCache.appid, wishlistItems.appid))
+        .where(eq(wishlistItems.steamid, steam.steamid))
+        .orderBy(desc(wishlistItems.priority));
+
+      if (wishRows.length > 0) {
+        const ids = wishRows.map((w) => w.appid);
+
+        const ownerRows = await db
+          .select({
+            appid: ownedGames.appid,
+            steamid: ownedGames.steamid,
+          })
+          .from(ownedGames)
+          .where(inArray(ownedGames.appid, ids));
+
+        // Noms affichés des membres.
+        const people = await db
+          .select({
+            steamid: steamLinks.steamid,
+            personaName: users.personaName,
+            discordName: discordUsers.globalName,
+            discordUsername: discordUsers.username,
+          })
+          .from(steamLinks)
+          .innerJoin(users, eq(users.steamid, steamLinks.steamid))
+          .leftJoin(discordUsers, eq(discordUsers.discordId, steamLinks.discordId));
+
+        const nameById = new Map(
+          people.map((x) => [
+            x.steamid,
+            x.discordName || x.discordUsername || x.personaName,
+          ]),
+        );
+
+        const ownersByApp = new Map<number, string[]>();
+        for (const row of ownerRows) {
+          const list = ownersByApp.get(row.appid) ?? [];
+          list.push(nameById.get(row.steamid) ?? 'Membre');
+          ownersByApp.set(row.appid, list);
+        }
+
+        wishlist = wishRows.map((w) => {
+          const owners = ownersByApp.get(w.appid) ?? [];
+          return {
+            appid: w.appid,
+            name: w.name ?? `App ${w.appid}`,
+            headerImage: w.headerImage ?? null,
+            genres: w.genres ?? [],
+            playableNow: owners.length > 0,
+            owners,
+          };
+        });
+      }
     }
 
     return res.status(200).json({
@@ -158,6 +227,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       steam,
       games,
       stats,
+      wishlist,
     });
   } catch (err: any) {
     console.error('[me]', err);

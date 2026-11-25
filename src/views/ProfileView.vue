@@ -21,6 +21,15 @@ interface ProfileGame {
   playtime2Weeks: number;
 }
 
+interface WishItem {
+  appid: number;
+  name: string;
+  headerImage: string | null;
+  genres: string[];
+  playableNow: boolean;
+  owners: string[];
+}
+
 interface Stats {
   totalGames: number;
   playedGames: number;
@@ -35,6 +44,7 @@ const { me, displayName, refresh } = useAuth();
 
 const games = ref<ProfileGame[]>([]);
 const stats = ref<Stats | null>(null);
+const wishlist = ref<WishItem[]>([]);
 const loading = ref(true);
 const error = ref<string | null>(null);
 const syncing = ref(false);
@@ -54,9 +64,12 @@ async function load() {
       ok: boolean;
       games: ProfileGame[] | null;
       stats: Stats | null;
+      wishlist: WishItem[] | null;
+      steam?: { wishlistVisible?: boolean } | null;
     }>('/api/me', { games: '1' });
     games.value = data.games ?? [];
     stats.value = data.stats ?? null;
+    wishlist.value = data.wishlist ?? [];
   } catch (e: any) {
     error.value = e.message;
   } finally {
@@ -248,6 +261,50 @@ onMounted(load);
             </span>
           </div>
         </div>
+      </section>
+
+      <!-- Ma wishlist -->
+      <section v-if="wishlist.length" class="card mb-6">
+        <div class="flex flex-wrap items-center gap-3">
+          <h2 class="font-semibold text-white">Ma wishlist</h2>
+          <span class="text-xs text-slate-500">{{ wishlist.length }} jeu{{ wishlist.length > 1 ? 'x' : '' }} souhaité{{ wishlist.length > 1 ? 's' : '' }}</span>
+          <span v-if="wishlist.some((w) => w.playableNow)" class="badge bg-emerald-500/20 text-emerald-300">
+            {{ wishlist.filter((w) => w.playableNow).length }} déjà jouable(s) dans le groupe
+          </span>
+        </div>
+
+        <div class="mt-4 grid gap-2 sm:grid-cols-2">
+          <a
+            v-for="w in wishlist"
+            :key="w.appid"
+            :href="steamStoreUrl(w.appid)"
+            target="_blank"
+            rel="noopener"
+            class="flex items-center gap-3 rounded border border-white/10 p-2 transition hover:border-steam-blue/40"
+          >
+            <div class="h-12 w-28 shrink-0 overflow-hidden rounded bg-steam-navy/40">
+              <img
+                :src="w.headerImage || steamHeaderUrl(w.appid)"
+                :alt="w.name"
+                loading="lazy"
+                class="h-full w-full object-cover"
+                @error="hideBrokenImage"
+              />
+            </div>
+            <div class="min-w-0 flex-1">
+              <p class="truncate text-sm text-white">{{ w.name }}</p>
+              <p v-if="w.playableNow" class="text-xs text-emerald-400">
+                déjà possédé par {{ w.owners.slice(0, 2).join(', ') }}<template v-if="w.owners.length > 2"> +{{ w.owners.length - 2 }}</template>
+              </p>
+              <p v-else class="text-xs text-slate-500">personne du groupe ne l'a encore</p>
+            </div>
+          </a>
+        </div>
+
+        <p class="mt-3 text-xs text-slate-500">
+          La wishlist doit être publique dans tes paramètres Steam pour être
+          synchronisée. Resynchronise après l'avoir modifiée.
+        </p>
       </section>
 
       <!-- Filtres -->
