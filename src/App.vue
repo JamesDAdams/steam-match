@@ -30,6 +30,7 @@ const links = computed(() => [
   { to: '/evenements', label: 'Événements' },
   { to: '/commun', label: 'Jeux en commun' },
   { to: '/recommandations', label: 'Recommandations' },
+  { to: '/twitch', label: 'Twitch' },
   { to: '/aide', label: 'Aide' },
 ]);
 </script>
@@ -209,6 +210,7 @@ const links = computed(() => [
               <router-link v-if="canUseSite" to="/evenements" class="block hover:text-fg-strong">Événements</router-link>
               <router-link v-if="canUseSite" to="/commun" class="block hover:text-fg-strong">Jeux en commun</router-link>
               <router-link v-if="canUseSite" to="/recommandations" class="block hover:text-fg-strong">Recommandations</router-link>
+              <router-link v-if="canUseSite" to="/twitch" class="block hover:text-fg-strong">Twitch</router-link>
             </div>
             <div class="space-y-1">
               <p class="mb-2 font-semibold uppercase tracking-wide text-fg-faint">Compte</p>

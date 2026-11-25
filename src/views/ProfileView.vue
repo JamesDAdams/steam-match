@@ -178,6 +178,69 @@ function accountBadgeClass(kind: 'main' | 'secondary' | 'family') {
   return 'bg-ok-soft text-ok';
 }
 
+/* ── Chaîne Twitch ──────────────────────────────────────────────────── */
+
+/**
+ * Le lien Twitch vit dans sa propre table : une chaîne par membre, affichée
+ * sur la page « Espace Twitch » avec le statut live.
+ */
+interface MyTwitch {
+  login: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+  channelUrl: string;
+  linkedAt?: string;
+}
+
+const twitch = ref<MyTwitch | null>(null);
+const twitchInput = ref('');
+const twitchBusy = ref(false);
+const twitchError = ref<string | null>(null);
+const twitchMessage = ref<string | null>(null);
+
+async function loadTwitch() {
+  try {
+    const r = await apiGet<{ mine: MyTwitch | null }>('/api/twitch');
+    twitch.value = r.mine ?? null;
+  } catch {
+    /* section secondaire */
+  }
+}
+
+async function linkTwitch() {
+  twitchError.value = null;
+  twitchMessage.value = null;
+  const value = twitchInput.value.trim();
+  if (!value || twitchBusy.value) return;
+
+  twitchBusy.value = true;
+  try {
+    const r = await apiPost<{ channel: MyTwitch & { login: string } }>('/api/twitch', { value });
+    twitch.value = r.channel;
+    twitchInput.value = '';
+    twitchMessage.value = `Chaîne « ${r.channel.login} » reliée.`;
+  } catch (e: any) {
+    twitchError.value = e.message ?? 'Liaison impossible.';
+  } finally {
+    twitchBusy.value = false;
+  }
+}
+
+async function unlinkTwitch() {
+  twitchError.value = null;
+  twitchMessage.value = null;
+  twitchBusy.value = true;
+  try {
+    await apiDelete('/api/twitch');
+    twitch.value = null;
+    twitchMessage.value = 'Chaîne Twitch déliée.';
+  } catch (e: any) {
+    twitchError.value = e.message ?? 'Déliaison impossible.';
+  } finally {
+    twitchBusy.value = false;
+  }
+}
+
 async function loadAccounts() {
   try {
     const r = await apiGet<{ accounts: LinkedAccount[]; maxAccounts: number }>(
@@ -265,7 +328,7 @@ const selectedGenre = ref<string | null>(null);
  * Onglet actif : la ludothèque ou la wishlist.
  * Les deux listes empilées devenaient illisibles (177 + 293 entrées).
  */
-const tab = ref<'games' | 'wishlist' | 'accounts'>('games');
+const tab = ref<'games' | 'wishlist' | 'accounts' | 'twitch'>('games');
 
 async function load(silent = false) {
   if (!silent) loading.value = true;
@@ -480,7 +543,7 @@ function startPump() {
 }
 
 onMounted(async () => {
-  await Promise.all([load(), loadAccounts()]);
+  await Promise.all([load(), loadAccounts(), loadTwitch()]);
   if (unidentifiedCount.value > 0 || enrichProgress.value.pending > 0) {
     startPolling();
     if (unidentifiedCount.value > 0) startPump();
@@ -647,8 +710,8 @@ onUnmounted(() => {
         </ol>
       </section>
 
-      <!-- Sélecteur : ludothèque / wishlist / famille -->
-      <section class="mb-6 grid gap-4 sm:grid-cols-3">
+      <!-- Sélecteur : ludothèque / wishlist / comptes / twitch -->
+      <section class="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <button
           class="card-flat text-left transition hover:border-brand/50"
           :class="tab === 'games' ? '!border-brand ring-1 ring-brand/30' : ''"
@@ -720,6 +783,25 @@ onUnmounted(() => {
               </p>
             </div>
             <span class="text-2xl">👪</span>
+          </div>
+        </button>
+
+        <button
+          class="card-flat text-left transition hover:border-brand/50"
+          :class="tab === 'twitch' ? '!border-brand ring-1 ring-brand/30' : ''"
+          @click="tab = 'twitch'"
+        >
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <p class="text-xs uppercase tracking-wide text-fg-faint">Twitch</p>
+              <p class="mt-1 truncate font-display text-lg font-bold text-fg-strong">
+                {{ twitch?.login ?? '—' }}
+              </p>
+              <p class="mt-0.5 text-xs text-fg-muted">
+                {{ twitch ? 'chaîne reliée' : 'relier ma chaîne' }}
+              </p>
+            </div>
+            <span class="text-2xl">🎥</span>
           </div>
         </button>
       </section>
@@ -884,6 +966,70 @@ onUnmounted(() => {
 
         <p v-if="accountError" class="mt-3 text-xs text-danger">{{ accountError }}</p>
         <p v-else-if="accountMessage" class="mt-3 text-xs text-ok">{{ accountMessage }}</p>
+      </section>
+
+      <!-- Chaîne Twitch -->
+      <section v-if="tab === 'twitch'" class="card mb-6">
+        <h2 class="font-semibold text-fg-strong">Ma chaîne Twitch</h2>
+        <p class="mt-1 max-w-2xl text-sm text-fg-muted">
+          Relie ta chaîne pour apparaître sur la page
+          <router-link to="/twitch" class="text-brand hover:underline">Espace Twitch</router-link>,
+          avec ton statut « en direct » mis à jour automatiquement.
+        </p>
+
+        <div
+          v-if="twitch"
+          class="mt-4 flex flex-wrap items-center gap-3 rounded-lg border border-line bg-app-elevated p-3"
+        >
+          <img
+            v-if="twitch.avatarUrl"
+            :src="twitch.avatarUrl"
+            alt=""
+            class="h-10 w-10 shrink-0 rounded-full object-cover"
+            loading="lazy"
+          />
+          <div class="min-w-0 flex-1">
+            <p class="truncate text-sm font-medium text-fg-strong">
+              {{ twitch.displayName ?? twitch.login }}
+            </p>
+            <p class="text-[11px] text-fg-faint">twitch.tv/{{ twitch.login }}</p>
+          </div>
+          <a
+            :href="twitch.channelUrl"
+            target="_blank"
+            rel="noopener"
+            class="rounded px-2 py-1 text-xs text-brand transition hover:bg-brand-soft"
+          >
+            Voir la chaîne ↗
+          </a>
+          <button
+            class="rounded px-2 py-1 text-xs text-danger transition hover:bg-danger-soft disabled:opacity-50"
+            :disabled="twitchBusy"
+            @click="unlinkTwitch"
+          >
+            Délier
+          </button>
+        </div>
+
+        <div v-else class="mt-4 flex flex-wrap gap-2">
+          <input
+            v-model="twitchInput"
+            type="text"
+            class="input min-w-[240px] flex-1"
+            placeholder="https://www.twitch.tv/tonpseudo"
+            @keydown.enter.prevent="linkTwitch"
+          />
+          <button
+            class="btn-primary text-sm"
+            :disabled="twitchBusy || !twitchInput.trim()"
+            @click="linkTwitch"
+          >
+            {{ twitchBusy ? 'Vérification…' : 'Relier' }}
+          </button>
+        </div>
+
+        <p v-if="twitchError" class="mt-2 text-xs text-danger">{{ twitchError }}</p>
+        <p v-else-if="twitchMessage" class="mt-2 text-xs text-ok">{{ twitchMessage }}</p>
       </section>
 
       <!-- Ma wishlist -->

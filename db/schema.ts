@@ -330,6 +330,23 @@ export const gameCache = pgTable(
 );
 
 /**
+ * Chaîne Twitch d'un membre.
+ *
+ * Le live n'est pas stocké : il change trop vite. On garde seulement le lien,
+ * et le statut est interrogé avec un cache court côté serveur.
+ */
+export const twitchLinks = pgTable('twitch_links', {
+  discordId: text('discord_id')
+    .primaryKey()
+    .references(() => discordUsers.discordId, { onDelete: 'cascade' }),
+  /** Identifiant de la chaîne, en minuscules (celui utilisé dans l'URL). */
+  login: text('login').notNull(),
+  displayName: text('display_name'),
+  avatarUrl: text('avatar_url'),
+  linkedAt: timestamp('linked_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
  * Réglages de l'application (une seule ligne).
  *
  * La tâche qui rafraîchit les ludothèques Steam tourne toutes les 15 minutes

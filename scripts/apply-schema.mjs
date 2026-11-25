@@ -92,6 +92,17 @@ const statements = [
      events_synced_at  timestamp with time zone
    )`,
 
+  // ── Chaînes Twitch des membres ─────────────────────────────────────
+  `CREATE TABLE IF NOT EXISTS twitch_links (
+     discord_id   text PRIMARY KEY NOT NULL
+       REFERENCES discord_users(discord_id) ON DELETE CASCADE,
+     login        text NOT NULL,
+     display_name text,
+     avatar_url   text,
+     linked_at    timestamp with time zone NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS twitch_links_login_idx ON twitch_links (login)`,
+
   // ── Réglages de l'application ──────────────────────────────────────
   `CREATE TABLE IF NOT EXISTS app_settings (
      id                        text PRIMARY KEY NOT NULL,

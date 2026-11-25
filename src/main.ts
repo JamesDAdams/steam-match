@@ -10,6 +10,7 @@ import CommonView from './views/CommonView.vue';
 import RecommendView from './views/RecommendView.vue';
 import HelpView from './views/HelpView.vue';
 import AdminView from './views/AdminView.vue';
+import TwitchView from './views/TwitchView.vue';
 
 import { refreshAuth } from './lib/guard.ts';
 
@@ -32,6 +33,12 @@ const routes = [
     path: '/recommandations',
     name: 'recommend',
     component: RecommendView,
+    meta: { requiresAccess: true },
+  },
+  {
+    path: '/twitch',
+    name: 'twitch',
+    component: TwitchView,
     meta: { requiresAccess: true },
   },
   {

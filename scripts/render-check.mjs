@@ -27,6 +27,7 @@ const FILES = [
   '/src/views/RecommendView.vue',
   '/src/views/HelpView.vue',
   '/src/views/AdminView.vue',
+  '/src/views/TwitchView.vue',
 ];
 
 const vite = await createServer({
@@ -52,6 +53,7 @@ for (const file of FILES) {
         { path: '/recommandations', component: { template: '<div />' } },
         { path: '/aide', component: { template: '<div />' } },
         { path: '/admin', component: { template: '<div />' } },
+        { path: '/twitch', component: { template: '<div />' } },
       ],
     });
     await router.push('/');
