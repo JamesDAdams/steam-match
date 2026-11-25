@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import {
   apiGet,
   apiPost,
@@ -23,6 +23,10 @@ interface ProfileGame {
   cheapestPrice: number | null;
   cheapestStore: string | null;
   cheapestCurrency: string | null;
+  steamPrice: number | null;
+  steamInitialPrice: number | null;
+  steamDiscount: number | null;
+  steamCurrency: string | null;
 }
 
 interface WishItem {
@@ -35,6 +39,10 @@ interface WishItem {
   cheapestPrice: number | null;
   cheapestStore: string | null;
   cheapestCurrency: string | null;
+  steamPrice: number | null;
+  steamInitialPrice: number | null;
+  steamDiscount: number | null;
+  steamCurrency: string | null;
 }
 
 interface Stats {
@@ -55,6 +63,7 @@ const wishlist = ref<WishItem[]>([]);
 const loading = ref(true);
 const error = ref<string | null>(null);
 const syncing = ref(false);
+const refreshing = ref(false);
 
 // Filtres
 const search = ref('');
@@ -68,8 +77,9 @@ const selectedGenre = ref<string | null>(null);
  */
 const tab = ref<'games' | 'wishlist'>('games');
 
-async function load() {
-  loading.value = true;
+async function load(silent = false) {
+  if (!silent) loading.value = true;
+  else refreshing.value = true;
   error.value = null;
   try {
     const data = await apiGet<{
@@ -86,6 +96,7 @@ async function load() {
     error.value = e.message;
   } finally {
     loading.value = false;
+    refreshing.value = false;
   }
 }
 
@@ -152,7 +163,49 @@ async function sync() {
   }
 }
 
-onMounted(load);
+/**
+ * MISE À JOUR À CHAUD
+ * Tant qu'il reste des jeux non identifiés, l'enrichissement tourne en
+ * arrière-plan (fonction planifiée Netlify). On recharge donc la page
+ * périodiquement pour voir les noms, genres et prix apparaître, sans F5.
+ *
+ * La boucle s'arrête d'elle-même quand tout est identifié, et met en pause
+ * quand l'onglet est en arrière-plan (économie de requêtes).
+ */
+const POLL_MS = 15_000;
+let pollTimer: ReturnType<typeof setInterval> | null = null;
+
+function stopPolling() {
+  if (pollTimer) {
+    clearInterval(pollTimer);
+    pollTimer = null;
+  }
+}
+
+function startPolling() {
+  if (pollTimer) return;
+  pollTimer = setInterval(async () => {
+    // Onglet inactif ou requête déjà en cours : on ne fait rien.
+    if (document.hidden || refreshing.value) return;
+
+    await load(true);
+
+    // Plus rien à identifier : la boucle a rempli son rôle.
+    if (unidentifiedCount.value === 0) stopPolling();
+  }, POLL_MS);
+}
+
+/** Y a-t-il encore des données à rafraîchir automatiquement ? */
+const autoUpdating = computed(
+  () => pollTimer !== null && unidentifiedCount.value > 0,
+);
+
+onMounted(async () => {
+  await load();
+  if (unidentifiedCount.value > 0) startPolling();
+});
+
+onUnmounted(stopPolling);
 </script>
 
 <template>
@@ -213,6 +266,26 @@ onMounted(load);
     </div>
 
     <template v-else>
+      <!-- Jeux en cours d'identification -->
+      <div v-if="unidentifiedCount > 0" class="alert alert-info mb-4">
+        <div class="mb-1 flex items-center gap-2">
+          <span class="relative flex h-2 w-2">
+            <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand opacity-75"></span>
+            <span class="relative inline-flex h-2 w-2 rounded-full bg-brand"></span>
+          </span>
+          <span class="text-[11px] font-semibold uppercase tracking-wide">
+            Mise à jour automatique
+          </span>
+          <span v-if="refreshing" class="text-[11px] text-fg-muted">actualisation…</span>
+        </div>
+        <p class="text-xs">
+          <strong>{{ unidentifiedCount }} jeu(x)</strong> sont en cours d'identification
+          et s'affichent provisoirement sous la forme « App 12345 ». Les noms,
+          genres et prix se remplissent automatiquement en arrière-plan — rien
+          à faire de ton côté, reviens un peu plus tard.
+        </p>
+      </div>
+
       <!-- Statistiques -->
       <section v-if="stats" class="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div class="card">
@@ -267,16 +340,6 @@ onMounted(load);
           </div>
         </div>
       </section>
-
-      <!-- Jeux en cours d'identification -->
-      <div v-if="unidentifiedCount > 0" class="alert alert-info mb-4">
-        <p class="text-xs">
-          <strong>{{ unidentifiedCount }} jeu(x)</strong> sont en cours d'identification
-          et s'affichent provisoirement sous la forme « App 12345 ». Les noms,
-          genres et prix se remplissent automatiquement en arrière-plan — rien
-          à faire de ton côté, reviens un peu plus tard.
-        </p>
-      </div>
 
       <!-- Sélecteur : ludothèque / wishlist -->
       <section class="mb-6 grid gap-4 sm:grid-cols-2">
@@ -357,10 +420,26 @@ onMounted(load);
                 déjà possédé par {{ w.owners.slice(0, 2).join(', ') }}<template v-if="w.owners.length > 2"> +{{ w.owners.length - 2 }}</template>
               </p>
               <p v-else class="text-xs text-fg-faint">personne du groupe ne l'a encore</p>
-              <p v-if="w.cheapestPrice" class="mt-0.5 text-xs text-gold">
-                dès {{ formatPrice(w.cheapestPrice, w.cheapestCurrency ?? 'EUR') }}
-                <span v-if="w.cheapestStore" class="text-fg-faint">· {{ w.cheapestStore }}</span>
-              </p>
+              <!-- Prix : Steam officiel et meilleure clé -->
+              <div
+                v-if="w.steamPrice || w.cheapestPrice"
+                class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px]"
+              >
+                <span v-if="w.steamPrice" class="text-fg-muted">
+                  Steam
+                  <span v-if="w.steamDiscount" class="ml-1 text-fg-faint line-through">
+                    {{ formatPrice(w.steamInitialPrice ?? w.steamPrice, w.steamCurrency ?? 'EUR') }}
+                  </span>
+                  <span class="ml-1 font-medium text-fg">
+                    {{ formatPrice(w.steamPrice, w.steamCurrency ?? 'EUR') }}
+                  </span>
+                  <span v-if="w.steamDiscount" class="ml-1 text-ok">-{{ w.steamDiscount }}%</span>
+                </span>
+                <span v-if="w.cheapestPrice" class="text-gold">
+                  Clé dès {{ formatPrice(w.cheapestPrice, w.cheapestCurrency ?? 'EUR') }}
+                  <span v-if="w.cheapestStore" class="text-fg-faint">· {{ w.cheapestStore }}</span>
+                </span>
+              </div>
             </div>
           </a>
         </div>

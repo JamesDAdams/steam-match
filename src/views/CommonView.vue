@@ -30,6 +30,10 @@ interface Game {
   cheapestPrice?: number | null;
   cheapestStore?: string | null;
   cheapestCurrency?: string | null;
+  steamPrice?: number | null;
+  steamInitialPrice?: number | null;
+  steamDiscount?: number | null;
+  steamCurrency?: string | null;
 }
 
 const games = ref<Game[]>([]);
@@ -392,11 +396,18 @@ onMounted(async () => {
                 <template v-else>personne ne l'a encore</template>
               </span>
               <span
+                v-if="mode === 'wishlist' && g.steamPrice"
+                class="text-fg-muted"
+                title="Prix officiel Steam"
+              >
+                Steam {{ formatPrice(g.steamPrice, g.steamCurrency ?? 'EUR') }}
+              </span>
+              <span
                 v-if="mode === 'wishlist' && g.cheapestPrice"
                 class="text-gold"
                 :title="g.cheapestStore ?? undefined"
               >
-                dès {{ formatPrice(g.cheapestPrice, g.cheapestCurrency ?? 'EUR') }}
+                clé dès {{ formatPrice(g.cheapestPrice, g.cheapestCurrency ?? 'EUR') }}
               </span>
               <span v-else class="truncate" :title="g.players.join(', ')">
                 {{ g.players.slice(0, 2).join(', ') }}<template v-if="g.players.length > 2"> +{{ g.players.length - 2 }}</template>

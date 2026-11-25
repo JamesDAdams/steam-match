@@ -27,7 +27,8 @@ try {
   const meta = await vite.ssrLoadModule('/lib/metadata.ts');
   const prices = await vite.ssrLoadModule('/lib/prices.ts');
 
-  const appid = 16900; // GROUND BRANCH, présent en wishlist
+  // Appid optionnel en argument : node scripts/test-enrich.mjs 1091500
+  const appid = Number(process.argv[2] ?? 16900);
 
   console.log('\n=== METADONNEES (SteamSpy puis Store) ===');
   const m = await meta.fetchMetadata(appid);
@@ -42,7 +43,17 @@ try {
     process.exitCode = 1;
   }
 
-  console.log('\n=== PRIX ===');
+  console.log('\n=== PRIX STEAM (officiel, EUR) ===');
+  const sp = await prices.fetchSteamPrice(appid);
+  if (sp) {
+    console.log(`  actuel  : ${prices.formatPrice(sp.priceCents, sp.currency)}`);
+    console.log(`  de base : ${prices.formatPrice(sp.initialCents, sp.currency)}`);
+    console.log(`  remise  : ${sp.discountPercent}%`);
+  } else {
+    console.log('  (jeu gratuit ou prix indisponible)');
+  }
+
+  console.log('\n=== PRIX EN CLÉ ===');
   const p = await prices.fetchCheapestPrice(appid);
   if (p) {
     console.log(`  prix    : ${prices.formatPrice(p.priceCents, p.currency)}`);
@@ -53,7 +64,15 @@ try {
     );
     console.log('  ✓ prix récupéré');
   } else {
-    console.log('  ⚠ aucun prix (le jeu peut être absent du comparateur)');
+    console.log('  ⚠ aucune offre chez un revendeur de clés (jeu absent des');
+    console.log('    boutiques tierces, ou vendu uniquement sur Steam)');
+  }
+
+  // Avec un appid explicite, on ne touche pas à la file d'attente.
+  if (process.argv[2]) {
+    console.log('\n(appid fourni : lot d’enrichissement non exécuté)');
+    await vite.close();
+    process.exit(process.exitCode ?? 0);
   }
 
   console.log('\n=== LOT D ENRICHISSEMENT ===');

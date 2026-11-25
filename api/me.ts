@@ -129,6 +129,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           cheapestPrice: gameCache.cheapestPrice,
           cheapestStore: gameCache.cheapestStore,
           cheapestCurrency: gameCache.cheapestCurrency,
+          steamPrice: gameCache.steamPrice,
+          steamInitialPrice: gameCache.steamInitialPrice,
+          steamDiscount: gameCache.steamDiscount,
+          steamCurrency: gameCache.steamCurrency,
         })
         .from(ownedGames)
         .leftJoin(gameCache, eq(gameCache.appid, ownedGames.appid))
@@ -147,6 +151,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         cheapestPrice: r.cheapestPrice ?? null,
         cheapestStore: r.cheapestStore ?? null,
         cheapestCurrency: r.cheapestCurrency ?? null,
+        steamPrice: r.steamPrice ?? null,
+        steamInitialPrice: r.steamInitialPrice ?? null,
+        steamDiscount: r.steamDiscount ?? null,
+        steamCurrency: r.steamCurrency ?? null,
       }));
 
       stats = buildStats(games);
@@ -165,6 +173,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           cheapestPrice: gameCache.cheapestPrice,
           cheapestStore: gameCache.cheapestStore,
           cheapestCurrency: gameCache.cheapestCurrency,
+          steamPrice: gameCache.steamPrice,
+          steamInitialPrice: gameCache.steamInitialPrice,
+          steamDiscount: gameCache.steamDiscount,
+          steamCurrency: gameCache.steamCurrency,
         })
         .from(wishlistItems)
         .leftJoin(gameCache, eq(gameCache.appid, wishlistItems.appid))
@@ -220,6 +232,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             cheapestPrice: w.cheapestPrice ?? null,
             cheapestStore: w.cheapestStore ?? null,
             cheapestCurrency: w.cheapestCurrency ?? null,
+            steamPrice: w.steamPrice ?? null,
+            steamInitialPrice: w.steamInitialPrice ?? null,
+            steamDiscount: w.steamDiscount ?? null,
+            steamCurrency: w.steamCurrency ?? null,
           };
         });
       }

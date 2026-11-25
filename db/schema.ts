@@ -207,6 +207,13 @@ export const gameCache = pgTable(
     // Devise du prix : EUR via GG.deals, USD via CheapShark. Sans elle on
     // risquerait d'afficher un montant en dollars avec un symbole euro.
     cheapestCurrency: text('cheapest_currency'),
+
+    // Prix officiel Steam (EUR via cc=fr). Distinct du prix en clé : l'un est
+    // la boutique officielle, l'autre le meilleur revendeur.
+    steamPrice: integer('steam_price'),
+    steamInitialPrice: integer('steam_initial_price'),
+    steamDiscount: integer('steam_discount'),
+    steamCurrency: text('steam_currency'),
     priceUpdatedAt: timestamp('price_updated_at', { withTimezone: true }),
     enrichedAt: timestamp('enriched_at', { withTimezone: true }),
     enrichFailed: boolean('enrich_failed').notNull().default(false),

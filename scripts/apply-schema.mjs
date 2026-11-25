@@ -87,6 +87,10 @@ const statements = [
   `ALTER TABLE game_cache ADD COLUMN IF NOT EXISTS cheapest_store text`,
   `ALTER TABLE game_cache ADD COLUMN IF NOT EXISTS price_updated_at timestamp with time zone`,
   `ALTER TABLE game_cache ADD COLUMN IF NOT EXISTS cheapest_currency text`,
+  `ALTER TABLE game_cache ADD COLUMN IF NOT EXISTS steam_price integer`,
+  `ALTER TABLE game_cache ADD COLUMN IF NOT EXISTS steam_initial_price integer`,
+  `ALTER TABLE game_cache ADD COLUMN IF NOT EXISTS steam_discount integer`,
+  `ALTER TABLE game_cache ADD COLUMN IF NOT EXISTS steam_currency text`,
 
   // ── Sessions ─────────────────────────────────────────────��─────────
   // NON destructif : on ne supprime jamais la table, sinon tous les membres

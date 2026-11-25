@@ -20,54 +20,65 @@ export interface GamePrice {
   store: string;
 }
 
+/** Identifiant de Steam dans CheapShark : ce n'est pas un revendeur de clés. */
+const STEAM_STORE_ID = '1';
+
 /**
- * CheapShark exige un User-Agent identifiable, sinon il répond 200 avec un
- * objet d'erreur — piège classique.
+ * Prix chez un REVENDEUR de clés (jamais Steam lui-même).
+ *
+ * POURQUOI FILTRER STEAM :
+ * CheapShark renvoie le meilleur prix toutes boutiques confondues, et c'est
+ * très souvent Steam en promotion. Afficher ça comme « prix en clé » serait
+ * faux — et parfois plus cher que le prix Steam officiel du pays, ce qui
+ * n'aurait aucun sens pour l'utilisateur.
+ *
+ * On ne garde donc que les boutiques tierces. Si le jeu n'est vendu que sur
+ * Steam, il n'y a pas de prix en clé : on renvoie null.
  */
 async function fromCheapShark(appid: number): Promise<GamePrice | null> {
   try {
-    const res = await fetch(`${CHEAPSHARK}/games?steamAppID=${appid}`, {
-      headers: { 'User-Agent': 'BastionDesGamers/1.0 (+association gaming)' },
+    const headers = { 'User-Agent': 'BastionDesGamers/1.0 (+association gaming)' };
+
+    // 1. L'identifiant interne CheapShark.
+    const searchRes = await fetch(`${CHEAPSHARK}/games?steamAppID=${appid}`, {
+      headers,
       signal: AbortSignal.timeout(8000),
     });
-    if (!res.ok) return null;
+    if (!searchRes.ok) return null;
 
-    const data = (await res.json()) as any;
-    if (!Array.isArray(data) || data.length === 0) return null;
+    const search = (await searchRes.json()) as any;
+    if (!Array.isArray(search) || search.length === 0) return null;
 
-    const game = data[0];
-    const cheapest = Number(game?.cheapest);
-    if (!Number.isFinite(cheapest) || cheapest <= 0) return null;
+    const gameID = search[0]?.gameID;
+    if (!gameID) return null;
 
-    // Détail du meilleur deal pour connaître la boutique.
-    let storeName = 'Boutique partenaire';
-    if (game.cheapestDealID) {
-      try {
-        // ATTENTION : cheapestDealID arrive DÉJÀ encodé pour l'URL (il contient
-        // %3D). Un encodeURIComponent de plus produirait %253D et la requête
-        // échouerait silencieusement — plus de nom de boutique.
-        const dealRes = await fetch(
-          `${CHEAPSHARK}/deals?id=${game.cheapestDealID}`,
-          {
-            headers: { 'User-Agent': 'BastionDesGamers/1.0' },
-            signal: AbortSignal.timeout(8000),
-          },
-        );
-        if (dealRes.ok) {
-          const deal = (await dealRes.json()) as any;
-          // CheapShark renvoie un identifiant numérique de boutique.
-          const storeID = String(deal?.gameInfo?.storeID ?? '');
-          storeName = STORE_NAMES[storeID] ?? storeName;
-        }
-      } catch {
-        /* le nom de boutique est un bonus, pas un blocage */
-      }
-    }
+    // 2. Détail de toutes les offres.
+    const detailRes = await fetch(`${CHEAPSHARK}/games?id=${gameID}`, {
+      headers,
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!detailRes.ok) return null;
 
+    const detail = (await detailRes.json()) as any;
+    const deals: any[] = detail?.deals ?? [];
+
+    // 3. On écarte Steam et on prend la moins chère des boutiques de clés.
+    const thirdParty = deals
+      .filter((d) => String(d?.storeID) !== STEAM_STORE_ID)
+      .map((d) => ({
+        storeID: String(d.storeID ?? ''),
+        price: Number(d.price),
+      }))
+      .filter((d) => Number.isFinite(d.price) && d.price > 0)
+      .sort((a, b) => a.price - b.price);
+
+    if (thirdParty.length === 0) return null;
+
+    const best = thirdParty[0];
     return {
-      priceCents: Math.round(cheapest * 100),
+      priceCents: Math.round(best.price * 100),
       currency: 'USD',
-      store: storeName,
+      store: STORE_NAMES[best.storeID] ?? 'Revendeur',
     };
   } catch {
     return null;
@@ -134,6 +145,50 @@ async function fromGGDeals(appid: number): Promise<GamePrice | null> {
     const cents = best.amount < 1000 ? Math.round(best.amount * 100) : Math.round(best.amount);
 
     return { priceCents: cents, currency: best.currency, store: best.shop };
+  } catch {
+    return null;
+  }
+}
+
+export interface SteamPrice {
+  /** Prix actuel en centimes. */
+  priceCents: number;
+  /** Prix de base (avant remise) en centimes. */
+  initialCents: number;
+  /** Remise en pourcentage, 0 si pas de promo. */
+  discountPercent: number;
+  currency: string;
+}
+
+/**
+ * Prix officiel sur le Store Steam, en euros.
+ *
+ * On demande explicitement cc=fr pour obtenir l'EUR plutôt que l'USD par
+ * défaut. Les jeux gratuits n'ont pas de price_overview : on renvoie null,
+ * ce qui n'est pas une erreur.
+ */
+export async function fetchSteamPrice(appid: number): Promise<SteamPrice | null> {
+  try {
+    const res = await fetch(
+      `https://store.steampowered.com/api/appdetails?appids=${appid}` +
+        `&filters=price_overview&cc=fr&l=french`,
+      { signal: AbortSignal.timeout(8000) },
+    );
+    if (res.status === 429 || !res.ok) return null;
+
+    const json = (await res.json()) as Record<string, { success?: boolean; data?: any }>;
+    const entry = json[String(appid)];
+    if (!entry?.success) return null;
+
+    const p = entry.data?.price_overview;
+    if (!p) return null; // jeu gratuit
+
+    return {
+      priceCents: Number(p.final ?? 0),
+      initialCents: Number(p.initial ?? p.final ?? 0),
+      discountPercent: Number(p.discount_percent ?? 0),
+      currency: String(p.currency ?? 'EUR'),
+    };
   } catch {
     return null;
   }

@@ -2,7 +2,7 @@ import { getDb } from '../db/index.ts';
 import { gameCache, enrichQueue } from '../db/schema.ts';
 import { and, eq, lt, sql } from 'drizzle-orm';
 import { fetchMetadata } from './metadata.ts';
-import { fetchCheapestPrice } from './prices.ts';
+import { fetchCheapestPrice, fetchSteamPrice } from './prices.ts';
 
 /**
  * Worker d'enrichissement.
@@ -74,6 +74,8 @@ export async function runEnrichBatch(
       continue;
     }
 
+    // Deux prix distincts : la boutique officielle et le meilleur revendeur.
+    const steamPrice = withPrices ? await fetchSteamPrice(appid) : null;
     const price = withPrices ? await fetchCheapestPrice(appid) : null;
 
     await db
@@ -91,9 +93,17 @@ export async function runEnrichBatch(
               cheapestPrice: price.priceCents,
               cheapestStore: price.store,
               cheapestCurrency: price.currency,
-              priceUpdatedAt: new Date(),
             }
           : {}),
+        ...(steamPrice
+          ? {
+              steamPrice: steamPrice.priceCents,
+              steamInitialPrice: steamPrice.initialCents,
+              steamDiscount: steamPrice.discountPercent,
+              steamCurrency: steamPrice.currency,
+            }
+          : {}),
+        ...(price || steamPrice ? { priceUpdatedAt: new Date() } : {}),
       })
       .where(eq(gameCache.appid, appid));
 
