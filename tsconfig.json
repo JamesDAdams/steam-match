@@ -33,7 +33,9 @@
     "src/**/*.ts",
     "src/**/*.vue",
     "api/**/*.ts",
-    "db/**/*.ts"
+    "db/**/*.ts",
+    "lib/**/*.ts",
+    "netlify/**/*.ts"
   ],
   "exclude": [
     "node_modules",

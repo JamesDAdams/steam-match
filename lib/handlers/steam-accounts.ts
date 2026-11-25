@@ -84,6 +84,8 @@ async function absorbLibrary(
   }
 
   const now = new Date();
+  /** Taille des lots d'écriture : une requête par jeu expirerait la fonction. */
+  const BATCH = 200;
 
   // On remplace uniquement les jeux venus de CE compte : ceux du compte
   // principal ou d'un autre compte lié restent intacts.
@@ -101,9 +103,8 @@ async function absorbLibrary(
   if (valid.length > 0) {
     // Insertion par lots : une ludothèque familiale peut compter des
     // centaines de jeux, et une requête par jeu mettrait la fonction à genoux.
-    const CHUNK = 200;
-    for (let i = 0; i < valid.length; i += CHUNK) {
-      const slice = valid.slice(i, i + CHUNK);
+    for (let i = 0; i < valid.length; i += BATCH) {
+      const slice = valid.slice(i, i + BATCH);
       await db
         .insert(ownedGames)
         .values(
@@ -131,9 +132,8 @@ async function absorbLibrary(
     // Cache de noms/jaquettes pour les jeux inconnus du groupe. Par lots : une
     // requête par jeu ferait expirer la fonction sur une grosse bibliothèque.
     const named = valid.filter((g) => Boolean(g.name));
-    const CHUNK = 200;
-    for (let i = 0; i < named.length; i += CHUNK) {
-      const slice = named.slice(i, i + CHUNK);
+    for (let i = 0; i < named.length; i += BATCH) {
+      const slice = named.slice(i, i + BATCH);
       await db
         .insert(gameCache)
         .values(slice.map((g) => ({ appid: g.appid, name: g.name as string })))
@@ -141,8 +141,8 @@ async function absorbLibrary(
     }
 
     // Enrichissement (genres, prix) : le worker s'en charge en tâche de fond.
-    for (let i = 0; i < valid.length; i += CHUNK) {
-      const slice = valid.slice(i, i + CHUNK);
+    for (let i = 0; i < valid.length; i += BATCH) {
+      const slice = valid.slice(i, i + BATCH);
       await db
         .insert(enrichQueue)
         .values(slice.map((g) => ({ appid: g.appid, priority: 3 })))

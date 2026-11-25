@@ -25,7 +25,9 @@
     "test:netlify": "node scripts/test-netlify.mjs",
     "test:discord": "node scripts/test-discord-events.mjs",
     "test:bot": "node scripts/test-discord-bot.mjs",
-    "test:enrich": "node scripts/test-enrich.mjs"
+    "test:enrich": "node scripts/test-enrich.mjs",
+    "check:functions": "node --experimental-strip-types scripts/check-functions.mjs",
+    "check": "npm run typecheck && npm run check:vues && npm run check:functions"
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.10.4",
