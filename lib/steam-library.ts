@@ -176,10 +176,11 @@ export async function absorbLibrary(
       .onConflictDoUpdate({
         target: [ownedGames.steamid, ownedGames.appid],
         set: {
-          // Le temps de jeu suit la règle du compte (0 pour la famille), y
-          // compris pour les lignes déjà importées avant ce correctif.
-          playtimeForever: sql`excluded.playtime_forever`,
-          playtime2Weeks: sql`excluded.playtime_2weeks`,
+          // IMPORTANT : un jeu possédé garde SON temps de jeu. Sans ce CASE,
+          // l'import d'un compte famille écrasait les heures du compte
+          // principal avec 0 (Dead by Daylight : 2273 h → 0 h).
+          playtimeForever: sql`CASE WHEN owned_games.source = 'owned' THEN owned_games.playtime_forever ELSE excluded.playtime_forever END`,
+          playtime2Weeks: sql`CASE WHEN owned_games.source = 'owned' THEN owned_games.playtime_2weeks ELSE excluded.playtime_2weeks END`,
           // Un jeu réellement possédé le reste : on ne le dégrade pas.
           source: sql`CASE WHEN owned_games.source = 'owned' THEN 'owned' ELSE excluded.source END`,
           sourceSteamid: sql`CASE WHEN owned_games.source = 'owned' THEN NULL ELSE excluded.source_steamid END`,
