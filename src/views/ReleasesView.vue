@@ -24,6 +24,12 @@ interface Release {
   ownedBySomeone: boolean;
 }
 
+/** Jaquettes qui n'ont pas pu être chargées (l'URL du CDN peut manquer). */
+const brokenImages = ref<Set<number>>(new Set());
+function onImageError(appid: number) {
+  brokenImages.value = new Set(brokenImages.value).add(appid);
+}
+
 const loading = ref(true);
 const error = ref<string | null>(null);
 const upcoming = ref<Release[]>([]);
@@ -105,13 +111,19 @@ onMounted(load);
           >
             <div class="relative aspect-[460/215] w-full overflow-hidden bg-app-surface2">
               <img
-                v-if="e.headerImage"
+                v-if="e.headerImage && !brokenImages.has(e.appid)"
                 :src="e.headerImage"
                 :alt="e.name"
                 class="h-full w-full object-cover transition group-hover:scale-[1.02]"
                 loading="lazy"
-                @error="hideBrokenImage"
+                @error="onImageError(e.appid)"
               />
+              <div
+                v-else
+                class="flex h-full items-center justify-center bg-gradient-to-br from-app-surface2 to-app-bg text-3xl"
+              >
+                🎮
+              </div>
               <span
                 class="absolute left-2 top-2 rounded bg-black/70 px-2 py-0.5 text-[11px] font-medium text-white"
               >
@@ -161,13 +173,19 @@ onMounted(load);
           >
             <div class="relative aspect-[460/215] w-full overflow-hidden bg-app-surface2">
               <img
-                v-if="e.headerImage"
+                v-if="e.headerImage && !brokenImages.has(e.appid)"
                 :src="e.headerImage"
                 :alt="e.name"
                 class="h-full w-full object-cover transition group-hover:scale-[1.02]"
                 loading="lazy"
-                @error="hideBrokenImage"
+                @error="onImageError(e.appid)"
               />
+              <div
+                v-else
+                class="flex h-full items-center justify-center bg-gradient-to-br from-app-surface2 to-app-bg text-3xl"
+              >
+                🎮
+              </div>
               <span
                 class="absolute left-2 top-2 rounded bg-black/70 px-2 py-0.5 text-[11px] font-medium text-white"
               >
