@@ -11,6 +11,8 @@ import RecommendView from './views/RecommendView.vue';
 import HelpView from './views/HelpView.vue';
 import AdminView from './views/AdminView.vue';
 import TwitchView from './views/TwitchView.vue';
+import MembersView from './views/MembersView.vue';
+import MemberView from './views/MemberView.vue';
 
 import { refreshAuth } from './lib/guard.ts';
 
@@ -33,6 +35,18 @@ const routes = [
   },
   // Page publique : consultable sans compte.
   { path: '/twitch', name: 'twitch', component: TwitchView },
+  {
+    path: '/membres',
+    name: 'members',
+    component: MembersView,
+    meta: { requiresAccess: true },
+  },
+  {
+    path: '/membres/:discordId',
+    name: 'member',
+    component: MemberView,
+    meta: { requiresAccess: true },
+  },
   {
     path: '/aide',
     name: 'help',

@@ -23,6 +23,7 @@ const FILES = [
   'lib/handlers/steam-accounts.ts',
   'lib/handlers/admin-settings.ts',
   'lib/handlers/twitch.ts',
+  'lib/handlers/members.ts',
   'netlify/functions/steam-sync-cron.ts',
 ];
 

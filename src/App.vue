@@ -35,6 +35,7 @@ const links = computed(() => [
   ...(canUseSite.value
     ? [
         { to: '/commun', label: 'Jeux en commun' },
+        { to: '/membres', label: 'Membres' },
         { to: '/recommandations', label: 'Recommandations' },
       ]
     : []),
@@ -213,6 +214,7 @@ const links = computed(() => [
               <p class="mb-2 font-semibold uppercase tracking-wide text-fg-faint">Navigation</p>
               <router-link to="/evenements" class="block hover:text-fg-strong">Événements</router-link>
               <router-link v-if="canUseSite" to="/commun" class="block hover:text-fg-strong">Jeux en commun</router-link>
+              <router-link v-if="canUseSite" to="/membres" class="block hover:text-fg-strong">Membres</router-link>
               <router-link v-if="canUseSite" to="/recommandations" class="block hover:text-fg-strong">Recommandations</router-link>
               <router-link to="/twitch" class="block hover:text-fg-strong">Twitch</router-link>
             </div>
