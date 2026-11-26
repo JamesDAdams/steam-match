@@ -389,6 +389,10 @@ export default async function handler(req: any, res: any) {
              count(*)::int AS games,
              coalesce(sum(o.playtime_forever), 0)::int AS minutes
       FROM owned_games o
+      -- Les utilitaires Steam ne comptent pas comme des jeux.
+      WHERE NOT EXISTS (
+        SELECT 1 FROM game_cache c WHERE c.appid = o.appid AND c.is_software = true
+      )
       GROUP BY o.steamid
     `);
     const countBySteam = new Map<string, { games: number; minutes: number }>(

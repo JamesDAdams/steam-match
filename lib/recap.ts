@@ -800,18 +800,19 @@ export function isValidRecapKey(key: string | undefined, generatedAt: Date): boo
 /**
  * URL que Discord affichera réellement.
  *
- * Le CDN d'images de Netlify convertit le SVG en PNG : Discord n'accepte pas
- * le SVG dans ses aperçus, donc sans cette conversion le message n'afficherait
- * qu'un lien brut.
+ * Discord ne met PAS en aperçu un SVG : il faut du PNG. Le CDN d'images de
+ * Netlify ne convertit pas le SVG (il le renvoie tel quel), mais wsrv.nl le
+ * fait — c'est le seul convertisseur sans dépendance côté serveur, et il met
+ * en cache par URL. La conversion ne contient que des données publiques.
  */
 export function recapPublicImageUrl(generatedAt: Date): string {
-  const path = recapImagePath(generatedAt);
+  const source = `${SITE_URL}${recapImagePath(generatedAt)}`;
   const params = new URLSearchParams({
-    url: path,
-    fm: 'png',
+    url: source,
+    output: 'png',
     w: '1200',
   });
-  return `${SITE_URL}/.netlify/images?${params.toString()}`;
+  return `https://wsrv.nl/?${params.toString()}`;
 }
 
 /** « 20 nov. → 26 nov. 2026 » */
