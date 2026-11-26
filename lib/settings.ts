@@ -31,6 +31,10 @@ export interface AppSettings {
   /** Heure de régénération quand la fréquence est quotidienne (Paris). */
   recapHour: number;
   lastRecapAt: Date | null;
+  /** Salon Discord de publication de l'image (null = aucune). */
+  recapChannelId: string | null;
+  /** Message existant à éditer à chaque mise à jour. */
+  recapMessageId: string | null;
 }
 
 const ROW_ID = 'app';
@@ -58,6 +62,8 @@ const DEFAULTS: AppSettings = {
   recapRefreshHours: 24,
   recapHour: 6,
   lastRecapAt: null,
+  recapChannelId: null,
+  recapMessageId: null,
 };
 
 export async function getSettings(): Promise<AppSettings> {
@@ -89,6 +95,8 @@ export async function getSettings(): Promise<AppSettings> {
     recapRefreshHours: row.recapRefreshHours,
     recapHour: row.recapHour,
     lastRecapAt: row.lastRecapAt ?? null,
+    recapChannelId: row.recapChannelId ?? null,
+    recapMessageId: row.recapMessageId ?? null,
   };
 }
 
@@ -110,6 +118,8 @@ export async function updateSettings(
       | 'recapRefreshHours'
       | 'recapHour'
       | 'lastRecapAt'
+      | 'recapChannelId'
+      | 'recapMessageId'
     >
   >,
 ): Promise<AppSettings> {

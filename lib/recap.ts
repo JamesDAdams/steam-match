@@ -2,6 +2,8 @@ import { getDb } from '../db/index.ts';
 import { recapImages, gameCache } from '../db/schema.ts';
 import { eq, inArray, sql } from 'drizzle-orm';
 import { getSettings, updateSettings } from './settings.ts';
+import { createHmac } from 'node:crypto';
+import { editChannelMessage, sendChannelMessage } from './discord-bot.ts';
 import { daysBetween, formatDay, formatDayShort, shiftDay, todayInParis } from './dates.ts';
 
 /**
@@ -277,6 +279,7 @@ export async function getRecapStats(daysInput?: number): Promise<RecapStats> {
           appid: gameCache.appid,
           name: gameCache.name,
           headerImage: gameCache.headerImage,
+          isSoftware: gameCache.isSoftware,
         })
         .from(gameCache)
         .where(inArray(gameCache.appid, appids))
@@ -311,7 +314,8 @@ export async function getRecapStats(daysInput?: number): Promise<RecapStats> {
     };
   };
 
-  const all = appids.map(toGame);
+  // Un logiciel n'est pas un jeu : il ne doit pas apparaître dans le récap'.
+  const all = appids.map(toGame).filter((g) => !meta.get(g.appid)?.isSoftware);
   const played = all.filter((g) => g.minutes > 0);
   const launched = all.filter((g) => g.minutes > 0 || g.lastPlayedAt !== null);
 
@@ -634,6 +638,8 @@ const ROW_ID = 'default';
 export interface GenerateResult {
   stats: RecapStats;
   svg: string;
+  /** Résultat de la publication Discord (null si non tentée). */
+  publish?: PublishResult | null;
 }
 
 /**
@@ -680,7 +686,11 @@ export async function generateRecapImage(daysInput?: number): Promise<GenerateRe
 
   await updateSettings({ lastRecapAt: new Date() });
 
-  return { stats, svg };
+  // Publication Discord (si un salon est configuré). On ne bloque pas la
+  // génération si Discord refuse : l'image reste disponible sur le site.
+  const publish = await publishRecapToDiscord(new Date(), stats).catch(() => null);
+
+  return { stats, svg, publish };
 }
 
 export async function getStoredRecap(): Promise<{
@@ -743,4 +753,112 @@ export async function runRecapIfDue(
 
   const { stats } = await generateRecapImage();
   return { ran: true, stats };
+}
+
+
+/* ─────────────────── Publication Discord ─────────────────── */
+
+const SITE_URL = (
+  process.env.URL ||
+  process.env.BASE_URL ||
+  'https://le-bastion-des-gamers.netlify.app'
+).replace(/\/+$/, '');
+
+/**
+ * Signature de l'URL de l'image.
+ *
+ * POURQUOI : Discord va chercher l'image sans session — un lien protégé par
+ * cookie ne montrerait rien (401) et l'aperçu resterait vide. On signe donc
+ * l'URL avec la version de l'image : elle reste valable tant que l'image ne
+ * change pas, puis devient caduque, ce qui rafraîchit aussi le cache CDN.
+ *
+ * La signature dépend de SESSION_SECRET : pas de secret partagé en clair.
+ */
+function signRecap(ms: number): string {
+  const secret = process.env.SESSION_SECRET ?? 'dev-secret';
+  return createHmac('sha256', secret).update(`recap:${ms}`).digest('hex').slice(0, 32);
+}
+
+/** Chemin public de l'image SVG pour une version donnée. */
+export function recapImagePath(generatedAt: Date): string {
+  return `/api/recap/image?k=${signRecap(generatedAt.getTime())}`;
+}
+
+/** Vérifie la signature portée par `?k=`. */
+export function isValidRecapKey(key: string | undefined, generatedAt: Date): boolean {
+  if (!key) return false;
+  return key === signRecap(generatedAt.getTime());
+}
+
+/**
+ * URL que Discord affichera réellement.
+ *
+ * Le CDN d'images de Netlify convertit le SVG en PNG : Discord n'accepte pas
+ * le SVG dans ses aperçus, donc sans cette conversion le message n'afficherait
+ * qu'un lien brut.
+ */
+export function recapPublicImageUrl(generatedAt: Date): string {
+  const path = recapImagePath(generatedAt);
+  const params = new URLSearchParams({
+    url: path,
+    fm: 'png',
+    w: '1200',
+    fit: 'max',
+  });
+  return `${SITE_URL}/.netlify/images?${params.toString()}`;
+}
+
+/** « 20 nov. → 26 nov. 2026 » */
+function windowLabel(stats: RecapStats): string {
+  return `${formatDayShort(stats.windowStart)} → ${formatDayShort(stats.windowEnd)} ${stats.windowEnd.slice(0, 4)}`;
+}
+
+export interface PublishResult {
+  published: boolean;
+  reason?: string;
+  messageId?: string | null;
+}
+
+/**
+ * Publie (ou met à jour) le message Discord du récap'.
+ *
+ * Un seul message par salon : on l'édite à chaque régénération. Si quelqu'un
+ * l'a supprimé, Discord renvoie 404 et on en reposte un — sans jamais laisser
+ * le salon vide.
+ */
+export async function publishRecapToDiscord(
+  generatedAt: Date,
+  stats: RecapStats,
+): Promise<PublishResult> {
+  const settings = await getSettings();
+
+  if (!settings.recapChannelId) {
+    return { published: false, reason: 'no-channel' };
+  }
+
+  const lines = [
+    `**Récap’ du Bastion — ${stats.days} derniers jours**`,
+    `${windowLabel(stats)} · ${formatMinutes(stats.totals.minutes)} de jeu · ` +
+      `${stats.totals.games} jeu(x) · ${stats.totals.players} joueur(s)` +
+      (stats.mode === 'estimated' ? ' · estimation' : ''),
+    recapPublicImageUrl(generatedAt),
+  ];
+  const content = lines.join('\n');
+
+  try {
+    // Le message doit vivre dans le salon actuellement configuré.
+    const previousChannel = settings.recapChannelId;
+    if (settings.recapMessageId) {
+      const ok = await editChannelMessage(previousChannel, settings.recapMessageId, content);
+      if (ok) return { published: true, messageId: settings.recapMessageId };
+      // Message supprimé ou salon changé : on en renvoie un.
+    }
+
+    const messageId = await sendChannelMessage(previousChannel, content);
+    await updateSettings({ recapMessageId: messageId || null });
+    return { published: true, messageId };
+  } catch (err: any) {
+    console.error('[récap] publication Discord impossible', err?.message);
+    return { published: false, reason: err?.message ?? 'erreur Discord' };
+  }
 }

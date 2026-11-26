@@ -315,6 +315,13 @@ export const gameCache = pgTable(
     releaseDate: text('release_date'),
     // Modes de jeu extraits des catégories Steam : Solo, Multijoueur, Coopération…
     playModes: jsonb('play_modes').$type<string[]>().notNull().default([]),
+    /** Type Steam de l'app : 'game', 'software', 'dlc', 'demo'… */
+    appType: text('app_type'),
+    /**
+     * Raccourci calculé (voir lib/software.ts) : vrai pour un utilitaire.
+     * Les listes « jeux » ne montrent que ce qui n'est pas marqué.
+     */
+    isSoftware: boolean('is_software').notNull().default(false),
     priceUpdatedAt: timestamp('price_updated_at', { withTimezone: true }),
     enrichedAt: timestamp('enriched_at', { withTimezone: true }),
     enrichFailed: boolean('enrich_failed').notNull().default(false),
@@ -426,6 +433,10 @@ export const appSettings = pgTable('app_settings', {
   /** Heure de régénération quand la fréquence est quotidienne (0-23, Paris). */
   recapHour: integer('recap_hour').notNull().default(6),
   lastRecapAt: timestamp('last_recap_at', { withTimezone: true }),
+  /** Salon Discord où le bot publie l'image (null = pas de publication). */
+  recapChannelId: text('recap_channel_id'),
+  /** Message à éditer au lieu d'en renvoyer un nouveau. */
+  recapMessageId: text('recap_message_id'),
 });
 
 /**

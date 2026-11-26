@@ -1,4 +1,5 @@
 import { getDb } from '../db/index.ts';
+import { isSoftwareApp } from './software.ts';
 import { gameCache, enrichQueue } from '../db/schema.ts';
 import { eq, sql } from 'drizzle-orm';
 import { fetchMetadata } from './metadata.ts';
@@ -210,6 +211,9 @@ async function enrichMeta(appid: number): Promise<boolean> {
       genres: meta.genres,
       tags: meta.tags,
       shortDescription: meta.shortDescription,
+      // Un logiciel n'est pas un jeu : les listes le masquent (lib/software.ts).
+      isSoftware: isSoftwareApp(meta.genres, meta.appType),
+      ...(meta.appType ? { appType: meta.appType } : {}),
       updatedAt: new Date(),
       enrichClaimedAt: null,
       // `enrichedAt` marque « identifiable » : le jeu a un vrai nom. La

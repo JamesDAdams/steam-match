@@ -274,6 +274,31 @@ export async function sendChannelMessage(
   return message.id ?? '';
 }
 
+/**
+ * Édite un message déjà envoyé.
+ *
+ * Sert au récap' : on garde UN message dans le salon et on le met à jour, au
+ * lieu d'en poster un nouveau chaque jour. Renvoie false si le message n'existe
+ * plus (supprimé à la main) — l'appelant en renvoie alors un.
+ */
+export async function editChannelMessage(
+  channelId: string,
+  messageId: string,
+  content: string,
+): Promise<boolean> {
+  const res = await discordFetch(`/channels/${channelId}/messages/${messageId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      content,
+      allowed_mentions: {
+        parse: [],
+        users: [...content.matchAll(/<(?:@!?|@)(\d{17,20})>/g)].map((m) => m[1]),
+      },
+    }),
+  });
+  return res.ok;
+}
+
 /** Supprime un message (utilisé par les tests de configuration). */
 export async function deleteChannelMessage(
   channelId: string,

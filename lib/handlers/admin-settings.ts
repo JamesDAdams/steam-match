@@ -71,7 +71,7 @@ export default async function handler(req: any, res: any) {
       }
 
       if (body.action === 'run-recap') {
-        const { stats } = await generateRecapImage();
+        const { stats, publish } = await generateRecapImage();
         return res.status(200).json({
           ok: true,
           report: {
@@ -80,6 +80,7 @@ export default async function handler(req: any, res: any) {
             top: stats.top.slice(0, 5).map((g) => ({ name: g.name, minutes: g.minutes })),
             launched: stats.launched.length,
             players: stats.totals.players,
+            discord: publish ?? null,
           },
         });
       }
@@ -107,6 +108,8 @@ export default async function handler(req: any, res: any) {
         recapDays?: number;
         recapRefreshHours?: number;
         recapHour?: number;
+        recapChannelId?: string | null;
+        recapMessageId?: string | null;
       } = {};
 
       if (typeof body.recommendationsEnabled === 'boolean') {
@@ -128,6 +131,14 @@ export default async function handler(req: any, res: any) {
           return res.status(400).json({ error: 'Identifiant de salon Discord invalide.' });
         }
         patch.releaseChannelId = raw || null;
+      }
+
+      if (body.recapChannelId !== undefined) {
+        const raw = String(body.recapChannelId ?? '').trim();
+        if (raw && !/^\d{17,20}$/.test(raw)) {
+          return res.status(400).json({ error: 'Identifiant de salon Discord invalide.' });
+        }
+        patch.recapChannelId = raw || null;
       }
 
       if (typeof body.recapEnabled === 'boolean') {
@@ -175,6 +186,13 @@ export default async function handler(req: any, res: any) {
 
       if (Object.keys(patch).length === 0) {
         return res.status(400).json({ error: 'Aucun réglage à modifier.' });
+      }
+
+      if (patch.recapChannelId !== undefined) {
+        const before = await getSettings();
+        if (before.recapChannelId !== patch.recapChannelId) {
+          patch.recapMessageId = null;
+        }
       }
 
       const settings = await updateSettings(patch);

@@ -74,6 +74,8 @@ interface SteamSettings {
   recapRefreshHours: number;
   recapHour: number;
   lastRecapAt: string | null;
+  recapChannelId: string | null;
+  recapMessageId: string | null;
 }
 
 const steamSettings = ref<SteamSettings | null>(null);
@@ -201,6 +203,7 @@ async function saveRecap(patch: {
   recapDays?: number;
   recapRefreshHours?: number;
   recapHour?: number;
+  recapChannelId?: string | null;
 }) {
   recapSaving.value = true;
   recapMessage.value = null;
@@ -587,7 +590,7 @@ onMounted(load);
         téléchargeable en PNG pour la poster sur Discord.
       </p>
 
-      <div class="mt-4 grid gap-3 sm:grid-cols-4">
+      <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <div>
           <span class="mb-1 block text-xs font-medium text-fg-muted">Publication</span>
           <button
@@ -666,6 +669,26 @@ onMounted(load);
             </option>
           </select>
         </div>
+
+        <div>
+          <label for="recap-channel" class="mb-1 block text-xs font-medium text-fg-muted">
+            Salon Discord
+          </label>
+          <select
+            id="recap-channel"
+            class="input"
+            :disabled="recapSaving"
+            :value="steamSettings?.recapChannelId ?? ''"
+            @change="
+              saveRecap({ recapChannelId: ($event.target as HTMLSelectElement).value || null })
+            "
+          >
+            <option value="">Aucun (site seulement)</option>
+            <option v-for="c in discordChannels" :key="c.id" :value="c.id">
+              {{ c.name }}
+            </option>
+          </select>
+        </div>
       </div>
 
       <div class="mt-4 flex flex-wrap items-center gap-3">
@@ -685,6 +708,16 @@ onMounted(load);
         Steam ne publie que le temps de jeu cumulé et les 14 derniers jours : la « fenêtre » est
         mesurée par des relevés quotidiens, qui se constituent au fil des synchronisations. Tant que
         l'historique est trop court, l'image l'indique (« estimation »).
+      </p>
+      <p class="mt-1 text-[11px] leading-relaxed text-fg-faint">
+        <template v-if="steamSettings?.recapChannelId">
+          Le bot poste <strong>un seul message</strong> dans le salon choisi, avec l'aperçu de
+          l'image, et l'édite à chaque régénération — le salon ne se remplit pas.
+        </template>
+        <template v-else>
+          Choisis un salon Discord pour que le bot y publie l'image ; sinon elle reste sur le site
+          uniquement.
+        </template>
       </p>
     </section>
 

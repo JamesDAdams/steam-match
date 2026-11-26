@@ -28,6 +28,8 @@ export interface GameMetadata {
   reviewScore: number | null;
   /** Origine des données, utile pour diagnostiquer. */
   source: 'steamspy' | 'store';
+  /** Type Steam ('game', 'software', …). SteamSpy ne le fournit pas. */
+  appType: string | null;
 }
 
 interface SteamSpyDetails {
@@ -86,6 +88,8 @@ async function fromSteamSpy(appid: number): Promise<GameMetadata | null> {
       reviewNegative: negative,
       reviewScore: total > 0 ? Math.round(((positive ?? 0) / total) * 100) : null,
       source: 'steamspy',
+      // SteamSpy ne publie pas le type : on ne peut pas trancher ici.
+      appType: null,
     };
   } catch {
     return null;
@@ -95,7 +99,7 @@ async function fromSteamSpy(appid: number): Promise<GameMetadata | null> {
 async function fromSteamStore(appid: number): Promise<GameMetadata | null> {
   try {
     const res = await rateLimitedFetch(
-      `${STORE}?appids=${appid}&l=french&filters=genres,basic,categories,short_description`,
+      `${STORE}?appids=${appid}&l=french&filters=genres,basic,categories,short_description,type`,
       { signal: AbortSignal.timeout(5000) },
     );
     if (res.status === 429 || !res.ok) return null;
@@ -117,6 +121,7 @@ async function fromSteamStore(appid: number): Promise<GameMetadata | null> {
       reviewNegative: null,
       reviewScore: null,
       source: 'store',
+      appType: typeof d.type === 'string' ? d.type : null,
     };
   } catch {
     return null;

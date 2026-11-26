@@ -150,6 +150,7 @@ export async function getReleaseCalendar(): Promise<ReleaseCalendar> {
     FROM wishlist_items w
     JOIN game_cache c ON c.appid = w.appid
     WHERE c.release_date IS NOT NULL
+      AND c.is_software = false
     GROUP BY c.appid, c.name, c.header_image, c.release_date,
              c.steam_price, c.steam_currency, c.steam_discount
   `);

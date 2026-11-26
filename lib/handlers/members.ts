@@ -7,7 +7,7 @@ import {
   gameCache,
   wishlistItems,
 } from '../../db/schema.ts';
-import { desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { requireAccess } from '../access.ts';
 import { guildId, isBotConfigured } from '../discord-bot.ts';
 
@@ -180,7 +180,12 @@ export default async function handler(req: any, res: any) {
           })
           .from(ownedGames)
           .leftJoin(gameCache, eq(gameCache.appid, ownedGames.appid))
-          .where(eq(ownedGames.steamid, link.steamid))
+          .where(
+            and(
+              eq(ownedGames.steamid, link.steamid),
+              sql`COALESCE(${gameCache.isSoftware}, false) = false`,
+            ),
+          )
           .orderBy(sql`${ownedGames.playtimeForever} DESC`);
 
         games = rows.map((r) => ({
@@ -241,7 +246,12 @@ export default async function handler(req: any, res: any) {
           })
           .from(wishlistItems)
           .leftJoin(gameCache, eq(gameCache.appid, wishlistItems.appid))
-          .where(eq(wishlistItems.steamid, link.steamid))
+          .where(
+            and(
+              eq(wishlistItems.steamid, link.steamid),
+              sql`COALESCE(${gameCache.isSoftware}, false) = false`,
+            ),
+          )
           .orderBy(desc(wishlistItems.priority));
 
         let wishlist: any[] = [];

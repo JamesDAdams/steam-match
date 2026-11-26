@@ -8,7 +8,7 @@ import {
   gameCache,
   wishlistItems,
 } from '../db/schema.ts';
-import { eq, desc, inArray } from 'drizzle-orm';
+import { and, eq, desc, inArray, sql } from 'drizzle-orm';
 import {
   COOKIE_NAME,
   parseCookies,
@@ -155,7 +155,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         })
         .from(ownedGames)
         .leftJoin(gameCache, eq(gameCache.appid, ownedGames.appid))
-        .where(eq(ownedGames.steamid, steam.steamid))
+        // Un logiciel (Lossless Scaling, un lecteur VR…) n'est pas un jeu.
+        .where(
+          and(eq(ownedGames.steamid, steam.steamid), sql`COALESCE(${gameCache.isSoftware}, false) = false`),
+        )
         .orderBy(desc(ownedGames.playtimeForever));
 
       games = rows.map((r) => ({
@@ -213,7 +216,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         })
         .from(wishlistItems)
         .leftJoin(gameCache, eq(gameCache.appid, wishlistItems.appid))
-        .where(eq(wishlistItems.steamid, steam.steamid))
+        .where(
+          and(
+            eq(wishlistItems.steamid, steam.steamid),
+            sql`COALESCE(${gameCache.isSoftware}, false) = false`,
+          ),
+        )
         .orderBy(desc(wishlistItems.priority));
 
       if (wishRows.length > 0) {

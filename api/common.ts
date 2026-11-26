@@ -127,6 +127,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       };
     });
 
+    // Les logiciels (utilitaires Steam) ne sont pas des jeux : on les retire.
+    games = games.filter((g) => !metaById.get(g.appid)?.isSoftware);
+
     if (requireEnriched) games = games.filter((g) => g.enriched);
 
     if (genreFilter.length > 0) {
@@ -323,6 +326,9 @@ async function handleWishlist(req: VercelRequest, res: VercelResponse, db: any) 
       playableNow: owners.length > 0,
     };
   });
+
+  // Idem que pour les jeux possédés : les utilitaires ne sont pas des jeux.
+  games = games.filter((g: any) => !metaById.get(g.appid)?.isSoftware);
 
   if (onlyPlayable) games = games.filter((g) => g.playableNow);
 

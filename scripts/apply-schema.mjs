@@ -185,6 +185,8 @@ const statements = [
   `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS recap_refresh_hours integer NOT NULL DEFAULT 24`,
   `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS recap_hour integer NOT NULL DEFAULT 6`,
   `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS last_recap_at timestamp with time zone`,
+  `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS recap_channel_id text`,
+  `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS recap_message_id text`,
 
   // ── Intéressés des événements Discord ──────────────────────────────
   `ALTER TABLE discord_events ADD COLUMN IF NOT EXISTS interested_users jsonb NOT NULL DEFAULT '[]'::jsonb`,
@@ -206,6 +208,38 @@ const statements = [
   `ALTER TABLE game_cache ADD COLUMN IF NOT EXISTS play_modes jsonb NOT NULL DEFAULT '[]'::jsonb`,
   `ALTER TABLE game_cache ADD COLUMN IF NOT EXISTS enrich_version integer NOT NULL DEFAULT 0`,
   `ALTER TABLE game_cache ADD COLUMN IF NOT EXISTS enrich_claimed_at timestamp with time zone`,
+
+  // ── Jeux vs logiciels ──────────────────────────────────────────────
+  // Un utilitaire (Lossless Scaling, CINEVR…) n'a rien à faire dans les
+  // listes de jeux. Steam le déclare parfois « game », d'où le calcul par
+  // genre : utilitaire ET aucun genre de jeu (voir lib/software.ts).
+  `ALTER TABLE game_cache ADD COLUMN IF NOT EXISTS app_type text`,
+  `ALTER TABLE game_cache ADD COLUMN IF NOT EXISTS is_software boolean NOT NULL DEFAULT false`,
+  `UPDATE game_cache SET is_software = COALESCE((
+     app_type = 'software'
+     OR (
+       EXISTS (
+         SELECT 1 FROM jsonb_array_elements_text(genres) g
+         WHERE lower(g) IN (
+           'utilities','utilitaires','software training','formation logicielle',
+           'animation & modeling','animation et modélisation','audio production',
+           'production audio','design & illustration','conception et illustration',
+           'photo editing','édition de photos','video production','production vidéo',
+           'web publishing','édition web','accounting','comptabilité',
+           'education','éducation'
+         )
+       )
+       AND NOT EXISTS (
+         SELECT 1 FROM jsonb_array_elements_text(genres) g
+         WHERE lower(g) IN (
+           'action','adventure','aventure','rpg','strategy','stratégie','simulation',
+           'casual','occasionnel','indie','indépendant','racing','course','sports',
+           'sport','massively multiplayer','massivement multijoueur',
+           'violent','gore','sexual content','contenu sexuel'
+         )
+       )
+     )
+   ), false)`,
 
   // ── Sessions ─────────────────────────────────────────────��─────────
   // NON destructif : on ne supprime jamais la table, sinon tous les membres
