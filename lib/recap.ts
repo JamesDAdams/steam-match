@@ -848,9 +848,15 @@ export async function publishRecapToDiscord(
 
   const lines = [
     `**Récap’ du Bastion — ${stats.days} derniers jours**`,
-    `${windowLabel(stats)} · ${formatMinutes(stats.totals.minutes)} de jeu · ` +
-      `${stats.totals.games} jeu(x) · ${stats.totals.players} joueur(s)` +
-      (stats.mode === 'estimated' ? ' · estimation' : ''),
+    [
+      windowLabel(stats),
+      `${formatMinutes(stats.totals.minutes)} de jeu`,
+      plural(stats.totals.games, 'jeu lancé', 'jeux lancés'),
+      plural(stats.totals.players, 'joueur', 'joueurs'),
+      stats.mode === 'estimated' ? 'estimation' : null,
+    ]
+      .filter(Boolean)
+      .join(' · '),
     recapPublicImageUrl(generatedAt),
   ];
   const content = lines.join('\n');
