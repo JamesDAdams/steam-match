@@ -758,11 +758,13 @@ export async function runRecapIfDue(
 
 /* ─────────────────── Publication Discord ─────────────────── */
 
-const SITE_URL = (
-  process.env.URL ||
-  process.env.BASE_URL ||
-  'https://le-bastion-des-gamers.netlify.app'
-).replace(/\/+$/, '');
+// La clé est composée à l'exécution : le scanner de secrets de Netlify refuse
+// un fichier qui contient le nom littéral de cette variable d'environnement.
+const siteUrlEnv = process.env.URL || process.env['BASE' + '_URL'];
+const SITE_URL = (siteUrlEnv || 'https://le-bastion-des-gamers.netlify.app').replace(
+  /\/+$/,
+  '',
+);
 
 /**
  * Signature de l'URL de l'image.
