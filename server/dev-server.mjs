@@ -60,6 +60,25 @@ const ROUTES = [
   ['POST', '/api/events/create', '/lib/handlers/events-create.ts'],
   ['POST', '/api/events/delete', '/lib/handlers/events-delete.ts'],
   ['GET', '/api/events/channels', '/lib/handlers/events-channels.ts'],
+  ['GET', '/api/events/game-search', '/lib/handlers/events-game-search.ts'],
+  ['GET', '/api/events/game-info', '/lib/handlers/events-game-info.ts'],
+  // Comptes Steam liés, membres, sorties, Twitch, notifications
+  ['GET', '/api/steam-accounts', '/lib/handlers/steam-accounts.ts'],
+  ['POST', '/api/steam-accounts', '/lib/handlers/steam-accounts.ts'],
+  ['DELETE', '/api/steam-accounts', '/lib/handlers/steam-accounts.ts'],
+  ['GET', '/api/members', '/lib/handlers/members.ts'],
+  ['GET', '/api/releases', '/lib/handlers/releases.ts'],
+  ['GET', '/api/twitch', '/lib/handlers/twitch.ts'],
+  ['POST', '/api/twitch', '/lib/handlers/twitch.ts'],
+  ['DELETE', '/api/twitch', '/lib/handlers/twitch.ts'],
+  ['GET', '/api/notifications', '/lib/handlers/notifications.ts'],
+  ['POST', '/api/notifications', '/lib/handlers/notifications.ts'],
+  // Récap' du groupe (image publiée)
+  ['GET', '/api/recap', '/lib/handlers/recap.ts'],
+  ['GET', '/api/recap/image', '/lib/handlers/recap-image.ts'],
+  // Réglages admin
+  ['GET', '/api/admin/settings', '/lib/handlers/admin-settings.ts'],
+  ['POST', '/api/admin/settings', '/lib/handlers/admin-settings.ts'],
 ];
 
 const vite = await createViteServer({

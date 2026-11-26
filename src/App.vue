@@ -222,6 +222,13 @@ const links = computed(() => [
               <router-link v-if="canUseSite" to="/membres" class="block hover:text-fg-strong">Membres</router-link>
               <router-link v-if="canUseSite" to="/sorties" class="block hover:text-fg-strong">Sorties</router-link>
               <router-link
+                v-if="canUseSite && me.features?.recap"
+                to="/recap"
+                class="block hover:text-fg-strong"
+              >
+                Récap’
+              </router-link>
+              <router-link
                 v-if="canUseSite && me.features?.recommendations"
                 to="/recommandations"
                 class="block hover:text-fg-strong"

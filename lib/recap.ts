@@ -206,7 +206,16 @@ export async function getRecapStats(daysInput?: number): Promise<RecapStats> {
   const ownedRows = ownedRaw.rows ?? [];
 
   const windowStartMs = Date.parse(`${windowStart}T00:00:00Z`) - 3 * 3600_000;
-  const measured = snapshots.length > 0;
+
+  const coverageDays = historyStart
+    ? Math.max(1, Math.min(days, daysBetween(maxDay(historyStart, windowStart), windowEnd) + 1))
+    : 0;
+
+  // Historique trop court (début de mise en service) : mesurer 2 jours sur une
+  // fenêtre de 7 donnerait une image quasi vide. On préfère extrapoler les 14
+  // jours de Steam — et l'image l'affiche clairement.
+  const measured =
+    snapshots.length > 0 && coverageDays >= Math.max(2, Math.ceil(days * 0.6));
 
   if (measured) {
     const pairs = aggregateSnapshots(snapshots);
@@ -314,10 +323,6 @@ export async function getRecapStats(daysInput?: number): Promise<RecapStats> {
 
   const totalMinutes = played.reduce((sum, g) => sum + g.minutes, 0);
 
-  const coverageDays = historyStart
-    ? Math.max(1, Math.min(days, daysBetween(maxDay(historyStart, windowStart), windowEnd) + 1))
-    : 0;
-
   return {
     days,
     mode: measured ? 'measured' : 'estimated',
@@ -363,6 +368,16 @@ function esc(s: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&apos;');
+}
+
+/** Retire les emoji (drapeaux, pictogrammes) : ils sortent en carrés vides
+ *  dans l'image rasterisée, alors qu'ils s'affichent très bien dans le site. */
+function cleanName(name: string): string {
+  return name
+    .replace(/[\u{1F1E6}-\u{1F1FF}]/gu, '')
+    .replace(/[\u{1F300}-\u{1FAFF}\u{2700}-\u{27BF}\u{FE0F}]/gu, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
 }
 
 function truncate(s: string, max: number): string {
@@ -532,7 +547,7 @@ export function renderRecapSvg(
     const playersLabel = game.players.length
       ? game.players
           .slice(0, 4)
-          .map((p) => truncate(p.name, 20))
+          .map((p) => truncate(cleanName(p.name), 20))
           .join(', ') + (game.players.length > 4 ? ` +${game.players.length - 4}` : '')
       : '—';
     parts.push(
