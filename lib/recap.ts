@@ -663,6 +663,10 @@ export async function generateRecapImage(daysInput?: number): Promise<GenerateRe
 
   const svg = renderRecapSvg(stats, covers);
 
+  // UN SEUL horodatage : c'est lui qui est stocké ET signé dans l'URL Discord.
+  // Deux `new Date()` distincts produisaient une signature invalide (401).
+  const generatedAt = new Date();
+
   await db
     .insert(recapImages)
     .values({
@@ -671,7 +675,7 @@ export async function generateRecapImage(daysInput?: number): Promise<GenerateRe
       windowDays: stats.days,
       mode: stats.mode,
       stats,
-      generatedAt: new Date(),
+      generatedAt,
     })
     .onConflictDoUpdate({
       target: recapImages.id,
@@ -680,15 +684,15 @@ export async function generateRecapImage(daysInput?: number): Promise<GenerateRe
         windowDays: stats.days,
         mode: stats.mode,
         stats: sql`excluded.stats`,
-        generatedAt: new Date(),
+        generatedAt,
       },
     });
 
-  await updateSettings({ lastRecapAt: new Date() });
+  await updateSettings({ lastRecapAt: generatedAt });
 
   // Publication Discord (si un salon est configuré). On ne bloque pas la
   // génération si Discord refuse : l'image reste disponible sur le site.
-  const publish = await publishRecapToDiscord(new Date(), stats).catch(() => null);
+  const publish = await publishRecapToDiscord(generatedAt, stats).catch(() => null);
 
   return { stats, svg, publish };
 }
@@ -806,7 +810,6 @@ export function recapPublicImageUrl(generatedAt: Date): string {
     url: path,
     fm: 'png',
     w: '1200',
-    fit: 'max',
   });
   return `${SITE_URL}/.netlify/images?${params.toString()}`;
 }
