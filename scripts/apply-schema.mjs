@@ -153,6 +153,39 @@ const statements = [
   // ils sont donc ajoutés à la main et marqués, pour survivre aux synchros.
   `ALTER TABLE owned_games ADD COLUMN IF NOT EXISTS source text NOT NULL DEFAULT 'owned'`,
 
+  // ── Dernier lancement connu (récap' des jeux joués) ────────────────
+  `ALTER TABLE owned_games ADD COLUMN IF NOT EXISTS last_played_at timestamp with time zone`,
+
+  // ── Récap' du groupe (image publiée) ───────────────────────────────
+  // Historique quotidien du temps de jeu : Steam ne donne que le cumul et
+  // les 14 derniers jours, donc on relève le cumul pour pouvoir mesurer une
+  // fenêtre de N jours.
+  `CREATE TABLE IF NOT EXISTS playtime_daily (
+     steamid   text NOT NULL,
+     appid     integer NOT NULL,
+     day       date NOT NULL,
+     minutes_min integer NOT NULL DEFAULT 0,
+     minutes_max integer NOT NULL DEFAULT 0,
+     updated_at  timestamp with time zone NOT NULL DEFAULT now(),
+     PRIMARY KEY (steamid, appid, day)
+   )`,
+  `CREATE INDEX IF NOT EXISTS playtime_daily_day_idx ON playtime_daily (day)`,
+
+  `CREATE TABLE IF NOT EXISTS recap_images (
+     id          text PRIMARY KEY NOT NULL,
+     svg         text NOT NULL,
+     window_days integer NOT NULL DEFAULT 7,
+     mode        text NOT NULL DEFAULT 'measured',
+     stats       jsonb NOT NULL DEFAULT '{}'::jsonb,
+     generated_at timestamp with time zone NOT NULL DEFAULT now()
+   )`,
+
+  `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS recap_enabled boolean NOT NULL DEFAULT true`,
+  `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS recap_days integer NOT NULL DEFAULT 7`,
+  `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS recap_refresh_hours integer NOT NULL DEFAULT 24`,
+  `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS recap_hour integer NOT NULL DEFAULT 6`,
+  `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS last_recap_at timestamp with time zone`,
+
   // ── Intéressés des événements Discord ──────────────────────────────
   `ALTER TABLE discord_events ADD COLUMN IF NOT EXISTS interested_users jsonb NOT NULL DEFAULT '[]'::jsonb`,
   `ALTER TABLE discord_events ADD COLUMN IF NOT EXISTS interested_synced_at timestamp with time zone`,

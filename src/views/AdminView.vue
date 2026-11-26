@@ -69,11 +69,23 @@ interface SteamSettings {
   releaseNotifyHour: number;
   releaseChannelId: string | null;
   lastReleaseNotifyAt: string | null;
+  recapEnabled: boolean;
+  recapDays: number;
+  recapRefreshHours: number;
+  recapHour: number;
+  lastRecapAt: string | null;
 }
 
 const steamSettings = ref<SteamSettings | null>(null);
 const discordChannels = ref<{ id: string; name: string }[]>([]);
 const steamAccountsCount = ref<{ main: number; linked: number }>({ main: 0, linked: 0 });
+const recapInfo = ref<{
+  generatedAt: string;
+  windowDays: number;
+  mode: string;
+  top: string[];
+  launched: number;
+} | null>(null);
 const steamSaving = ref(false);
 const steamRunning = ref(false);
 const steamMessage = ref<string | null>(null);
@@ -87,10 +99,18 @@ async function loadSteamSettings() {
       settings: SteamSettings;
       accounts: { main: number; linked: number };
       channels?: { id: string; name: string }[];
+      recap?: {
+        generatedAt: string;
+        windowDays: number;
+        mode: string;
+        top: string[];
+        launched: number;
+      } | null;
     }>('/api/admin/settings');
     steamSettings.value = r.settings;
     steamAccountsCount.value = r.accounts ?? { main: 0, linked: 0 };
     discordChannels.value = r.channels ?? [];
+    recapInfo.value = r.recap ?? null;
   } catch {
     /* section secondaire : on n'empêche pas l'admin de travailler */
   }
@@ -156,6 +176,65 @@ async function runReleaseNow() {
     error.value = e.message;
   } finally {
     releaseRunning.value = false;
+  }
+}
+
+/* ── Récap' du groupe (image publiée) ──────────────────────────────── */
+
+const recapSaving = ref(false);
+const recapRunning = ref(false);
+const recapMessage = ref<string | null>(null);
+
+/** Fréquences proposées (heures) : 24 = une fois par jour à l'heure choisie. */
+const RECAP_FREQUENCIES = [6, 12, 24, 48, 168];
+const RECAP_DAYS = [3, 7, 14, 30];
+
+function frequencyLabel(hours: number): string {
+  if (hours === 24) return 'Tous les jours';
+  if (hours === 168) return 'Toutes les semaines';
+  if (hours === 48) return 'Tous les 2 jours';
+  return `Toutes les ${hours} h`;
+}
+
+async function saveRecap(patch: {
+  recapEnabled?: boolean;
+  recapDays?: number;
+  recapRefreshHours?: number;
+  recapHour?: number;
+}) {
+  recapSaving.value = true;
+  recapMessage.value = null;
+  error.value = null;
+  try {
+    const r = await apiPost<{ settings: SteamSettings }>('/api/admin/settings', patch);
+    steamSettings.value = r.settings;
+    recapMessage.value = 'Réglage enregistré.';
+    await loadSteamSettings();
+  } catch (e: any) {
+    error.value = e.message;
+  } finally {
+    recapSaving.value = false;
+  }
+}
+
+async function runRecapNow() {
+  recapRunning.value = true;
+  recapMessage.value = null;
+  error.value = null;
+  try {
+    const r = await apiPost<{
+      report: { days: number; mode: string; top: { name: string; minutes: number }[]; launched: number; players: number };
+    }>('/api/admin/settings', { action: 'run-recap' });
+    const rep = r.report;
+    recapMessage.value =
+      `Image régénérée : ${rep.days} jours, ${rep.launched} jeu(x) lancé(s), ` +
+      `${rep.players} joueur(s)` +
+      (rep.mode === 'estimated' ? ' — estimation (historique en cours).' : '.');
+    await loadSteamSettings();
+  } catch (e: any) {
+    error.value = e.message;
+  } finally {
+    recapRunning.value = false;
   }
 }
 
@@ -492,6 +571,121 @@ onMounted(load);
       </div>
 
       <p v-if="releaseMessage" class="mt-2 text-xs text-ok">{{ releaseMessage }}</p>
+    </section>
+
+    <!-- Récap' du groupe -->
+    <section class="card mb-6">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <h2 class="font-semibold text-fg-strong">Récap’ du groupe (image)</h2>
+        <router-link to="/recap" class="text-xs text-gold hover:underline">
+          Voir la page →
+        </router-link>
+      </div>
+      <p class="mt-1 max-w-2xl text-xs text-fg-faint">
+        Publie une image récapitulative : les jeux les plus joués sur la période, puis tous les jeux
+        lancés par les membres. Régénérée automatiquement à l'heure choisie — l'image est aussi
+        téléchargeable en PNG pour la poster sur Discord.
+      </p>
+
+      <div class="mt-4 grid gap-3 sm:grid-cols-4">
+        <div>
+          <span class="mb-1 block text-xs font-medium text-fg-muted">Publication</span>
+          <button
+            type="button"
+            class="flex w-full items-center justify-between rounded-lg border border-line px-3 py-2 text-left text-sm transition hover:border-line-strong disabled:opacity-50"
+            :disabled="recapSaving || !steamSettings"
+            @click="saveRecap({ recapEnabled: !steamSettings?.recapEnabled })"
+          >
+            <span class="text-fg">{{ steamSettings?.recapEnabled ? 'Activé' : 'Désactivé' }}</span>
+            <span
+              class="badge"
+              :class="
+                steamSettings?.recapEnabled ? 'bg-ok-soft text-ok' : 'bg-app-surface2 text-fg-muted'
+              "
+            >
+              {{ steamSettings?.recapEnabled ? 'ON' : 'OFF' }}
+            </span>
+          </button>
+        </div>
+
+        <div>
+          <label for="recap-days" class="mb-1 block text-xs font-medium text-fg-muted">
+            Fenêtre
+          </label>
+          <select
+            id="recap-days"
+            class="input"
+            :disabled="recapSaving || !steamSettings"
+            :value="steamSettings?.recapDays ?? 7"
+            @change="
+              saveRecap({ recapDays: Number(($event.target as HTMLSelectElement).value) })
+            "
+          >
+            <option v-for="d in RECAP_DAYS" :key="d" :value="d">
+              {{ d }} jours
+            </option>
+          </select>
+        </div>
+
+        <div>
+          <label for="recap-frequency" class="mb-1 block text-xs font-medium text-fg-muted">
+            Régénération
+          </label>
+          <select
+            id="recap-frequency"
+            class="input"
+            :disabled="recapSaving || !steamSettings"
+            :value="steamSettings?.recapRefreshHours ?? 24"
+            @change="
+              saveRecap({
+                recapRefreshHours: Number(($event.target as HTMLSelectElement).value),
+              })
+            "
+          >
+            <option v-for="h in RECAP_FREQUENCIES" :key="h" :value="h">
+              {{ frequencyLabel(h) }}
+            </option>
+          </select>
+        </div>
+
+        <div>
+          <label for="recap-hour" class="mb-1 block text-xs font-medium text-fg-muted">
+            Heure (Paris)
+          </label>
+          <select
+            id="recap-hour"
+            class="input"
+            :disabled="recapSaving || !steamSettings"
+            :value="steamSettings?.recapHour ?? 6"
+            @change="
+              saveRecap({ recapHour: Number(($event.target as HTMLSelectElement).value) })
+            "
+          >
+            <option v-for="h in HOURS" :key="h" :value="h">
+              {{ String(h).padStart(2, '0') }}:00
+            </option>
+          </select>
+        </div>
+      </div>
+
+      <div class="mt-4 flex flex-wrap items-center gap-3">
+        <button class="btn-ghost text-sm" :disabled="recapRunning" @click="runRecapNow">
+          {{ recapRunning ? 'Génération…' : 'Régénérer maintenant' }}
+        </button>
+        <span v-if="recapInfo" class="text-xs text-fg-faint">
+          Dernière image : {{ new Date(recapInfo.generatedAt).toLocaleString('fr-FR') }} —
+          {{ recapInfo.windowDays }} j, {{ recapInfo.launched }} jeu(x)
+          <template v-if="recapInfo.mode === 'estimated'"> (estimation)</template>
+        </span>
+      </div>
+
+      <p v-if="recapMessage" class="mt-2 text-xs text-ok">{{ recapMessage }}</p>
+
+      <p class="mt-3 text-[11px] leading-relaxed text-fg-faint">
+        Steam ne publie que le temps de jeu cumulé et les 14 derniers jours : la « fenêtre » est
+        mesurée par des relevés quotidiens, qui se constituent au fil des synchronisations. Tant que
+        l'historique est trop court, l'image l'indique (« estimation »).
+      </p>
     </section>
 
     <!-- Pages du site -->

@@ -1,7 +1,15 @@
 import { getDb } from '../db/index.ts';
-import { users, ownedGames, gameCache, enrichQueue, wishlistItems } from '../db/schema.ts';
+import {
+  users,
+  ownedGames,
+  gameCache,
+  enrichQueue,
+  wishlistItems,
+  playtimeDaily,
+} from '../db/schema.ts';
 import { and, eq, sql } from 'drizzle-orm';
 import { getOwnedGames, getPlayerSummaries, getWishlist } from './steam.ts';
+import { todayInParis } from './dates.ts';
 
 /**
  * Synchronisation des ludothèques Steam, partagée par trois appelants :
@@ -75,6 +83,7 @@ export async function syncOwnedLibrary(
           playtime2Weeks: g.playtime_2weeks ?? 0,
           source: 'owned' as const,
           sourceSteamid: null,
+          lastPlayedAt: lastPlayedOf(g),
           updatedAt: now,
         })),
       )
@@ -87,6 +96,7 @@ export async function syncOwnedLibrary(
           // « secondaire » ni « famille », et n'est plus rattaché à un compte lié.
           source: sql`'owned'`,
           sourceSteamid: sql`NULL`,
+          lastPlayedAt: sql`excluded.last_played_at`,
           updatedAt: now,
         },
       });
@@ -107,6 +117,9 @@ export async function syncOwnedLibrary(
   }
 
   await seedCacheAndQueue(valid.map((g) => ({ appid: g.appid, name: g.name })));
+
+  // Relevé du cumul : c'est ce qui permettra de mesurer « joué ces N jours ».
+  await recordPlaytimeSnapshots(steamid, valid);
 
   await db
     .update(users)
@@ -170,6 +183,7 @@ export async function absorbLibrary(
           playtime2Weeks: kind === 'family' ? 0 : (g.playtime_2weeks ?? 0),
           source: kind,
           sourceSteamid: linkSteamid,
+          lastPlayedAt: lastPlayedOf(g),
           updatedAt: now,
         })),
       )
@@ -184,12 +198,20 @@ export async function absorbLibrary(
           // Un jeu réellement possédé le reste : on ne le dégrade pas.
           source: sql`CASE WHEN owned_games.source = 'owned' THEN 'owned' ELSE excluded.source END`,
           sourceSteamid: sql`CASE WHEN owned_games.source = 'owned' THEN NULL ELSE excluded.source_steamid END`,
+          // Le dernier lancement se cumule : GREATEST ignore les NULL.
+          lastPlayedAt: sql`GREATEST(owned_games.last_played_at, excluded.last_played_at)`,
           updatedAt: now,
         },
       });
   }
 
   await seedCacheAndQueue(valid.map((g) => ({ appid: g.appid, name: g.name })));
+
+  // Un compte FAMILLE ne nous appartient pas : son temps de jeu appartient à
+  // quelqu'un d'autre, on ne l'enregistre donc pas dans l'historique.
+  if (kind === 'secondary') {
+    await recordPlaytimeSnapshots(linkSteamid, valid);
+  }
 
   // Wishlist : uniquement celle d'un compte SECONDAIRE. Celle d'un compte
   // famille appartient à un autre joueur — l'agréger fausserait les envies du
@@ -312,4 +334,62 @@ async function seedCacheAndQueue(apps: { appid: number; name?: string }[]) {
       .values(slice.map((a) => ({ appid: a.appid, priority: 1 })))
       .onConflictDoNothing();
   }
+}
+
+/** Horodatage Unix (rtime_last_played) → Date, ou null si jamais lancé. */
+function lastPlayedOf(g: { rtime_last_played?: number }): Date | null {
+  const t = Number(g.rtime_last_played ?? 0);
+  return Number.isFinite(t) && t > 0 ? new Date(t * 1000) : null;
+}
+
+/** Taille des lots : 500 jeux tiennent dans une requête, 5000 non. */
+const SNAPSHOT_BATCH = 120;
+
+/**
+ * Relève le cumul de temps de jeu du jour pour un compte Steam.
+ *
+ * Steam ne donne que `playtime_forever` (cumul depuis toujours) et
+ * `playtime_2weeks` (14 jours, jamais 7). Pour répondre à « les plus joués des
+ * 7 derniers jours », on enregistre le cumul chaque jour et on soustrait.
+ *
+ * On ne garde que les jeux déjà lancés au moins une fois : les autres ne
+ * bougeront jamais et n'ont aucun intérêt pour le récap'.
+ *
+ * `minutes_min` garde la PREMIÈRE valeur vue dans la journée : c'est la base
+ * de calcul d'une fenêtre qui commence ce jour-là. `minutes_max` garde la
+ * dernière, et l'écart entre les deux prouve qu'on y a joué ce jour-là.
+ */
+export async function recordPlaytimeSnapshots(
+  steamid: string,
+  games: { appid: number; playtime_forever?: number }[],
+): Promise<void> {
+  const rows = games.filter(
+    (g) => Number.isInteger(g.appid) && g.appid > 0 && (g.playtime_forever ?? 0) > 0,
+  );
+  if (rows.length === 0) return;
+
+  const db = getDb();
+  const day = todayInParis();
+
+  for (let i = 0; i < rows.length; i += SNAPSHOT_BATCH) {
+    const slice = rows.slice(i, i + SNAPSHOT_BATCH);
+    const values = slice.map(
+      (g) =>
+        sql`(${steamid}, ${g.appid}, CAST(${day} AS date), ${g.playtime_forever ?? 0}, ${
+          g.playtime_forever ?? 0
+        })`,
+    );
+
+    await db.execute(sql`
+      INSERT INTO playtime_daily (steamid, appid, day, minutes_min, minutes_max)
+      VALUES ${sql.join(values, sql`, `)}
+      ON CONFLICT (steamid, appid, day) DO UPDATE SET
+        minutes_min = LEAST(playtime_daily.minutes_min, EXCLUDED.minutes_min),
+        minutes_max = GREATEST(playtime_daily.minutes_max, EXCLUDED.minutes_max),
+        updated_at = now()
+    `);
+  }
+
+  // Le récap' ne dépasse pas 30 jours : 120 jours d'historique suffisent.
+  await db.execute(sql`DELETE FROM playtime_daily WHERE day < CURRENT_DATE - 120`);
 }

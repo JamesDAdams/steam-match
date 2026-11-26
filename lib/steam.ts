@@ -128,6 +128,14 @@ export interface OwnedGameRaw {
   img_icon_url?: string;
   playtime_forever: number;
   playtime_2weeks?: number;
+  /**
+   * Horodatage Unix du dernier lancement.
+   *
+   * C'est le SEUL indicateur rétroactif de Steam : `playtime_2weeks` couvre
+   * 14 jours et le cumul ne dit pas quand on a joué. Absent (ou 0) pour un jeu
+   * jamais lancé.
+   */
+  rtime_last_played?: number;
 }
 
 /**

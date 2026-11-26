@@ -2,6 +2,7 @@ import {
   pgTable,
   text,
   integer,
+  date,
   timestamp,
   jsonb,
   boolean,
@@ -146,6 +147,14 @@ export const ownedGames = pgTable(
      * exactement ses jeux quand on le délie.
      */
     sourceSteamid: text('source_steamid'),
+    /**
+     * Dernier lancement connu du jeu (rtime_last_played de GetOwnedGames).
+     *
+     * Sert au récap' « jeux lancés ces N derniers jours ». Steam ne donne pas
+     * d'historique par jour : ce champ, lui, est rétroactif dès la première
+     * synchronisation — contrairement aux snapshots de playtime_daily.
+     */
+    lastPlayedAt: timestamp('last_played_at', { withTimezone: true }),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
@@ -407,6 +416,16 @@ export const appSettings = pgTable('app_settings', {
   /** Salon Discord cible ; vide = recherche du salon nommé « games ». */
   releaseChannelId: text('release_channel_id'),
   lastReleaseNotifyAt: timestamp('last_release_notify_at', { withTimezone: true }),
+
+  /** Récap' du groupe : l'image publiée sur le site (activée par défaut). */
+  recapEnabled: boolean('recap_enabled').notNull().default(true),
+  /** Fenêtre d'analyse, en jours (1 à 30). */
+  recapDays: integer('recap_days').notNull().default(7),
+  /** Fréquence de régénération, en heures (1 à 168). */
+  recapRefreshHours: integer('recap_refresh_hours').notNull().default(24),
+  /** Heure de régénération quand la fréquence est quotidienne (0-23, Paris). */
+  recapHour: integer('recap_hour').notNull().default(6),
+  lastRecapAt: timestamp('last_recap_at', { withTimezone: true }),
 });
 
 /**
@@ -434,6 +453,56 @@ export const enrichQueue = pgTable(
     byPriority: index('enrich_queue_prio_idx').on(t.priority, t.createdAt),
   }),
 );
+
+/**
+ * Historique du temps de jeu, une ligne par compte Steam, jeu et jour.
+ *
+ * POURQUOI CETTE TABLE : Steam ne fournit que `playtime_forever` (cumul) et
+ * `playtime_2weeks` (14 derniers jours, pas 7). Pour savoir ce qui a été joué
+ * sur une fenêtre de N jours — et pas seulement depuis toujours — il faut
+ * relever le cumul régulièrement et calculer la différence. C'est le seul
+ * moyen honnête d'afficher « les plus joués des 7 derniers jours ».
+ *
+ * `minutes_min` = première valeur vue dans la journée, `minutes_max` = dernière.
+ * La différence entre les deux indique qu'un jeu a tourné ce jour-là.
+ */
+export const playtimeDaily = pgTable(
+  'playtime_daily',
+  {
+    /** Compte Steam réellement synchronisé (principal ou secondaire). */
+    steamid: text('steamid').notNull(),
+    appid: integer('appid').notNull(),
+    /** Jour (fuseau de Paris), exposé en YYYY-MM-DD par drizzle. */
+    day: date('day').notNull(),
+    minutesMin: integer('minutes_min').notNull().default(0),
+    minutesMax: integer('minutes_max').notNull().default(0),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.steamid, t.appid, t.day] }),
+    byDay: index('playtime_daily_day_idx').on(t.day),
+  }),
+);
+
+/**
+ * Image du récap' du groupe, prête à être affichée (SVG).
+ *
+ * Elle est régénérée par une tâche planifiée et servie telle quelle : la
+ * construire à chaque visite coûterait une agrégation SQL et le téléchargement
+ * des jaquettes Steam pour chaque visiteur.
+ */
+export const recapImages = pgTable('recap_images', {
+  /** Une seule ligne : 'default'. */
+  id: text('id').primaryKey(),
+  svg: text('svg').notNull(),
+  /** Fenêtre utilisée pour cette image (jours). */
+  windowDays: integer('window_days').notNull().default(7),
+  /** 'measured' (snapshots) ou 'estimated' (dérivé de playtime_2weeks). */
+  mode: text('mode').notNull().default('measured'),
+  /** Données chiffrées ayant servi à l'image (réutilisées par la page). */
+  stats: jsonb('stats').$type<unknown>().notNull().default({}),
+  generatedAt: timestamp('generated_at', { withTimezone: true }).notNull().defaultNow(),
+});
 
 export type DiscordUser = typeof discordUsers.$inferSelect;
 export type SteamLink = typeof steamLinks.$inferSelect;

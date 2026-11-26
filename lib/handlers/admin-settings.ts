@@ -2,12 +2,15 @@ import { requireAdmin } from '../access.ts';
 import {
   getSettings,
   updateSettings,
+  RECAP_MAX_DAYS,
+  RECAP_MIN_DAYS,
   STEAM_SYNC_MAX_HOURS,
   STEAM_SYNC_MIN_HOURS,
 } from '../settings.ts';
 import { countTrackedAccounts, runSteamSync } from '../steam-sync-worker.ts';
 import { runReleaseNotifications, todayInParis } from '../release-notifier.ts';
 import { listTextChannels } from '../discord-bot.ts';
+import { generateRecapImage, getStoredRecap } from '../recap.ts';
 
 /**
  * /api/admin/settings — réglages de la synchronisation Steam.
@@ -27,16 +30,31 @@ export default async function handler(req: any, res: any) {
 
   try {
     if (method === 'GET') {
-      const [settings, counts, channels] = await Promise.all([
+      const [settings, counts, channels, recap] = await Promise.all([
         getSettings(),
         countTrackedAccounts(),
         listTextChannels().catch(() => []),
+        getStoredRecap(),
       ]);
       return res.status(200).json({
         ok: true,
         settings,
         accounts: counts,
-        bounds: { min: STEAM_SYNC_MIN_HOURS, max: STEAM_SYNC_MAX_HOURS },
+        bounds: {
+          min: STEAM_SYNC_MIN_HOURS,
+          max: STEAM_SYNC_MAX_HOURS,
+          recapMinDays: RECAP_MIN_DAYS,
+          recapMaxDays: RECAP_MAX_DAYS,
+        },
+        recap: recap
+          ? {
+              generatedAt: recap.generatedAt,
+              windowDays: recap.windowDays,
+              mode: recap.mode,
+              top: recap.stats?.top.slice(0, 3).map((g) => g.name) ?? [],
+              launched: recap.stats?.launched.length ?? 0,
+            }
+          : null,
         today: todayInParis(),
         // Sélecteur de salon dans l'admin : plus simple qu'un identifiant à
         // recopier, et évite les erreurs de frappe.
@@ -50,6 +68,20 @@ export default async function handler(req: any, res: any) {
       if (body.action === 'run-releases') {
         const report = await runReleaseNotifications({ force: true });
         return res.status(200).json({ ok: true, report });
+      }
+
+      if (body.action === 'run-recap') {
+        const { stats } = await generateRecapImage();
+        return res.status(200).json({
+          ok: true,
+          report: {
+            days: stats.days,
+            mode: stats.mode,
+            top: stats.top.slice(0, 5).map((g) => ({ name: g.name, minutes: g.minutes })),
+            launched: stats.launched.length,
+            players: stats.totals.players,
+          },
+        });
       }
 
       if (body.action === 'run') {
@@ -71,6 +103,10 @@ export default async function handler(req: any, res: any) {
         releaseNotifyEnabled?: boolean;
         releaseNotifyHour?: number;
         releaseChannelId?: string | null;
+        recapEnabled?: boolean;
+        recapDays?: number;
+        recapRefreshHours?: number;
+        recapHour?: number;
       } = {};
 
       if (typeof body.recommendationsEnabled === 'boolean') {
@@ -92,6 +128,33 @@ export default async function handler(req: any, res: any) {
           return res.status(400).json({ error: 'Identifiant de salon Discord invalide.' });
         }
         patch.releaseChannelId = raw || null;
+      }
+
+      if (typeof body.recapEnabled === 'boolean') {
+        patch.recapEnabled = body.recapEnabled;
+      }
+      if (body.recapDays !== undefined && body.recapDays !== null) {
+        const d = Number(body.recapDays);
+        if (!Number.isInteger(d) || d < RECAP_MIN_DAYS || d > RECAP_MAX_DAYS) {
+          return res.status(400).json({
+            error: `La fenêtre doit être comprise entre ${RECAP_MIN_DAYS} et ${RECAP_MAX_DAYS} jours.`,
+          });
+        }
+        patch.recapDays = d;
+      }
+      if (body.recapRefreshHours !== undefined && body.recapRefreshHours !== null) {
+        const h = Number(body.recapRefreshHours);
+        if (!Number.isFinite(h) || h < 1 || h > STEAM_SYNC_MAX_HOURS) {
+          return res.status(400).json({ error: 'Fréquence de régénération invalide.' });
+        }
+        patch.recapRefreshHours = Math.round(h);
+      }
+      if (body.recapHour !== undefined && body.recapHour !== null) {
+        const hour = Number(body.recapHour);
+        if (!Number.isInteger(hour) || hour < 0 || hour > 23) {
+          return res.status(400).json({ error: 'Heure de régénération invalide (0 à 23).' });
+        }
+        patch.recapHour = hour;
       }
 
       if (typeof body.enabled === 'boolean') {

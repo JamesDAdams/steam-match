@@ -27,6 +27,9 @@ const FILES = [
   'lib/handlers/releases.ts',
   'lib/handlers/notifications.ts',
   'netlify/functions/release-cron.ts',
+  'lib/handlers/recap.ts',
+  'lib/handlers/recap-image.ts',
+  'netlify/functions/recap-cron.ts',
   'netlify/functions/steam-sync-cron.ts',
 ];
 

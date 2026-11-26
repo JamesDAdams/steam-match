@@ -19,7 +19,7 @@ import {
 import { isAdminId } from '../lib/discord.ts';
 import { resolveAccess } from '../lib/access.ts';
 import { inviteUrl, isBotConfigured } from '../lib/discord-bot.ts';
-import { recommendationsEnabled } from '../lib/features.ts';
+import { recapEnabled, recommendationsEnabled } from '../lib/features.ts';
 
 /**
  * GET  /api/me  → état complet de la session
@@ -301,6 +301,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Drapeaux d'affichage pilotés depuis l'admin (pages en chantier).
       features: {
         recommendations: await recommendationsEnabled(),
+        recap: await recapEnabled(),
       },
       discord: {
         id: du.discordId,

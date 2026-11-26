@@ -30,6 +30,7 @@ const FILES = [
   '/src/views/MembersView.vue',
   '/src/views/ReleasesView.vue',
   '/src/views/MemberView.vue',
+  '/src/views/RecapView.vue',
 ];
 
 const vite = await createServer({

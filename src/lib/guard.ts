@@ -16,7 +16,7 @@ interface MeStateLike {
   authenticated: boolean;
   allowed?: boolean;
   isAdmin?: boolean;
-  features?: { recommendations?: boolean };
+  features?: { recommendations?: boolean; recap?: boolean };
 }
 
 export async function refreshAuth(): Promise<MeStateLike> {

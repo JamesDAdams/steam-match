@@ -37,6 +37,8 @@ const links = computed(() => [
         { to: '/commun', label: 'Jeux en commun' },
         { to: '/membres', label: 'Membres' },
         { to: '/sorties', label: 'Sorties' },
+        // Récap' du groupe : masqué si l'admin le désactive.
+        ...(me.value.features?.recap ? [{ to: '/recap', label: 'Récap’' }] : []),
         // Page masquée tant que l'admin ne l'active pas (voir réglages).
         ...(me.value.features?.recommendations
           ? [{ to: '/recommandations', label: 'Recommandations' }]

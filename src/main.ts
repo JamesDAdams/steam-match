@@ -13,6 +13,7 @@ import TwitchView from './views/TwitchView.vue';
 import MembersView from './views/MembersView.vue';
 import MemberView from './views/MemberView.vue';
 import ReleasesView from './views/ReleasesView.vue';
+import RecapView from './views/RecapView.vue';
 
 import { refreshAuth } from './lib/guard.ts';
 
@@ -41,6 +42,13 @@ const routes = [
     name: 'releases',
     component: ReleasesView,
     meta: { requiresAccess: true },
+  },
+  {
+    path: '/recap',
+    name: 'recap',
+    component: RecapView,
+    // Masquée tant que l'admin ne la publie pas (réglage « Récap’ »).
+    meta: { requiresAccess: true, requiresFeature: 'recap' },
   },
   {
     path: '/membres',

@@ -4,6 +4,7 @@ import { sql } from 'drizzle-orm';
 import { getSettings, updateSettings } from './settings.ts';
 import { parseReleaseDate } from './releases.ts';
 import { findGuildChannelByName, isBotConfigured, sendChannelMessage } from './discord-bot.ts';
+import { todayInParis } from './dates.ts';
 
 /**
  * Rappels Discord : « ce jeu de ta wishlist sort aujourd'hui ».
@@ -33,16 +34,8 @@ export interface ReleaseNotificationReport {
 }
 
 /** Jour courant au format YYYY-MM-DD (heure de Paris pour être cohérent). */
-export function todayInParis(now = new Date()): string {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Europe/Paris',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(now);
-  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
-  return `${get('year')}-${get('month')}-${get('day')}`;
-}
+// Le calcul est partagé avec le récap' et l'admin : il vit dans lib/dates.ts.
+export { todayInParis };
 
 interface TodaysGame {
   appid: number;
