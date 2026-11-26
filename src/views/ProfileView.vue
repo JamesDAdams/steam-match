@@ -357,6 +357,145 @@ async function removeAccount(a: AccountRow) {
 }
 
 
+/* ── Comptes GOG / Epic ──────────────────────────────────────────────── */
+
+/**
+ * GOG et Epic n'ont pas de clé d'API : on passe par l'OAuth de leurs clients
+ * officiels. Le membre se connecte sur le site de la plateforme, puis colle le
+ * code reçu — le serveur échange ce code contre des jetons (chiffrés en base).
+ *
+ * GOG ne donne que la ludothèque ; Epic donne aussi le temps de jeu total.
+ */
+interface ExternalAccount {
+  id: string;
+  platform: 'gog' | 'epic';
+  displayName: string | null;
+  avatarUrl: string | null;
+  profileUrl: string | null;
+  gamesCount: number;
+  minutes: number;
+  lastSyncedAt: string | null;
+  lastError: string | null;
+}
+
+interface ExternalGame {
+  externalId: string;
+  name: string;
+  imageUrl: string | null;
+  minutes: number;
+}
+
+const extAccounts = ref<ExternalAccount[]>([]);
+const extLogin = ref<{ gog: string; epic: string }>({ gog: '', epic: '' });
+const extMax = ref(5);
+const extCode = ref({ gog: '', epic: '' });
+const extBusy = ref<string | null>(null);
+const extError = ref<string | null>(null);
+const extMessage = ref<string | null>(null);
+const extGames = ref<Record<string, ExternalGame[]>>({});
+const extOpen = ref<string | null>(null);
+
+const PLATFORMS = ['gog', 'epic'] as const;
+const PLATFORM_LABEL: Record<'gog' | 'epic', string> = { gog: 'GOG', epic: 'Epic' };
+
+function platformCount(platform: 'gog' | 'epic'): number {
+  return extAccounts.value.filter((a) => a.platform === platform).length;
+}
+
+async function loadExternal() {
+  try {
+    const r = await apiGet<{
+      accounts: ExternalAccount[];
+      login: { gog: string; epic: string };
+      maxPerPlatform: number;
+    }>('/api/external-accounts');
+    extAccounts.value = r.accounts ?? [];
+    extLogin.value = r.login ?? { gog: '', epic: '' };
+    extMax.value = r.maxPerPlatform ?? 5;
+  } catch {
+    /* section secondaire : le reste du profil reste utilisable */
+  }
+}
+
+async function linkExternal(platform: 'gog' | 'epic') {
+  const code = extCode.value[platform].trim();
+  if (!code || extBusy.value) return;
+
+  extError.value = null;
+  extMessage.value = null;
+  extBusy.value = `link:${platform}`;
+  try {
+    const r = await apiPost<{ account: { displayName: string | null; gamesCount: number } }>(
+      '/api/external-accounts',
+      { platform, code },
+    );
+    extCode.value[platform] = '';
+    extMessage.value =
+      `${PLATFORM_LABEL[platform]} « ${r.account.displayName ?? 'compte'} » relié — ` +
+      `${r.account.gamesCount} jeu(x) importé(s).`;
+    await loadExternal();
+  } catch (e: any) {
+    extError.value = e.message ?? 'Connexion impossible.';
+    await loadExternal();
+  } finally {
+    extBusy.value = null;
+  }
+}
+
+async function resyncExternal(a: ExternalAccount) {
+  extError.value = null;
+  extMessage.value = null;
+  extBusy.value = a.id;
+  try {
+    const r = await apiPost<{ account: { gamesCount: number; lastError: string | null } }>(
+      '/api/external-accounts',
+      { action: 'resync', id: a.id },
+    );
+    extMessage.value = r.account.lastError
+      ? `${a.displayName ?? 'Compte'} : ${r.account.lastError}`
+      : `${a.displayName ?? 'Compte'} : ${r.account.gamesCount} jeu(x).`;
+    extGames.value = { ...extGames.value, [a.id]: [] };
+    await loadExternal();
+  } catch (e: any) {
+    extError.value = e.message ?? 'Synchronisation impossible.';
+  } finally {
+    extBusy.value = null;
+  }
+}
+
+async function removeExternal(a: ExternalAccount) {
+  extError.value = null;
+  extMessage.value = null;
+  extBusy.value = a.id;
+  try {
+    await apiDelete('/api/external-accounts', { id: a.id });
+    extAccounts.value = extAccounts.value.filter((x) => x.id !== a.id);
+    extMessage.value = `${PLATFORM_LABEL[a.platform]} « ${a.displayName ?? 'compte'} » retiré.`;
+  } catch (e: any) {
+    extError.value = e.message ?? 'Retrait impossible.';
+  } finally {
+    extBusy.value = null;
+  }
+}
+
+async function toggleExternalGames(a: ExternalAccount) {
+  if (extOpen.value === a.id) {
+    extOpen.value = null;
+    return;
+  }
+  extOpen.value = a.id;
+  if (extGames.value[a.id]?.length) return;
+
+  try {
+    const r = await apiGet<{ games: ExternalGame[] }>('/api/external-accounts', {
+      account: a.id,
+    });
+    extGames.value = { ...extGames.value, [a.id]: r.games ?? [] };
+  } catch (e: any) {
+    extError.value = e.message ?? 'Liste indisponible.';
+  }
+}
+
 const loading = ref(true);
 const error = ref<string | null>(null);
 const syncing = ref(false);
@@ -596,7 +735,13 @@ function startPump() {
 }
 
 onMounted(async () => {
-  await Promise.all([load(), loadAccounts(), loadTwitch(), loadNotifications()]);
+  await Promise.all([
+    load(),
+    loadAccounts(),
+    loadExternal(),
+    loadTwitch(),
+    loadNotifications(),
+  ]);
   if (unidentifiedCount.value > 0 || enrichProgress.value.pending > 0) {
     startPolling();
     if (unidentifiedCount.value > 0) startPump();
@@ -1019,6 +1164,198 @@ onUnmounted(() => {
 
         <p v-if="accountError" class="mt-3 text-xs text-danger">{{ accountError }}</p>
         <p v-else-if="accountMessage" class="mt-3 text-xs text-ok">{{ accountMessage }}</p>
+      </section>
+
+      <!-- Comptes GOG / Epic -->
+      <section v-if="tab === 'accounts'" class="card mb-6">
+        <h2 class="font-semibold text-fg-strong">Mes comptes GOG et Epic</h2>
+        <p class="mt-1 max-w-2xl text-sm text-fg-muted">
+          Steam ne voit que Steam. Si tu possèdes aussi des jeux sur
+          <strong class="text-fg">GOG</strong> ou <strong class="text-fg">Epic</strong>,
+          relie ces comptes pour les faire apparaître ici. Epic transmet le temps de jeu,
+          GOG seulement la liste.
+        </p>
+
+        <div
+          v-for="platform in PLATFORMS"
+          :key="platform"
+          class="mt-5 rounded-lg border border-line bg-app-elevated p-4"
+        >
+          <div class="flex flex-wrap items-center gap-2">
+            <h3 class="text-sm font-semibold text-fg-strong">
+              {{ PLATFORM_LABEL[platform] }}
+            </h3>
+            <span class="badge bg-app-surface2 text-fg-muted">
+              {{ platformCount(platform) }}/{{ extMax }}
+            </span>
+            <span
+              v-if="platform === 'gog'"
+              class="text-[11px] text-fg-faint"
+            >
+              liste des jeux uniquement
+            </span>
+            <span v-else class="text-[11px] text-fg-faint">
+              liste + temps de jeu
+            </span>
+          </div>
+
+          <ol class="mt-2 list-decimal space-y-1 pl-5 text-xs text-fg-muted">
+            <li>
+              <a
+                :href="extLogin[platform]"
+                target="_blank"
+                rel="noopener"
+                class="text-brand hover:underline"
+              >
+                Se connecter à {{ PLATFORM_LABEL[platform] }} ↗
+              </a>
+              (dans un nouvel onglet).
+            </li>
+            <li>
+              Une fois connecté, la page affiche un
+              <strong class="text-fg">code</strong> (ou une URL de retour).
+            </li>
+            <li>Copie-le et colle-le ci-dessous.</li>
+          </ol>
+
+          <div class="mt-2 flex flex-wrap gap-2">
+            <input
+              v-model="extCode[platform]"
+              type="text"
+              class="input min-w-[240px] flex-1"
+              :placeholder="
+                platform === 'gog'
+                  ? 'URL de retour embed.gog.com/on_login_success?code=…'
+                  : 'Code Epic (ou JSON de redirection)'
+              "
+              @keydown.enter.prevent="linkExternal(platform)"
+            />
+            <button
+              class="btn-primary text-sm"
+              :disabled="
+                !!extBusy || !extCode[platform].trim() || platformCount(platform) >= extMax
+              "
+              @click="linkExternal(platform)"
+            >
+              {{ extBusy === `link:${platform}` ? 'Connexion…' : 'Relier' }}
+            </button>
+          </div>
+
+          <!-- Comptes reliés -->
+          <ul v-if="extAccounts.some((a) => a.platform === platform)" class="mt-4 space-y-2">
+            <li
+              v-for="a in extAccounts.filter((x) => x.platform === platform)"
+              :key="a.id"
+              class="rounded-lg border border-line bg-app-surface p-3"
+            >
+              <div class="flex flex-wrap items-center gap-3">
+                <img
+                  v-if="a.avatarUrl"
+                  :src="a.avatarUrl"
+                  alt=""
+                  class="h-10 w-10 shrink-0 rounded object-cover"
+                  loading="lazy"
+                />
+                <div
+                  v-else
+                  class="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-app-surface2 text-sm font-semibold text-fg-muted"
+                >
+                  {{ (a.displayName ?? '?').charAt(0).toUpperCase() }}
+                </div>
+
+                <div class="min-w-0 flex-1">
+                  <p class="truncate text-sm font-medium text-fg-strong">
+                    {{ a.displayName ?? 'Compte ' + PLATFORM_LABEL[a.platform] }}
+                  </p>
+                  <p class="text-[11px] text-fg-faint">
+                    {{ a.gamesCount }} jeu{{ a.gamesCount > 1 ? 'x' : '' }}
+                    <template v-if="a.minutes > 0">
+                      · {{ formatPlaytime(a.minutes) }}
+                    </template>
+                    <template v-if="a.lastSyncedAt">
+                      · synchronisé le {{ new Date(a.lastSyncedAt).toLocaleString('fr-FR') }}
+                    </template>
+                  </p>
+                  <p v-if="a.lastError" class="mt-1 text-[11px] text-danger">
+                    {{ a.lastError }}
+                  </p>
+                </div>
+
+                <div class="flex items-center gap-1">
+                  <button
+                    class="rounded px-2 py-1 text-xs text-fg-muted transition hover:bg-app-surface2 hover:text-fg-strong"
+                    @click="toggleExternalGames(a)"
+                  >
+                    {{ extOpen === a.id ? 'Masquer' : 'Voir les jeux' }}
+                  </button>
+                  <button
+                    class="rounded px-2 py-1 text-xs text-fg-muted transition hover:bg-app-surface2 hover:text-fg-strong disabled:opacity-50"
+                    :disabled="extBusy === a.id"
+                    @click="resyncExternal(a)"
+                  >
+                    {{ extBusy === a.id ? '…' : 'Resynchroniser' }}
+                  </button>
+                  <button
+                    class="rounded px-2 py-1 text-xs text-danger transition hover:bg-danger-soft disabled:opacity-50"
+                    :disabled="extBusy === a.id"
+                    @click="removeExternal(a)"
+                  >
+                    Retirer
+                  </button>
+                </div>
+              </div>
+
+              <!-- Jeux du compte -->
+              <div v-if="extOpen === a.id" class="mt-3 border-t border-line pt-3">
+                <div
+                  v-if="!(extGames[a.id] ?? []).length"
+                  class="text-xs text-fg-faint"
+                >
+                  Aucun jeu enregistré pour ce compte.
+                </div>
+                <div v-else class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  <div
+                    v-for="g in extGames[a.id]"
+                    :key="g.externalId"
+                    class="flex items-center gap-2 rounded border border-line bg-app-elevated px-2 py-1.5"
+                  >
+                    <img
+                      v-if="g.imageUrl"
+                      :src="g.imageUrl"
+                      :alt="g.name"
+                      class="h-[28px] w-[60px] shrink-0 rounded object-cover"
+                      loading="lazy"
+                    />
+                    <span class="min-w-0 flex-1 truncate text-xs text-fg">{{ g.name }}</span>
+                    <span v-if="g.minutes > 0" class="shrink-0 text-[10px] text-fg-faint">
+                      {{ formatPlaytime(g.minutes) }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </li>
+          </ul>
+
+          <p
+            v-else
+            class="mt-3 text-[11px] text-fg-faint"
+          >
+            Aucun compte {{ PLATFORM_LABEL[platform] }} relié.
+          </p>
+
+          <p class="mt-3 text-[11px] leading-relaxed text-fg-faint">
+            <template v-if="platform === 'gog'">
+              GOG ne publie pas le temps de jeu : seuls les jeux sont récupérés.
+            </template>
+            <template v-else>
+              Le code Epic est à usage unique et expire vite : relie le compte juste après
+              l’avoir copié.
+            </template>
+          </p>
+        </div>
+
+        <p v-if="extError" class="mt-3 text-xs text-danger">{{ extError }}</p>
+        <p v-else-if="extMessage" class="mt-3 text-xs text-ok">{{ extMessage }}</p>
       </section>
 
       <!-- Chaîne Twitch -->

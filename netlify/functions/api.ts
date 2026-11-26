@@ -40,6 +40,7 @@ import releasesHandler from '../../lib/handlers/releases.ts';
 import notificationsHandler from '../../lib/handlers/notifications.ts';
 import recapHandler from '../../lib/handlers/recap.ts';
 import recapImageHandler from '../../lib/handlers/recap-image.ts';
+import externalAccountsHandler from '../../lib/handlers/external-accounts.ts';
 
 interface Route {
   /** Méthodes acceptées. Vide = toutes. */
@@ -72,6 +73,10 @@ const ROUTES: Record<string, Route> = {
   '/notifications': { methods: ['GET', 'POST'], module: notificationsHandler },
   '/recap': { methods: ['GET'], module: recapHandler },
   '/recap/image': { methods: ['GET'], module: recapImageHandler },
+  '/external-accounts': {
+    methods: ['GET', 'POST', 'DELETE'],
+    module: externalAccountsHandler,
+  },
   '/events': { methods: ['GET', 'POST'], module: eventsHandler },
   '/events/create': { methods: ['POST'], module: eventsCreateHandler },
   '/events/delete': { methods: ['POST'], module: eventsDeleteHandler },

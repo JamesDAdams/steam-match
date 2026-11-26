@@ -76,6 +76,10 @@ const ROUTES = [
   // Récap' du groupe (image publiée)
   ['GET', '/api/recap', '/lib/handlers/recap.ts'],
   ['GET', '/api/recap/image', '/lib/handlers/recap-image.ts'],
+  // Comptes GOG / Epic
+  ['GET', '/api/external-accounts', '/lib/handlers/external-accounts.ts'],
+  ['POST', '/api/external-accounts', '/lib/handlers/external-accounts.ts'],
+  ['DELETE', '/api/external-accounts', '/lib/handlers/external-accounts.ts'],
   // Réglages admin
   ['GET', '/api/admin/settings', '/lib/handlers/admin-settings.ts'],
   ['POST', '/api/admin/settings', '/lib/handlers/admin-settings.ts'],

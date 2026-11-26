@@ -515,6 +515,70 @@ export const recapImages = pgTable('recap_images', {
   generatedAt: timestamp('generated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+/**
+ * Comptes GOG / Epic reliés par un membre.
+ *
+ * DIFFÉRENCE AVEC STEAM : Steam s'authentifie avec une clé d'API en lecture
+ * seule, sans compte utilisateur. GOG et Epic, eux, n'ont pas d'API publique :
+ * on passe par l'OAuth de leurs clients officiels (Galaxy, launcher Epic), ce
+ * qui produit un couple access/refresh token — donc des secrets de compte,
+ * stockés CHIFFRÉS (lib/crypto.ts) et jamais renvoyés au navigateur.
+ *
+ * `accountId` est l'identifiant chez la plateforme (userId GOG, account_id
+ * Epic). Un membre peut en relier plusieurs par plateforme (comptes
+ * secondaires, comptes de proches).
+ */
+export const externalAccounts = pgTable(
+  'external_accounts',
+  {
+    /** `${discordId}:${platform}:${accountId}` — clé stable. */
+    id: text('id').primaryKey(),
+    discordId: text('discord_id').notNull(),
+    /** 'gog' ou 'epic'. */
+    platform: text('platform').notNull(),
+    accountId: text('account_id').notNull(),
+    displayName: text('display_name'),
+    avatarUrl: text('avatar_url'),
+    profileUrl: text('profile_url'),
+    /** Jetons chiffrés (AES-256-GCM) : la base ne contient pas de clair. */
+    accessTokenEnc: text('access_token_enc'),
+    refreshTokenEnc: text('refresh_token_enc'),
+    tokenExpiresAt: timestamp('token_expires_at', { withTimezone: true }),
+    gamesCount: integer('games_count').notNull().default(0),
+    lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }),
+    lastError: text('last_error'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    byMember: index('external_accounts_member_idx').on(t.discordId),
+  }),
+);
+
+/**
+ * Jeux d'un compte GOG / Epic.
+ *
+ * On ne les met PAS dans `owned_games` : la clé de cette table est
+ * (steamid, appid) et un produit GOG/Epic n'a pas d'appid Steam. Les garder
+ * séparés évite de polluer les totaux Steam — le rapprochement
+ * inter-plateformes, lui, se fera par titre en lecture.
+ */
+export const externalGames = pgTable(
+  'external_games',
+  {
+    accountRowId: text('account_row_id').notNull(),
+    /** Identifiant chez la plateforme : id produit GOG, appName Epic. */
+    externalId: text('external_id').notNull(),
+    name: text('name').notNull(),
+    imageUrl: text('image_url'),
+    /** Temps de jeu total en minutes (0 quand la plateforme ne le donne pas). */
+    minutes: integer('minutes').notNull().default(0),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.accountRowId, t.externalId] }),
+  }),
+);
+
 export type DiscordUser = typeof discordUsers.$inferSelect;
 export type SteamLink = typeof steamLinks.$inferSelect;
 export type User = typeof users.$inferSelect;

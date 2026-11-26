@@ -171,6 +171,35 @@ const statements = [
    )`,
   `CREATE INDEX IF NOT EXISTS playtime_daily_day_idx ON playtime_daily (day)`,
 
+  // ── Comptes GOG / Epic ─────────────────────────────────────────────
+  `CREATE TABLE IF NOT EXISTS external_accounts (
+     id text PRIMARY KEY NOT NULL,
+     discord_id text NOT NULL,
+     platform text NOT NULL,
+     account_id text NOT NULL,
+     display_name text,
+     avatar_url text,
+     profile_url text,
+     access_token_enc text,
+     refresh_token_enc text,
+     token_expires_at timestamp with time zone,
+     games_count integer NOT NULL DEFAULT 0,
+     last_synced_at timestamp with time zone,
+     last_error text,
+     created_at timestamp with time zone NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS external_accounts_member_idx ON external_accounts (discord_id)`,
+
+  `CREATE TABLE IF NOT EXISTS external_games (
+     account_row_id text NOT NULL,
+     external_id text NOT NULL,
+     name text NOT NULL,
+     image_url text,
+     minutes integer NOT NULL DEFAULT 0,
+     updated_at timestamp with time zone NOT NULL DEFAULT now(),
+     PRIMARY KEY (account_row_id, external_id)
+   )`,
+
   `CREATE TABLE IF NOT EXISTS recap_images (
      id          text PRIMARY KEY NOT NULL,
      svg         text NOT NULL,
