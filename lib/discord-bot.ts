@@ -251,18 +251,38 @@ export async function findGuildChannelByName(
   return found ? { id: found.id, name: found.name } : null;
 }
 
+/**
+ * Enveloppe commune aux envois de message.
+ *
+ * `embeds` permet d'afficher une image SANS exposer son URL dans le texte :
+ * c'est ce qu'attend le récap' (un lien brut wsrv.nl dans le message, c'est
+ * laid). L'embed affiche l'image, le lien reste cliquable sur le titre.
+ */
+export interface MessageOptions {
+  embeds?: Record<string, unknown>[];
+}
+
+function messageBody(content: string, opts: MessageOptions = {}) {
+  return {
+    content,
+    // Pas de ping massif : on mentionne des personnes précises uniquement.
+    allowed_mentions: {
+      parse: [],
+      users: [...content.matchAll(/<(?:@!?|@)(\d{17,20})>/g)].map((m) => m[1]),
+    },
+    ...(opts.embeds && opts.embeds.length > 0 ? { embeds: opts.embeds } : {}),
+  };
+}
+
 /** Poste un message dans un salon et renvoie son identifiant. */
 export async function sendChannelMessage(
   channelId: string,
   content: string,
+  opts: MessageOptions = {},
 ): Promise<string> {
   const res = await discordFetch(`/channels/${channelId}/messages`, {
     method: 'POST',
-    body: JSON.stringify({
-      content,
-      // Pas de ping massif : on mentionne des personnes précises uniquement.
-      allowed_mentions: { parse: [], users: [...content.matchAll(/<(?:@!?|@)(\d{17,20})>/g)].map((m) => m[1]) },
-    }),
+    body: JSON.stringify(messageBody(content, opts)),
   });
 
   if (!res.ok) {
@@ -285,16 +305,11 @@ export async function editChannelMessage(
   channelId: string,
   messageId: string,
   content: string,
+  opts: MessageOptions = {},
 ): Promise<boolean> {
   const res = await discordFetch(`/channels/${channelId}/messages/${messageId}`, {
     method: 'PATCH',
-    body: JSON.stringify({
-      content,
-      allowed_mentions: {
-        parse: [],
-        users: [...content.matchAll(/<(?:@!?|@)(\d{17,20})>/g)].map((m) => m[1]),
-      },
-    }),
+    body: JSON.stringify(messageBody(content, opts)),
   });
   return res.ok;
 }

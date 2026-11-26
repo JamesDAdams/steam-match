@@ -846,31 +846,50 @@ export async function publishRecapToDiscord(
     return { published: false, reason: 'no-site-url' };
   }
 
-  const lines = [
-    `**Récap’ du Bastion — ${stats.days} derniers jours**`,
-    [
-      windowLabel(stats),
-      `${formatMinutes(stats.totals.minutes)} de jeu`,
-      plural(stats.totals.games, 'jeu lancé', 'jeux lancés'),
-      plural(stats.totals.players, 'joueur', 'joueurs'),
-      stats.mode === 'estimated' ? 'estimation' : null,
-    ]
-      .filter(Boolean)
-      .join(' · '),
-    recapPublicImageUrl(generatedAt),
+  const summary = [
+    windowLabel(stats),
+    `${formatMinutes(stats.totals.minutes)} de jeu`,
+    plural(stats.totals.games, 'jeu lancé', 'jeux lancés'),
+    plural(stats.totals.players, 'joueur', 'joueurs'),
+    stats.mode === 'estimated' ? 'estimation' : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
+  const updated = new Intl.DateTimeFormat('fr-FR', {
+    timeZone: 'Europe/Paris',
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(generatedAt);
+
+  /**
+   * EMBED PLUTÔT QUE TEXTE + URL : Discord affiche le lien brut sous le
+   * message quand on colle une URL, ce qui donne un pave illisible (wsrv.nl
+   * encodé). L'embed affiche l'image directement, sans exposer le lien.
+   */
+  const embeds = [
+    {
+      title: `Récap’ du Bastion — ${stats.days} derniers jours`,
+      url: `${SITE_URL}/recap`,
+      description: summary,
+      color: 0xd4af37,
+      image: { url: recapPublicImageUrl(generatedAt) },
+      footer: { text: `Données Steam · mis à jour le ${updated}` },
+    },
   ];
-  const content = lines.join('\n');
 
   try {
     // Le message doit vivre dans le salon actuellement configuré.
     const previousChannel = settings.recapChannelId;
     if (settings.recapMessageId) {
-      const ok = await editChannelMessage(previousChannel, settings.recapMessageId, content);
+      const ok = await editChannelMessage(previousChannel, settings.recapMessageId, '', {
+        embeds,
+      });
       if (ok) return { published: true, messageId: settings.recapMessageId };
       // Message supprimé ou salon changé : on en renvoie un.
     }
 
-    const messageId = await sendChannelMessage(previousChannel, content);
+    const messageId = await sendChannelMessage(previousChannel, '', { embeds });
     await updateSettings({ recapMessageId: messageId || null });
     return { published: true, messageId };
   } catch (err: any) {
