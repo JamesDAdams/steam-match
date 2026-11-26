@@ -758,13 +758,14 @@ export async function runRecapIfDue(
 
 /* ─────────────────── Publication Discord ─────────────────── */
 
-// La clé est composée à l'exécution : le scanner de secrets de Netlify refuse
-// un fichier qui contient le nom littéral de cette variable d'environnement.
-const siteUrlEnv = process.env.URL || process.env['BASE' + '_URL'];
-const SITE_URL = (siteUrlEnv || 'https://le-bastion-des-gamers.netlify.app').replace(
-  /\/+$/,
-  '',
-);
+/**
+ * URL publique du site, fournie par Netlify à chaque déploiement.
+ *
+ * Aucune valeur en dur : le scanner de secrets de Netlify refuse un fichier
+ * qui contient une URL absolue. Sans URL connue, la publication Discord est
+ * simplement désactivée (l'image reste disponible sur le site).
+ */
+const SITE_URL = (process.env.URL || process.env.DEPLOY_PRIME_URL || '').replace(/\/+$/, '');
 
 /**
  * Signature de l'URL de l'image.
@@ -836,6 +837,9 @@ export async function publishRecapToDiscord(
 
   if (!settings.recapChannelId) {
     return { published: false, reason: 'no-channel' };
+  }
+  if (!SITE_URL) {
+    return { published: false, reason: 'no-site-url' };
   }
 
   const lines = [
