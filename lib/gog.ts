@@ -47,7 +47,15 @@ export function parseGogCode(input: string): string | null {
   const value = input.trim();
   if (!value) return null;
 
-  const fromUrl = /[?&]code=([A-Za-z0-9_-]+)/.exec(value);
+  // JSON collé (certains outils renvoient {"code":"…"}).
+  const json = /"(?:code|authorizationCode)"\s*:\s*"([^"]+)"/i.exec(value);
+  if (json) return json[1];
+
+  // URL de retour : le code peut suivre ?, & ou #.
+  // La page `on_login_success` reste BLANCHE dans un navigateur normal (elle
+  // tente d'ouvrir le client Galaxy) : le code n'existe que dans la barre
+  // d'adresse. C'est le cas d'usage principal de ce parseur.
+  const fromUrl = /[?&#]code=([A-Za-z0-9_-]{8,})/i.exec(value);
   if (fromUrl) return fromUrl[1];
 
   if (/^[A-Za-z0-9_-]{10,}$/.test(value)) return value;

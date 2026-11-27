@@ -1211,11 +1211,20 @@ onUnmounted(() => {
               </a>
               (dans un nouvel onglet).
             </li>
-            <li>
-              Une fois connecté, la page affiche un
-              <strong class="text-fg">code</strong> (ou une URL de retour).
+            <li v-if="platform === 'gog'">
+              Après la connexion, la page de retour
+              <strong class="text-fg">reste blanche : c’est normal</strong> (elle tente
+              d’ouvrir le client Galaxy). Le code est dans
+              <strong class="text-fg">l’adresse</strong>, dans la barre du navigateur.
             </li>
-            <li>Copie-le et colle-le ci-dessous.</li>
+            <li v-else>
+              La page affiche un <strong class="text-fg">JSON</strong> avec
+              <code class="text-fg-muted">authorizationCode</code>.
+            </li>
+            <li>
+              Copie <strong class="text-fg">toute l’adresse</strong> (GOG) ou tout le texte
+              (Epic) et colle-le ci-dessous.
+            </li>
           </ol>
 
           <div class="mt-2 flex flex-wrap gap-2">
@@ -1225,8 +1234,8 @@ onUnmounted(() => {
               class="input min-w-[240px] flex-1"
               :placeholder="
                 platform === 'gog'
-                  ? 'URL de retour embed.gog.com/on_login_success?code=…'
-                  : 'Code Epic (ou JSON de redirection)'
+                  ? 'Adresse de la barre : embed.gog.com/on_login_success?code=…'
+                  : 'JSON affiché par Epic, ou authorizationCode'
               "
               @keydown.enter.prevent="linkExternal(platform)"
             />

@@ -82,10 +82,16 @@ export default async function handler(req: any, res: any) {
 
       const code = platform === 'gog' ? parseGogCode(rawCode) : parseEpicCode(rawCode);
       if (!code) {
+        // Cas fréquent côté GOG : on colle l'adresse d'arrivée mais la
+        // connexion n'a pas abouti, donc elle ne porte aucun `code`.
+        const missingCode =
+          platform === 'gog' && /on_login_success/i.test(rawCode) && !/[?&#]code=/i.test(rawCode);
+
         return res.status(400).json({
-          error:
-            platform === 'gog'
-              ? 'Code GOG illisible : colle l’URL de retour complète ou le code seul.'
+          error: missingCode
+            ? 'Cette adresse ne contient pas de code : la connexion GOG n’a pas abouti. Recommence depuis « Se connecter à GOG » et copie l’adresse APRÈS la page blanche.'
+            : platform === 'gog'
+              ? 'Code GOG illisible : la page de retour reste blanche, copie l’ADRESSE complète de la barre d’adresse (elle contient `code=…`).'
               : 'Code Epic illisible : colle l’URL de retour ou le champ authorizationCode.',
         });
       }
