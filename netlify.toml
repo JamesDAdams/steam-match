@@ -8,6 +8,12 @@
 [build]
   command = "npm run build"
   publish = "dist"
+  # Le scanner de secrets de Netlify bloque le build dès qu'un fichier
+  # contient « BASE_URL ». Dans la doc c'est un simple nom de variable
+  # (une URL publique, pas un secret) : on l'exclut du scan, sans toucher
+  # aux vraies clés.
+  [build.environment]
+    SECRETS_SCAN_OMIT_KEYS = "BASE_URL"
 
 [functions]
   directory = "netlify/functions"
