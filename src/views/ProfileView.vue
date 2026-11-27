@@ -1034,7 +1034,7 @@ onUnmounted(() => {
       </div>
 
       <!-- Statistiques -->
-      <section v-if="stats" class="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <section v-if="stats" class="mb-6 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <div class="card">
           <p class="text-xs uppercase tracking-wide text-fg-faint">Jeux possédés</p>
           <p class="mt-1 text-2xl font-bold text-fg-strong">{{ libraryStats.total }}</p>
@@ -1097,31 +1097,20 @@ onUnmounted(() => {
               <p class="mt-1 font-display text-2xl font-bold text-fg-strong">
                 {{ libraryGames.length }}
               </p>
-              <p class="mt-0.5 text-xs text-fg-muted">
-                {{ formatPlaytime(libraryStats.minutes) }} jouées ·
-                {{ libraryStats.played }} lancés
-              </p>
               <p
                 v-if="platformTotals.gog || platformTotals.epic"
-                class="mt-1 text-[11px] text-fg-faint"
+                class="mt-1 text-[10px] leading-snug text-fg-faint"
               >
-                Steam {{ platformTotals.steam }} ·
-                <template v-if="platformTotals.gog">GOG {{ platformTotals.gog }}</template>
-                <template v-if="platformTotals.gog && platformTotals.epic"> · </template>
-                <template v-if="platformTotals.epic">Epic {{ platformTotals.epic }}</template>
+                <span class="block">
+                  Steam {{ platformTotals.steam }} · GOG {{ platformTotals.gog }}
+                </span>
+                <span class="block">Epic {{ platformTotals.epic }}</span>
               </p>
               <!-- Détail des jeux qui ne viennent pas du compte principal :
                    sans ça, le total semblait inclure des jeux « fantômes ». -->
-              <p v-if="(stats?.sharedGames ?? 0) > 0" class="mt-1 text-[11px] text-fg-faint">
-                <template v-if="(stats?.familyGames ?? 0) > 0">
-                  {{ stats?.familyGames }} via la famille
-                </template>
-                <template v-if="(stats?.familyGames ?? 0) > 0 && (stats?.secondaryGames ?? 0) > 0">
-                  ·
-                </template>
-                <template v-if="(stats?.secondaryGames ?? 0) > 0">
-                  {{ stats?.secondaryGames }} via un compte secondaire
-                </template>
+              <p v-if="(stats?.sharedGames ?? 0) > 0" class="mt-1 text-[10px] leading-snug text-fg-faint">
+                {{ stats?.familyGames ?? 0 }} famille ·
+                {{ stats?.secondaryGames ?? 0 }} secondaire
               </p>
             </div>
             <span class="text-2xl">🎮</span>

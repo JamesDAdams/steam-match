@@ -202,8 +202,8 @@ onMounted(refresh);
       <section v-if="canUseSite">
         <div class="mb-6">
           <p class="text-xs uppercase tracking-[0.18em] text-fg-faint">Espace membre</p>
-          <h1 class="mt-1 font-display text-3xl font-bold text-fg-strong">
-            Salut {{ displayName }} 👋
+          <h1 class="mt-1 font-display text-2xl font-bold text-fg-strong sm:text-3xl">
+            Salut <span class="whitespace-nowrap">{{ displayName }} 👋</span>
           </h1>
         </div>
 
@@ -329,9 +329,9 @@ onMounted(refresh);
           </span>
 
           <h1 class="mx-auto max-w-3xl font-display text-4xl font-bold leading-tight text-fg-strong sm:text-6xl">
-            Unis par le jeu,
+            Entre adultes,
             <span class="bg-gradient-to-r from-brand to-gold bg-clip-text text-transparent">
-              pas par le hasard
+              entre gamers PC
             </span>
           </h1>
 

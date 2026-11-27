@@ -49,3 +49,6 @@ drizzle/
 
 # Profils Chrome temporaires (captures headless)
 .tmp-chrome*/
+
+# Artefacts du CLI playwright (revue visuelle)
+.playwright-cli/

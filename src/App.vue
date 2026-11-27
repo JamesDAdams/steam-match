@@ -45,24 +45,18 @@ const showReleases = computed(() =>
  */
 const links = computed(() => [
   { to: '/evenements', label: 'Événements' },
-  // L'annuaire des membres est public : les fiches, elles, sont réglées par
-  // chaque personne.
+  // Pages réservées aux membres connectés.
+  ...(canUseSite.value ? [{ to: '/commun', label: 'Jeux en commun' }] : []),
+  // Annuaire public : les fiches, elles, sont réglées par chaque personne.
   { to: '/membres', label: 'Membres' },
-  ...(canUseSite.value
-    ? [
-        { to: '/commun', label: 'Jeux en commun' },
-        { to: '/sorties', label: 'Sorties' },
-        // Récap' du groupe : masqué si l'admin le désactive.
-        ...(showRecap.value ? [{ to: '/recap', label: 'Récap’' }] : []),
-        // Page masquée tant que l'admin ne l'active pas (voir réglages).
-        ...(me.value.features?.recommendations
-          ? [{ to: '/recommandations', label: 'Recommandations' }]
-          : []),
-      ]
-    : showRecap.value
-      ? [{ to: '/recap', label: 'Récap’' }]
-      : []),
+  // Sorties : publique si l'admin l'a ouverte (visiteurs : sans pseudos).
   ...(showReleases.value ? [{ to: '/sorties', label: 'Sorties' }] : []),
+  // Récap' du groupe : masqué si l'admin le désactive.
+  ...(showRecap.value ? [{ to: '/recap', label: 'Récap’' }] : []),
+  // Page en chantier, masquée tant que l'admin ne l'active pas.
+  ...(canUseSite.value && me.value.features?.recommendations
+    ? [{ to: '/recommandations', label: 'Recommandations' }]
+    : []),
   { to: '/twitch', label: 'Twitch' },
 ]);
 </script>
@@ -86,7 +80,11 @@ const links = computed(() => [
             height="32"
             class="h-8 w-8 shrink-0 rounded-lg object-cover ring-1 ring-line-strong"
           />
-          <span class="font-display text-[15px] font-bold leading-none tracking-tight text-fg-strong">
+          <!-- Sous 640 px, seul le logo reste : la barre débordait et le
+               bouton menu sortait de l'écran. -->
+          <span
+            class="hidden font-display text-[15px] font-bold leading-none tracking-tight text-fg-strong sm:inline"
+          >
             Le Bastion <span class="text-gold">des Gamers</span>
           </span>
         </router-link>
