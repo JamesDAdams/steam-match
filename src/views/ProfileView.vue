@@ -755,6 +755,9 @@ const libraryStats = computed(() => {
   };
 });
 
+/** Nombre de comptes gérés : Steam (secondaires/famille) + GOG + Epic. */
+const totalAccounts = computed(() => accounts.value.length + extAccounts.value.length);
+
 const platformTotals = computed(() => {
   const counts: Record<string, number> = { steam: 0, gog: 0, epic: 0 };
   for (const game of extLibrary.value) {
@@ -1182,6 +1185,27 @@ onUnmounted(() => {
           </div>
         </button>
 
+
+        <!-- Gestion des comptes : cette tuile EST le sélecteur de l'onglet.
+             Sans elle, l'onglet « Comptes » devenait inatteignable. -->
+        <button
+          class="card-flat text-left transition hover:border-brand/50"
+          :class="tab === 'accounts' ? '!border-brand ring-1 ring-brand/30' : ''"
+          @click="tab = 'accounts'"
+        >
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <p class="text-xs uppercase tracking-wide text-fg-faint">Mes comptes</p>
+              <p class="mt-1 font-display text-2xl font-bold text-fg-strong">
+                {{ totalAccounts }}
+              </p>
+              <p class="mt-0.5 text-xs text-fg-muted">
+                Steam{{ extAccounts.length ? ' · GOG · Epic' : ' (secondaire/famille)' }}
+              </p>
+            </div>
+            <span class="text-2xl">🔗</span>
+          </div>
+        </button>
 
         <button
           class="card-flat text-left transition hover:border-brand/50"
