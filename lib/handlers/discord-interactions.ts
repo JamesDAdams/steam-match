@@ -35,8 +35,13 @@ import { syncDescription } from '../event-interest.ts';
  *     utilisé pour les erreurs
  */
 
-/** Discord exige une réponse en moins de 3 s : on garde une marge. */
-const SLOW_TASK_BUDGET_MS = 1_200;
+/**
+ * Discord exige une réponse en moins de 3 s. La copie de la description dans
+ * l'événement Discord est la seule tâche non indispensable : mieux vaut
+ * répondre à temps et laisser la tâche planifiée la rattraper (drapeau
+ * `description_dirty`) que faire expirer l'interaction.
+ */
+const SLOW_TASK_BUDGET_MS = 500;
 
 interface InteractionUser {
   id: string;
@@ -172,8 +177,9 @@ async function handleComponent(body: any, res: any) {
 
     /**
      * La description de l'événement Discord (celle de l'onglet Événements) est
-     * recopiée juste après. Budget limité : mieux vaut une description
-     * rafraîchie au prochain clic qu'une interaction en échec.
+     * recopiée juste après, avec un budget serré. Si elle ne rentre pas dans le
+     * délai, l'événement reste marqué « description à refaire » et la tâche
+     * planifiée (toutes les 5 min) s'en occupe.
      */
     await withBudget(syncDescription(parsed.eventId));
 

@@ -129,6 +129,7 @@ export default async function handler(req: any, res: any) {
   }
 
   let channelId: string | null = null;
+  let channelName: string | null = null;
   let location: string | null = null;
 
   if (entityType === 2) {
@@ -141,12 +142,16 @@ export default async function handler(req: any, res: any) {
     // Discord trancher plutôt que d'inventer un refus.
     try {
       const channels = await listEventChannels();
-      if (channels.length > 0 && !channels.some((c) => c.id === channelId)) {
+      const chosen = channels.find((c) => c.id === channelId);
+      if (channels.length > 0 && !chosen) {
         return res.status(400).json({
           error:
             'Ce salon vocal n’existe plus sur le serveur. Recharge la page et choisis-en un autre.',
         });
       }
+      // On retient le nom tout de suite : l'annonce pourra le citer sans
+      // redemander à Discord (un clic doit répondre en moins de 3 s).
+      channelName = chosen?.name ?? null;
     } catch {
       /* liste indisponible : Discord validera */
     }
@@ -183,6 +188,7 @@ export default async function handler(req: any, res: any) {
     try {
       await storeEvent(created, new Date(), {
         gameAppid: Number.isInteger(gameAppid) && gameAppid > 0 ? gameAppid : null,
+        channelName,
       });
       synced = true;
     } catch (err: any) {

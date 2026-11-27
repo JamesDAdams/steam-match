@@ -31,7 +31,7 @@ import { refreshEventAnnouncement } from './event-announcement.ts';
 export async function storeEvent(
   e: DiscordScheduledEvent,
   now = new Date(),
-  extra: { gameAppid?: number | null } = {},
+  extra: { gameAppid?: number | null; channelName?: string | null } = {},
 ): Promise<void> {
   const start = new Date(e.scheduled_start_time);
   if (Number.isNaN(start.getTime())) return;
@@ -56,6 +56,7 @@ export async function storeEvent(
     // Le jeu associé n'est connu qu'à la création depuis le site : une
     // synchronisation Discord ne doit jamais l'effacer.
     ...(extra.gameAppid ? { gameAppid: extra.gameAppid } : {}),
+    ...(extra.channelName ? { channelName: extra.channelName } : {}),
   };
 
   await getDb()
@@ -76,6 +77,7 @@ export async function storeEvent(
         scheduledEndAt: values.scheduledEndAt,
         syncedAt: now,
         ...(extra.gameAppid ? { gameAppid: extra.gameAppid } : {}),
+        ...(extra.channelName ? { channelName: extra.channelName } : {}),
       },
     });
 }
@@ -175,6 +177,22 @@ export async function syncDiscordEvents(): Promise<{
       console.warn(`[events-sync] intéressés de ${e.id} :`, err?.message);
       break; // limite de débit probable : on s'arrête là pour cette fois
     }
+  }
+
+  /**
+   * REPRISE : une inscription traitée en urgence (clic sur un bouton) n'a pas
+   * toujours le temps de réécrire la description de l'événement Discord avant
+   * de répondre. Le drapeau `description_dirty` désigne ces événements : la
+   * tâche planifiée les remet à jour ici, quelques minutes plus tard.
+   */
+  const dirtyRaw = (await db.execute(sql`
+    SELECT id FROM discord_events WHERE description_dirty = true LIMIT 3
+  `)) as unknown as { rows?: { id: string }[] };
+
+  for (const row of dirtyRaw.rows ?? []) {
+    await syncDescription(String(row.id)).catch((err: any) =>
+      console.warn('[events-sync] reprise de description :', err?.message),
+    );
   }
 
   // Réconciliation : tout ce que Discord ne renvoie plus disparaît de la base.

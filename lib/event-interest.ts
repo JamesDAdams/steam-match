@@ -138,81 +138,83 @@ function clip(names: string[], maxLength: number): string {
 }
 
 /**
- * Ajoute ou retire quelqu'un d'une liste, de façon ATOMIQUE.
+ * Ajoute ou retire quelqu'un d'une liste, de façon ATOMIQUE et en UNE SEULE
+ * requête.
  *
- * C'est ce qui rend deux clics simultanés sûrs : la modification se fait en
- * une seule requête SQL (donc sous verrou de ligne), jamais par un
- * « lire → modifier → écrire » côté application.
+ * POURQUOI UNE SEULE : les inscriptions depuis un bouton Discord doivent
+ * répondre en moins de 3 secondes, sinon Discord affiche « l'application n'a
+ * pas répondu à temps ». Chaque aller-retour vers la base coûte ~100-250 ms :
+ * les quatre requêtes d'avant (ajout, exclusivité, relecture) suffisaient à
+ * faire expirer l'interaction. Ici tout est fait d'un coup, sous verrou de
+ * ligne : deux clics simultanés ne peuvent pas s'écraser.
+ *
+ * `site_interested_users` / `maybe_users` s'excluent : ajouter dans l'une
+ * retire de l'autre.
  */
-/** Au moins un clic simultané : chaque écriture est une requête unique, donc
- *  protégée par le verrou de ligne — jamais de « lire puis écrire ». */
+export async function applyInterest(
+  eventId: string,
+  kind: 'interested' | 'maybe',
+  user: { id: string; name: string; avatarUrl: string | null },
+  active: boolean,
+): Promise<{ lists: EventLists; row: Record<string, any> } | null> {
+  const db = getDb();
+  const column = sql.raw(kind === 'interested' ? 'site_interested_users' : 'maybe_users');
+  const other = sql.raw(kind === 'interested' ? 'maybe_users' : 'site_interested_users');
+  const entry = JSON.stringify([{ ...user, at: new Date().toISOString() }]);
+
+  /**
+   * `RETURNING *` renvoie la ligne ENTIÈRE (listes, nom, description, dates,
+   * jeu) : l'appelant construit le message d'annonce sans relire la base.
+   */
+  const result = (await db.execute(sql`
+    UPDATE discord_events
+    SET ${column} = CASE
+          WHEN ${active} THEN ${column} || ${entry}::jsonb
+          ELSE COALESCE((
+            SELECT jsonb_agg(u ORDER BY u->>'at')
+            FROM jsonb_array_elements(${column}) AS u
+            WHERE u->>'id' <> ${user.id}
+          ), '[]'::jsonb)
+        END,
+        ${other} = CASE
+          WHEN ${active} THEN COALESCE((
+            SELECT jsonb_agg(u ORDER BY u->>'at')
+            FROM jsonb_array_elements(${other}) AS u
+            WHERE u->>'id' <> ${user.id}
+          ), '[]'::jsonb)
+          ELSE ${other}
+        END,
+        description_dirty = true
+    WHERE id = ${eventId}
+      AND (${active} = false OR NOT EXISTS (
+        SELECT 1 FROM jsonb_array_elements(${column}) AS u WHERE u->>'id' = ${user.id}
+      ))
+    RETURNING *, (
+      SELECT row_to_json(g) FROM game_cache g WHERE g.appid = discord_events.game_appid
+    ) AS game
+  `)) as unknown as { rows?: Record<string, any>[] };
+
+  const row = result.rows?.[0];
+  if (!row) return null;
+
+  const toList = (value: unknown): InterestUser[] =>
+    Array.isArray(value) ? (value as InterestUser[]) : [];
+
+  return {
+    lists: { interested: toList(row.site_interested_users), maybe: toList(row.maybe_users) },
+    row,
+  };
+}
+
+/** Variante « listes seulement », utilisée par l'inscription depuis le site. */
 export async function setInterest(
   eventId: string,
   kind: 'interested' | 'maybe',
   user: { id: string; name: string; avatarUrl: string | null },
   active: boolean,
 ): Promise<EventLists | null> {
-  const db = getDb();
-  const column = sql.raw(kind === 'interested' ? 'site_interested_users' : 'maybe_users');
-  const entry = JSON.stringify([{ ...user, at: new Date().toISOString() }]);
-
-  if (active) {
-    // Ajout SEULEMENT si la personne n'est pas déjà dans la liste.
-    await db.execute(sql`
-      UPDATE discord_events
-      SET ${column} = ${column} || ${entry}::jsonb
-      WHERE id = ${eventId}
-        AND NOT EXISTS (
-          SELECT 1 FROM jsonb_array_elements(${column}) AS u WHERE u->>'id' = ${user.id}
-        )
-    `);
-  } else {
-    // Retrait, en conservant l'ordre chronologique.
-    await db.execute(sql`
-      UPDATE discord_events
-      SET ${column} = COALESCE((
-        SELECT jsonb_agg(u ORDER BY u->>'at')
-        FROM jsonb_array_elements(${column}) AS u
-        WHERE u->>'id' <> ${user.id}
-      ), '[]'::jsonb)
-      WHERE id = ${eventId}
-    `);
-  }
-
-  /**
-   * EXCLUSIVITÉ : on est intéressé OU peut-être, jamais les deux. Quand on
-   * répond à l'un, on retire la personne de l'autre liste dans la même
-   * foulée (deux personnes différentes ne se marchent pas dessus : chaque
-   * requête ne touche que cette personne).
-   */
-  if (active) {
-    const other = sql.raw(kind === 'interested' ? 'maybe_users' : 'site_interested_users');
-    await db.execute(sql`
-      UPDATE discord_events
-      SET ${other} = COALESCE((
-        SELECT jsonb_agg(u ORDER BY u->>'at')
-        FROM jsonb_array_elements(${other}) AS u
-        WHERE u->>'id' <> ${user.id}
-      ), '[]'::jsonb)
-      WHERE id = ${eventId}
-    `);
-  }
-
-  const [row] = await db
-    .select({
-      interested: discordEvents.siteInterestedUsers,
-      maybe: discordEvents.maybeUsers,
-    })
-    .from(discordEvents)
-    .where(eq(discordEvents.id, eventId))
-    .limit(1);
-
-  if (!row) return null;
-
-  const toList = (value: unknown): InterestUser[] =>
-    Array.isArray(value) ? (value as InterestUser[]) : [];
-
-  return { interested: toList(row.interested), maybe: toList(row.maybe) };
+  const applied = await applyInterest(eventId, kind, user, active);
+  return applied ? applied.lists : null;
 }
 
 /**
@@ -249,4 +251,11 @@ export async function syncDescription(eventId: string): Promise<void> {
   const description = composeDescription(stripSiteBlock(row.description), lists);
 
   await updateScheduledEvent(eventId, { description });
+
+  // Reprise faite : plus rien à rattraper pour la tâche planifiée.
+  await getDb()
+    .update(discordEvents)
+    .set({ descriptionDirty: false })
+    .where(eq(discordEvents.id, eventId))
+    .catch(() => undefined);
 }

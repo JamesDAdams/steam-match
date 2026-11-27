@@ -12,7 +12,7 @@ import {
   sendChannelMessage,
 } from './discord-bot.ts';
 import { formatPrice } from './prices.ts';
-import { mergeInterestLists, setInterest } from './event-interest.ts';
+import { applyInterest, mergeInterestLists } from './event-interest.ts';
 import type { InterestUser } from './event-interest.ts';
 
 /**
@@ -47,6 +47,7 @@ interface EventRow {
   entityType: number;
   location: string | null;
   channelId: string | null;
+  channelName: string | null;
   coverImage: string | null;
   gameAppid: number | null;
   scheduledStartAt: Date;
@@ -69,6 +70,7 @@ async function loadEvent(eventId: string): Promise<EventRow | null> {
       entityType: discordEvents.entityType,
       location: discordEvents.location,
       channelId: discordEvents.channelId,
+      channelName: discordEvents.channelName,
       coverImage: discordEvents.coverImage,
       gameAppid: discordEvents.gameAppid,
       scheduledStartAt: discordEvents.scheduledStartAt,
@@ -84,8 +86,20 @@ async function loadEvent(eventId: string): Promise<EventRow | null> {
   return (row as EventRow | undefined) ?? null;
 }
 
+export interface AnnouncementGame {
+  appid: number;
+  name: string;
+  steamPrice: number | null;
+  steamInitialPrice: number | null;
+  steamDiscount: number | null;
+  steamCurrency: string | null;
+  cheapestPrice: number | null;
+  cheapestStore: string | null;
+  cheapestCurrency: string | null;
+}
+
 /** Nom, prix Steam et prix en clé du jeu associé (null si aucun jeu). */
-async function loadGame(appid: number | null) {
+async function loadGame(appid: number | null): Promise<AnnouncementGame | null> {
   if (!appid) return null;
 
   const db = getDb();
@@ -222,9 +236,11 @@ export function parseButtonCustomId(
  */
 export async function buildAnnouncement(
   event: EventRow,
-  opts: { closed?: boolean } = {},
+  opts: { closed?: boolean; game?: AnnouncementGame | null } = {},
 ): Promise<AnnouncementPayload> {
-  const game = await loadGame(event.gameAppid);
+  // Le jeu peut être fourni par l'appelant : le clic sur un bouton n'a alors
+  // plus AUCUNE requête à faire pour construire le message.
+  const game = opts.game !== undefined ? opts.game : await loadGame(event.gameAppid);
 
   const interested = (Array.isArray(event.interestedUsers) ? event.interestedUsers : []) as InterestUser[];
   const site = (Array.isArray(event.siteInterestedUsers) ? event.siteInterestedUsers : []) as InterestUser[];
@@ -238,9 +254,22 @@ export async function buildAnnouncement(
       ? [event.channelId, event.location].find((v) => v && /^\d{17,20}$/.test(v)) ?? null
       : null;
 
-  const where = voiceChannelId
-    ? await getChannelName(voiceChannelId).catch(() => null)
-    : null;
+  /**
+   * Le nom du salon est mémorisé en base dès la création. Il n'est demandé à
+   * Discord que s'il manque (événement venu de Discord, ou créé avant cette
+   * colonne) — et on le retient alors pour les fois suivantes.
+   */
+  let where = event.channelName;
+  if (!where && voiceChannelId) {
+    where = await getChannelName(voiceChannelId).catch(() => null);
+    if (where) {
+      await getDb()
+        .update(discordEvents)
+        .set({ channelName: where })
+        .where(eq(discordEvents.id, event.id))
+        .catch(() => undefined);
+    }
+  }
 
   const place =
     event.entityType === 2
@@ -486,7 +515,8 @@ export async function toggleFromDiscord(args: {
   user: { id: string; name: string; avatarUrl: string | null };
 }): Promise<ToggleResult> {
   const db = getDb();
-  const [row] = await db
+
+  const [state] = await db
     .select({
       status: discordEvents.status,
       siteInterested: discordEvents.siteInterestedUsers,
@@ -496,25 +526,51 @@ export async function toggleFromDiscord(args: {
     .where(eq(discordEvents.id, args.eventId))
     .limit(1);
 
-  if (!row) return { ok: false, reason: 'not-found' };
-  if (row.status === 3 || row.status === 4) return { ok: false, reason: 'closed' };
+  if (!state) return { ok: false, reason: 'not-found' };
+  if (state.status === 3 || state.status === 4) return { ok: false, reason: 'closed' };
 
-  const current = (args.kind === 'interested' ? row.siteInterested : row.maybe) ?? [];
+  const current = (args.kind === 'interested' ? state.siteInterested : state.maybe) ?? [];
   const already = (Array.isArray(current) ? current : []).some(
     (u: any) => String(u?.id) === args.user.id,
   );
 
-  const lists = await setInterest(args.eventId, args.kind, args.user, !already);
-  if (!lists) return { ok: false, reason: 'not-found' };
+  /**
+   * UNE SEULE requête : bascule de l'inscription ET relecture de la ligne
+   * complète (listes, nom, description, jeu). C'est ce qui fait tenir la
+   * réponse sous la limite de 3 secondes imposée par Discord.
+   */
+  const applied = await applyInterest(args.eventId, args.kind, args.user, !already);
+  if (!applied) return { ok: false, reason: 'not-found' };
 
-  const event = await loadEvent(args.eventId);
-  if (!event) return { ok: false, reason: 'not-found' };
+  const event = rowToEvent(applied.row);
+  const game = (applied.row.game ?? null) as AnnouncementGame | null;
 
   return {
     ok: true,
-    payload: await buildAnnouncement(event),
+    payload: await buildAnnouncement(event, { game }),
     active: !already,
-    interested: lists.interested.length,
-    maybe: lists.maybe.length,
+    interested: applied.lists.interested.length,
+    maybe: applied.lists.maybe.length,
+  };
+}
+
+/** Ligne brute (`RETURNING *`) → objet attendu par `buildAnnouncement`. */
+function rowToEvent(row: Record<string, any>): EventRow {
+  return {
+    id: String(row.id),
+    name: String(row.name ?? 'Événement'),
+    description: row.description ?? null,
+    status: Number(row.status ?? 1),
+    entityType: Number(row.entity_type ?? 3),
+    location: row.location ?? null,
+    channelId: row.channel_id ?? null,
+    channelName: row.channel_name ?? null,
+    coverImage: row.cover_image ?? null,
+    gameAppid: row.game_appid ?? null,
+    scheduledStartAt: new Date(row.scheduled_start_at),
+    scheduledEndAt: row.scheduled_end_at ? new Date(row.scheduled_end_at) : null,
+    interestedUsers: row.interested_users ?? [],
+    siteInterestedUsers: row.site_interested_users ?? [],
+    maybeUsers: row.maybe_users ?? [],
   };
 }

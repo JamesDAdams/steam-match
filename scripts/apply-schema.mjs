@@ -236,6 +236,8 @@ const statements = [
   `ALTER TABLE discord_events ADD COLUMN IF NOT EXISTS announce_message_id text`,
   `ALTER TABLE discord_events ADD COLUMN IF NOT EXISTS announce_channel_id text`,
   `ALTER TABLE discord_events ADD COLUMN IF NOT EXISTS channel_id text`,
+  `ALTER TABLE discord_events ADD COLUMN IF NOT EXISTS channel_name text`,
+  `ALTER TABLE discord_events ADD COLUMN IF NOT EXISTS description_dirty boolean NOT NULL DEFAULT false`,
 
   // ── Prix des jeux (colonnes ajoutées après coup) ───────────────────
   `ALTER TABLE game_cache ADD COLUMN IF NOT EXISTS cheapest_price integer`,

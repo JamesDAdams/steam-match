@@ -271,6 +271,12 @@ export const discordEvents = pgTable(
      * événement vocal.
      */
     channelId: text('channel_id'),
+    /**
+     * Nom du salon, mémorisé dès la création. Un clic sur un bouton n'a ainsi
+     * AUCUN appel réseau à faire pour nommer le lieu : la réponse à Discord
+     * doit tenir en 3 secondes.
+     */
+    channelName: text('channel_name'),
     coverImage: text('cover_image'),
     /** Nombre de personnes intéressées côté Discord. */
     interestedCount: integer('interested_count').notNull().default(0),
@@ -313,6 +319,12 @@ export const discordEvents = pgTable(
     announceMessageId: text('announce_message_id'),
     /** Salon de ce message — mémorisé pour éditer au bon endroit après un changement de réglage. */
     announceChannelId: text('announce_channel_id'),
+    /**
+     * Les listes d'inscrits ont changé sans que la description de l'événement
+     * Discord ait pu être réécrite (clic traité en urgence). La tâche planifiée
+     * reprend le travail : la description ne reste jamais fausse.
+     */
+    descriptionDirty: boolean('description_dirty').notNull().default(false),
   },
   (t) => ({
     byStart: index('discord_events_start_idx').on(t.scheduledStartAt),
