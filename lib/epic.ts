@@ -90,11 +90,16 @@ async function requestToken(form: Record<string, string>): Promise<TokenResponse
 
   const data = (await res.json().catch(() => ({}))) as TokenResponse;
   if (!res.ok || !data.access_token) {
-    throw new Error(
+    // On garde le code d'erreur pour que l'appelant puisse traduire le cas
+    // « code expiré / déjà utilisé », de loin le plus fréquent.
+    const err = new Error(
       data.errorMessage ||
         data.errorCode ||
         `Epic a refusé l’authentification (HTTP ${res.status}).`,
-    );
+    ) as Error & { code?: string; status?: number };
+    err.code = data.errorCode;
+    err.status = res.status;
+    throw err;
   }
   return data;
 }

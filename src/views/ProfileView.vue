@@ -1403,8 +1403,8 @@ onUnmounted(() => {
               GOG ne publie pas le temps de jeu : seuls les jeux sont récupérés.
             </template>
             <template v-else>
-              Le code Epic est à usage unique et expire vite : relie le compte juste après
-              l’avoir copié.
+              Le code Epic est à usage unique et ne dure que quelques minutes : colle le JSON
+              juste après l’avoir copié, sans recharger la page entre-temps.
             </template>
           </p>
         </div>

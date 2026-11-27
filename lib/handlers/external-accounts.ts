@@ -132,7 +132,23 @@ export default async function handler(req: any, res: any) {
 
     return res.status(405).json({ error: `Méthode ${method} non supportée.` });
   } catch (err: any) {
-    console.error('[external-accounts]', err);
-    return res.status(400).json({ error: err?.message ?? 'Opération impossible.' });
+    // Journalisation SANS jeton : uniquement le code d'erreur de la plateforme.
+    console.error('[external-accounts]', err?.code ?? err?.message);
+
+    const message = String(err?.message ?? '');
+    const epicCodeExpired =
+      /authorization code/i.test(message) ||
+      /no longer valid/i.test(message) ||
+      /not found/i.test(message) ||
+      err?.code === 'errors.com.epicgames.account.oauth.authorization_code_not_found';
+
+    if (epicCodeExpired) {
+      return res.status(400).json({
+        error:
+          'Ce code Epic n’est plus valable (usage unique, quelques minutes). Relance « Se connecter à Epic », puis colle le JSON immédiatement — sans recharger la page entre-temps.',
+      });
+    }
+
+    return res.status(400).json({ error: message || 'Opération impossible.' });
   }
 }
