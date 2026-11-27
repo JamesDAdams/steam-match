@@ -620,9 +620,9 @@ onMounted(load);
         </router-link>
       </div>
       <p class="mt-1 max-w-2xl text-xs text-fg-faint">
-        Publie une image récapitulative : les jeux les plus joués sur la période, puis tous les jeux
-        lancés par les membres. Régénérée automatiquement à l'heure choisie — l'image est aussi
-        téléchargeable en PNG pour la poster sur Discord.
+        Publie une image récapitulative dans Discord : les jeux les plus joués sur la période, puis
+        tous les jeux lancés par les membres. Régénérée automatiquement à l'heure choisie. La page
+        du site, elle, présente les chiffres en texte (sans l'image).
       </p>
 
       <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
