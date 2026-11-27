@@ -15,7 +15,8 @@ import {
 import { useAuth } from '../lib/auth';
 
 interface ProfileGame {
-  appid: number;
+  /** null pour un jeu qui n'existe que sur GOG / Epic. */
+  appid: number | null;
   /** 'owned' | 'secondary' | 'family' — origine du jeu. */
   source?: string;
   sourceSteamid?: string | null;
@@ -38,6 +39,10 @@ interface ProfileGame {
   reviewNegative: number | null;
   releaseDate: string | null;
   playModes: string[];
+  /** Plateformes sur lesquelles le jeu est possédé : steam, gog, epic. */
+  platforms?: string[];
+  /** Détail des copies externes (compte + temps de jeu déclaré). */
+  external?: { platform: string; accountName: string | null; minutes: number }[];
 }
 
 interface WishItem {
@@ -59,6 +64,10 @@ interface WishItem {
   reviewNegative: number | null;
   releaseDate: string | null;
   playModes: string[];
+  /** Plateformes sur lesquelles le jeu est possédé : steam, gog, epic. */
+  platforms?: string[];
+  /** Détail des copies externes (compte + temps de jeu déclaré). */
+  external?: { platform: string; accountName: string | null; minutes: number }[];
 }
 
 interface Stats {
@@ -617,13 +626,151 @@ const unidentifiedCount = computed(() => {
   return inWish + inGames;
 });
 
+/**
+ * Clé de rapprochement entre plateformes.
+ *
+ * Steam, GOG et Epic n'ont aucun identifiant commun : le seul pont est le
+ * titre. On normalise donc (minuscules, accents, ponctuation) et on retire les
+ * suffixes d'édition, sinon « Cyberpunk 2077 » et « Cyberpunk 2077: Ultimate
+ * Edition » compteraient deux fois.
+ */
+const EDITION_WORDS = [
+  'definitive edition',
+  'game of the year edition',
+  'goty edition',
+  'ultimate edition',
+  'deluxe edition',
+  'complete edition',
+  'enhanced edition',
+  'remastered',
+  'director s cut',
+  'special edition',
+  'legendary edition',
+  'gold edition',
+  'classic edition',
+];
+
+function titleKey(name: string): string {
+  let key = name
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[™®©]/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  for (const suffix of EDITION_WORDS) {
+    key = key.replace(new RegExp(`\\b${suffix}\\b`, 'g'), ' ');
+  }
+  return key.replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * LA ludothèque : Steam + GOG + Epic, fusionnés.
+ *
+ * Un jeu présent sur plusieurs plateformes n'apparaît qu'une fois (appariement
+ * par titre) et porte les badges correspondants. Le temps de jeu Steam reste
+ * prioritaire ; s'il est nul, on prend celui d'Epic (seule plateforme qui en
+ * publie).
+ */
+const libraryGames = computed<ProfileGame[]>(() => {
+  const merged = new Map<string, ProfileGame>();
+
+  for (const game of games.value) {
+    merged.set(titleKey(game.name), {
+      ...game,
+      platforms: ['steam'],
+      external: [],
+    });
+  }
+
+  for (const ext of extLibrary.value) {
+    const key = titleKey(ext.name);
+    const existing = merged.get(key);
+
+    if (existing) {
+      if (!existing.platforms) existing.platforms = ['steam'];
+      if (!existing.platforms.includes(ext.platform)) existing.platforms.push(ext.platform);
+      existing.external = existing.external ?? [];
+      existing.external.push({
+        platform: ext.platform,
+        accountName: ext.displayName,
+        minutes: ext.minutes,
+      });
+      // Une jaquette manquante est complétée par celle de l'autre plateforme.
+      if (!existing.headerImage && ext.imageUrl) existing.headerImage = ext.imageUrl;
+      // Aucune heure côté Steam : on affiche celle d'Epic.
+      if (existing.playtime === 0 && ext.minutes > 0) existing.playtime = ext.minutes;
+      continue;
+    }
+
+    merged.set(key, {
+      appid: null,
+      source: ext.platform,
+      name: ext.name,
+      headerImage: ext.imageUrl,
+      genres: [],
+      tags: [],
+      enriched: false,
+      playtime: ext.minutes,
+      playtime2Weeks: 0,
+      cheapestPrice: null,
+      cheapestStore: null,
+      cheapestCurrency: null,
+      steamPrice: null,
+      steamInitialPrice: null,
+      steamDiscount: null,
+      steamCurrency: null,
+      reviewScore: null,
+      reviewPositive: null,
+      reviewNegative: null,
+      releaseDate: null,
+      playModes: [],
+      platforms: [ext.platform],
+      external: [
+        { platform: ext.platform, accountName: ext.displayName, minutes: ext.minutes },
+      ],
+    });
+  }
+
+  return [...merged.values()];
+});
+
+/**
+ * Chiffres de la ludothèque FUSIONNÉE (Steam + GOG + Epic).
+ *
+ * Les totaux de l'API ne concernent que Steam : affichés tels quels à côté
+ * d'une liste de 695 jeux, ils donnaient l'impression d'un bug.
+ */
+const libraryStats = computed(() => {
+  const total = libraryGames.value.length;
+  const minutes = libraryGames.value.reduce((sum, g) => sum + g.playtime, 0);
+  const played = libraryGames.value.filter((g) => g.playtime > 0).length;
+  return {
+    total,
+    minutes,
+    played,
+    average: played > 0 ? Math.round(minutes / played) : 0,
+  };
+});
+
+const platformTotals = computed(() => {
+  const counts: Record<string, number> = { steam: 0, gog: 0, epic: 0 };
+  for (const game of extLibrary.value) {
+    counts[game.platform] = (counts[game.platform] ?? 0) + 1;
+  }
+  counts.steam = games.value.length;
+  return counts;
+});
+
 const maxPlaytime = computed(() =>
-  games.value.reduce((m, g) => Math.max(m, g.playtime), 0),
+  libraryGames.value.reduce((m, g) => Math.max(m, g.playtime), 0),
 );
 
 const genres = computed(() => {
   const counts = new Map<string, number>();
-  for (const g of games.value) {
+  for (const g of libraryGames.value) {
     for (const genre of g.genres) counts.set(genre, (counts.get(genre) ?? 0) + 1);
   }
   return [...counts.entries()]
@@ -633,7 +780,7 @@ const genres = computed(() => {
 });
 
 const filtered = computed(() => {
-  let list = games.value;
+  let list = libraryGames.value;
 
   if (onlyPlayed.value) list = list.filter((g) => g.playtime > 0);
   if (selectedGenre.value) {
@@ -922,27 +1069,29 @@ onUnmounted(() => {
       <section v-if="stats" class="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div class="card">
           <p class="text-xs uppercase tracking-wide text-fg-faint">Jeux possédés</p>
-          <p class="mt-1 text-2xl font-bold text-fg-strong">{{ stats.totalGames }}</p>
-          <p class="text-xs text-fg-faint">{{ stats.neverPlayed }} jamais lancés</p>
+          <p class="mt-1 text-2xl font-bold text-fg-strong">{{ libraryStats.total }}</p>
+          <p class="text-xs text-fg-faint">
+            {{ libraryStats.total - libraryStats.played }} jamais lancés
+          </p>
         </div>
         <div class="card">
           <p class="text-xs uppercase tracking-wide text-fg-faint">Temps de jeu total</p>
           <p class="mt-1 text-2xl font-bold text-brand">
-            {{ formatPlaytime(stats.totalMinutes) }}
+            {{ formatPlaytime(libraryStats.minutes) }}
           </p>
-          <p class="text-xs text-fg-faint">{{ stats.playedGames }} jeux lancés</p>
+          <p class="text-xs text-fg-faint">{{ libraryStats.played }} jeux lancés</p>
         </div>
         <div class="card">
           <p class="text-xs uppercase tracking-wide text-fg-faint">Temps moyen / jeu</p>
           <p class="mt-1 text-2xl font-bold text-fg-strong">
-            {{ formatPlaytime(stats.averageMinutes) }}
+            {{ formatPlaytime(libraryStats.average) }}
           </p>
           <p class="text-xs text-fg-faint">sur les jeux joués</p>
         </div>
         <div class="card">
           <p class="text-xs uppercase tracking-wide text-fg-faint">Genres identifiés</p>
           <p class="mt-1 text-2xl font-bold text-fg-strong">{{ stats.enrichedGames }}</p>
-          <p class="text-xs text-fg-faint">jeux enrichis</p>
+          <p class="text-xs text-fg-faint">jeux Steam enrichis</p>
         </div>
       </section>
 
@@ -978,11 +1127,20 @@ onUnmounted(() => {
             <div>
               <p class="text-xs uppercase tracking-wide text-fg-faint">Ma ludothèque</p>
               <p class="mt-1 font-display text-2xl font-bold text-fg-strong">
-                {{ stats?.totalGames ?? 0 }}
+                {{ libraryGames.length }}
               </p>
               <p class="mt-0.5 text-xs text-fg-muted">
-                {{ formatPlaytime(stats?.totalMinutes ?? 0) }} jouées ·
-                {{ stats?.playedGames ?? 0 }} lancés
+                {{ formatPlaytime(libraryStats.minutes) }} jouées ·
+                {{ libraryStats.played }} lancés
+              </p>
+              <p
+                v-if="platformTotals.gog || platformTotals.epic"
+                class="mt-1 text-[11px] text-fg-faint"
+              >
+                Steam {{ platformTotals.steam }} ·
+                <template v-if="platformTotals.gog">GOG {{ platformTotals.gog }}</template>
+                <template v-if="platformTotals.gog && platformTotals.epic"> · </template>
+                <template v-if="platformTotals.epic">Epic {{ platformTotals.epic }}</template>
               </p>
               <!-- Détail des jeux qui ne viennent pas du compte principal :
                    sans ça, le total semblait inclure des jeux « fantômes ». -->
@@ -1679,60 +1837,6 @@ onUnmounted(() => {
         </div>
       </section>
 
-      <!-- Jeux GOG / Epic : ils font partie de la ludothèque, mais restent
-           séparés des totaux Steam (pas d'appid commun). -->
-      <template v-if="tab === 'games'">
-        <section
-          v-for="platform in PLATFORMS"
-          :key="platform"
-          v-show="extLibraryByPlatform[platform].length"
-          class="card mt-4"
-        >
-          <div class="flex flex-wrap items-center gap-2">
-            <h2 class="font-semibold text-fg-strong">
-              Ludothèque {{ PLATFORM_LABEL[platform] }}
-            </h2>
-            <span class="badge bg-app-surface2 text-fg-muted">
-              {{ extLibraryByPlatform[platform].length }}
-            </span>
-            <span class="text-[11px] text-fg-faint">
-              <template v-if="platform === 'gog'">GOG ne transmet pas le temps de jeu</template>
-              <template v-else>temps de jeu fourni par Epic</template>
-            </span>
-          </div>
-
-          <div class="mt-3 grid gap-2 sm:grid-cols-2">
-            <div
-              v-for="g in extLibraryByPlatform[platform]"
-              :key="g.accountId + g.externalId"
-              class="flex items-center gap-3 rounded-lg border border-line bg-app-elevated p-2"
-            >
-              <img
-                v-if="g.imageUrl"
-                :src="g.imageUrl"
-                :alt="g.name"
-                class="h-12 shrink-0 rounded object-cover"
-                :class="platform === 'gog' ? 'w-12' : 'w-20'"
-                loading="lazy"
-              />
-              <div
-                v-else
-                class="flex h-12 w-12 shrink-0 items-center justify-center rounded bg-app-surface2 text-lg"
-              >
-                🎮
-              </div>
-              <div class="min-w-0 flex-1">
-                <p class="truncate text-sm text-fg-strong">{{ g.name }}</p>
-                <p class="text-[11px] text-fg-faint">
-                  {{ g.displayName ?? PLATFORM_LABEL[platform] }}
-                  <template v-if="g.minutes > 0"> · {{ formatPlaytime(g.minutes) }}</template>
-                </p>
-              </div>
-            </div>
-          </div>
-        </section>
-      </template>
-
       <!-- Liste des jeux -->
       <div v-if="loading && tab === 'games'" class="grid gap-3 sm:grid-cols-2">
         <div v-for="i in 8" :key="i" class="h-20 animate-pulse rounded-lg bg-app-surface2"></div>
@@ -1743,17 +1847,18 @@ onUnmounted(() => {
       </div>
 
       <div v-else-if="tab === 'games'" class="space-y-2">
-        <a
+        <component
+          :is="g.appid ? 'a' : 'div'"
           v-for="g in filtered"
-          :key="g.appid"
-          :href="steamStoreUrl(g.appid)"
-          target="_blank"
-          rel="noopener"
+          :key="g.appid ?? g.name"
+          :href="g.appid ? steamStoreUrl(g.appid) : undefined"
+          :target="g.appid ? '_blank' : undefined"
+          :rel="g.appid ? 'noopener' : undefined"
           class="card flex items-center gap-4 p-2 transition hover:border-brand/40"
         >
           <div class="h-14 w-32 shrink-0 overflow-hidden rounded bg-app-surface2">
             <img
-              :src="g.headerImage || steamHeaderUrl(g.appid)"
+              :src="g.headerImage || (g.appid ? steamHeaderUrl(g.appid) : '')"
               :alt="g.name"
               loading="lazy"
               class="h-full w-full object-cover"
@@ -1781,13 +1886,29 @@ onUnmounted(() => {
               <span v-if="g.playtime2Weeks > 0" class="badge bg-ok-soft text-ok">
                 récent
               </span>
+              <span
+                v-if="g.platforms?.includes('gog')"
+                class="badge bg-app-surface2 text-fg-muted"
+                title="Également possédé sur GOG"
+              >
+                GOG
+              </span>
+              <span
+                v-if="g.platforms?.includes('epic')"
+                class="badge bg-app-surface2 text-fg-muted"
+                title="Également possédé sur Epic"
+              >
+                Epic
+              </span>
             </div>
 
             <div class="mt-1 flex flex-wrap gap-1">
               <span v-for="genre in g.genres.slice(0, 3)" :key="genre" class="badge bg-app-surface2 text-brand">
                 {{ genre }}
               </span>
-              <span v-if="!g.enriched" class="badge bg-app-surface2 text-fg-faint">genres ?</span>
+              <span v-if="g.appid && !g.enriched" class="badge bg-app-surface2 text-fg-faint">
+                genres ?
+              </span>
             </div>
 
             <div class="mt-1.5 h-1 overflow-hidden rounded bg-app-surface2">
@@ -1799,18 +1920,24 @@ onUnmounted(() => {
           </div>
 
           <div class="shrink-0 text-right">
-            <p class="text-sm font-semibold text-fg">{{ formatPlaytime(g.playtime) }}</p>
-            <p v-if="g.playtime === 0" class="text-[10px] text-fg-faint">jamais lancé</p>
+            <p class="text-sm font-semibold text-fg">
+              {{ g.playtime > 0 ? formatPlaytime(g.playtime) : '—' }}
+            </p>
+            <p v-if="g.playtime === 0" class="text-[10px] text-fg-faint">
+              {{ g.appid ? 'jamais lancé' : 'pas d’heures' }}
+            </p>
             <p v-else-if="g.playtime2Weeks > 0" class="text-[10px] text-ok/80">
               +{{ formatPlaytime(g.playtime2Weeks) }} ces 15 j
             </p>
           </div>
-        </a>
+        </component>
       </div>
 
       <p v-if="tab === 'games' && filtered.length" class="mt-6 text-center text-xs text-fg-faint">
         {{ filtered.length }} jeu{{ filtered.length > 1 ? 'x' : '' }} affiché{{ filtered.length > 1 ? 's' : '' }}
-        <template v-if="games.length !== filtered.length"> sur {{ games.length }}</template>
+        <template v-if="libraryGames.length !== filtered.length">
+          sur {{ libraryGames.length }}
+        </template>
       </p>
     </template>
   </div>
