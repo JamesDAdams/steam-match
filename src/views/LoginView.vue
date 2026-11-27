@@ -262,8 +262,11 @@ onMounted(refresh);
           </div>
         </div>
 
-        <!-- Accès rapides -->
-        <div class="mt-6 grid gap-4 sm:grid-cols-3">
+        <!-- Accès rapides (la tuile Recommandations suit le réglage admin) -->
+        <div
+          class="mt-6 grid gap-4"
+          :class="me.features?.recommendations ? 'sm:grid-cols-3' : 'sm:grid-cols-2'"
+        >
           <router-link to="/evenements" class="card-flat group transition hover:border-brand/50">
             <div class="mb-2 text-2xl">📅</div>
             <h3 class="font-display font-semibold text-fg-strong">Événements</h3>
@@ -274,7 +277,11 @@ onMounted(refresh);
             <h3 class="font-display font-semibold text-fg-strong">Jeux en commun</h3>
             <p class="mt-1 text-sm text-fg-muted">Ce que vous possédez, par style.</p>
           </router-link>
-          <router-link to="/recommandations" class="card-flat group transition hover:border-brand/50">
+          <router-link
+            v-if="me.features?.recommendations"
+            to="/recommandations"
+            class="card-flat group transition hover:border-brand/50"
+          >
             <div class="mb-2 text-2xl">✨</div>
             <h3 class="font-display font-semibold text-fg-strong">Recommandations</h3>
             <p class="mt-1 text-sm text-fg-muted">Le jeu qui plaira à tout le monde.</p>

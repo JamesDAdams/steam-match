@@ -1,4 +1,7 @@
-# Déploiement sur Vercel
+# Déploiement sur Vercel (guide historique)
+
+> **Déploiement actuel : Netlify**, sur le domaine `lbdg.eu`. Voir le
+> [README](README.md#déploiement). Ce guide est conservé pour mémoire.
 
 Ce guide décrit la mise en production. Le build a déjà été validé par un
 déploiement temporaire : le front, le fallback SPA et les 15 fonctions API

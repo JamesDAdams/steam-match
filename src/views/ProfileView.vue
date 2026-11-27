@@ -731,10 +731,6 @@ const platformTotals = computed(() => {
   return counts;
 });
 
-const maxPlaytime = computed(() =>
-  libraryGames.value.reduce((m, g) => Math.max(m, g.playtime), 0),
-);
-
 const genres = computed(() => {
   const counts = new Map<string, number>();
   for (const g of libraryGames.value) {
@@ -1971,13 +1967,6 @@ onUnmounted(() => {
               <span v-if="g.appid && !g.enriched" class="badge bg-app-surface2 text-fg-faint">
                 genres ?
               </span>
-            </div>
-
-            <div class="mt-1.5 h-1 overflow-hidden rounded bg-app-surface2">
-              <div
-                class="h-full rounded bg-brand/70"
-                :style="{ width: maxPlaytime ? (g.playtime / maxPlaytime) * 100 + '%' : '0%' }"
-              ></div>
             </div>
           </div>
 

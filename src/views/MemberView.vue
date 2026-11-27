@@ -124,11 +124,6 @@ const library = computed(() =>
   })),
 );
 
-/** Échelle des barres de temps de jeu. */
-const maxPlaytime = computed(() =>
-  library.value.reduce((m, g) => Math.max(m, g.playtime), 0),
-);
-
 const filtered = computed(() => {
   const q = search.value.trim().toLowerCase();
   const list = q
@@ -441,13 +436,6 @@ watch(discordId, load);
                 <span v-if="g.appid && !g.enriched" class="badge bg-app-surface2 text-fg-faint">
                   genres ?
                 </span>
-              </div>
-
-              <div v-if="showMinutes" class="mt-1.5 h-1 overflow-hidden rounded bg-app-surface2">
-                <div
-                  class="h-full rounded bg-brand/70"
-                  :style="{ width: maxPlaytime ? (g.playtime / maxPlaytime) * 100 + '%' : '0%' }"
-                ></div>
               </div>
             </div>
 

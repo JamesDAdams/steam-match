@@ -94,11 +94,15 @@ router.beforeEach(async (to) => {
     return { path: '/commun' };
   }
 
-  // Fonctionnalité masquée : l'admin garde l'aperçu, les autres sont redirigés.
+  /*
+   * Fonctionnalité désactivée dans l'admin : la page est fermée pour TOUT LE
+   * MONDE, admin compris. Sinon le bouton disparaissait mais l'adresse
+   * continuait de fonctionner — exactement ce qui prêtait à confusion.
+   */
   const feature = to.meta.requiresFeature as string | undefined;
   if (feature) {
     const enabled = (state.features as Record<string, boolean> | undefined)?.[feature];
-    if (!enabled && !state.isAdmin) {
+    if (!enabled) {
       return { path: '/commun' };
     }
   }

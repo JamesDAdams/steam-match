@@ -301,32 +301,50 @@ onUnmounted(stopAutoRefresh);
 
     <!-- Choix des membres pris en compte -->
     <div class="card mb-6">
-      <div class="flex flex-wrap items-center gap-2">
+      <div class="flex items-center justify-between gap-3">
         <span class="text-xs font-medium text-fg-muted">Membres pris en compte</span>
         <button
-          class="chip"
-          :class="{ 'chip-active': selectedMembers.length === 0 }"
-          @click="selectedMembers = []"
-        >
-          Tout le groupe
-        </button>
-        <button
-          v-for="m in availableMembers"
-          :key="m.steamid"
-          class="chip"
-          :class="{ 'chip-active': selectedMembers.includes(m.steamid) }"
-          @click="toggleMember(m.steamid)"
-        >
-          {{ m.name }}
-        </button>
-        <button
           v-if="selectedMembers.length"
-          class="ml-auto text-xs text-fg-muted hover:text-fg-strong"
+          class="text-xs text-fg-muted hover:text-fg-strong"
           @click="selectedMembers = []"
         >
           Réinitialiser
         </button>
       </div>
+
+      <!-- Liste (et non des pastilles) : on coche les membres dont on veut
+           l'intersection de ludothèques. -->
+      <ul class="mt-2 divide-y divide-line rounded-lg border border-line">
+        <li>
+          <label class="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-app-surface2">
+            <input
+              type="checkbox"
+              class="h-4 w-4 rounded border-line-strong bg-app-bg"
+              :checked="selectedMembers.length === 0"
+              @change="selectedMembers = []"
+            />
+            <span class="font-medium text-fg">Tout le groupe</span>
+          </label>
+        </li>
+        <li v-for="m in availableMembers" :key="m.steamid">
+          <label class="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-app-surface2">
+            <input
+              type="checkbox"
+              class="h-4 w-4 rounded border-line-strong bg-app-bg"
+              :checked="selectedMembers.includes(m.steamid)"
+              @change="toggleMember(m.steamid)"
+            />
+            <img
+              v-if="m.avatarUrl"
+              :src="m.avatarUrl"
+              :alt="m.name"
+              class="h-5 w-5 rounded-full object-cover"
+              loading="lazy"
+            />
+            <span class="text-fg">{{ m.name }}</span>
+          </label>
+        </li>
+      </ul>
       <p v-if="selectedMembers.length" class="mt-2 text-[11px] text-fg-faint">
         Seuls les jeux que ces {{ selectedMembers.length }} membre(s) possèdent
         tous les {{ selectedMembers.length }} sont affichés.
@@ -342,59 +360,90 @@ onUnmounted(stopAutoRefresh);
 
     <!-- Filtres -->
     <div class="card mb-6">
-      <div class="flex flex-wrap items-end gap-4">
+      <!-- Chaque contrôle a son libellé au-dessus : sans ça, la case à cocher
+           tombait plus haut que la liste déroulante. -->
+      <div class="flex flex-wrap items-start gap-4">
         <div>
           <label class="block text-xs font-medium text-fg-muted">Trier par</label>
-          <select v-model="sortBy" class="mt-1 rounded border border-line bg-app-bg px-3 py-1.5 text-sm text-fg">
+          <select
+            v-model="sortBy"
+            class="mt-1 h-9 rounded border border-line bg-app-bg px-3 text-sm text-fg"
+          >
             <option value="players">Nombre de possesseurs</option>
             <option value="playtime">Temps de jeu cumulé</option>
             <option value="name">Nom (A→Z)</option>
           </select>
         </div>
-        <label v-if="mode === 'owned'" class="flex items-center gap-2 text-sm text-fg">
-          <input v-model="onlyEnriched" type="checkbox" class="rounded border-line-strong bg-app-bg" />
-          Masquer les jeux non enrichis
-        </label>
-        <label v-if="mode === 'wishlist'" class="flex items-center gap-2 text-sm text-fg">
-          <input v-model="playableOnly" type="checkbox" class="rounded border-line-strong bg-app-bg" />
-          Jouable immédiatement (déjà possédé)
-        </label>
-        <button v-if="selectedGenres.length || selectedTags.length" class="btn-ghost text-xs" @click="resetFilters">
-          Réinitialiser les filtres
-        </button>
-      </div>
-
-      <!-- Genres -->
-      <div v-if="availableGenres.length" class="mt-4">
-        <p class="mb-2 text-xs font-medium text-fg-muted">Style / genre</p>
-        <div class="flex flex-wrap gap-2">
-          <button
-            v-for="g in availableGenres"
-            :key="g.name"
-            class="chip"
-            :class="{ 'chip-active': selectedGenres.includes(g.name) }"
-            @click="toggleGenre(g.name)"
-          >
-            {{ g.name }}
-            <span class="ml-1 text-[10px] opacity-60">{{ g.count }}</span>
+        <div v-if="mode === 'owned'">
+          <span class="block text-xs font-medium text-fg-muted">Filtre</span>
+          <label class="mt-1 flex h-9 items-center gap-2 text-sm text-fg">
+            <input
+              v-model="onlyEnriched"
+              type="checkbox"
+              class="h-4 w-4 rounded border-line-strong bg-app-bg"
+            />
+            Masquer les jeux non enrichis
+          </label>
+        </div>
+        <div v-if="mode === 'wishlist'">
+          <span class="block text-xs font-medium text-fg-muted">Filtre</span>
+          <label class="mt-1 flex h-9 items-center gap-2 text-sm text-fg">
+            <input
+              v-model="playableOnly"
+              type="checkbox"
+              class="h-4 w-4 rounded border-line-strong bg-app-bg"
+            />
+            Jouable immédiatement (déjà possédé)
+          </label>
+        </div>
+        <div v-if="selectedGenres.length || selectedTags.length" class="self-end">
+          <button class="btn-ghost h-9 text-xs" @click="resetFilters">
+            Réinitialiser les filtres
           </button>
         </div>
       </div>
 
-      <!-- Tags -->
-      <div v-if="availableTags.length" class="mt-4">
-        <p class="mb-2 text-xs font-medium text-fg-muted">Tags</p>
-        <div class="flex flex-wrap gap-2">
-          <button
-            v-for="[t, c] in availableTags.slice(0, 30)"
-            :key="t"
-            class="chip"
-            :class="{ 'chip-active': selectedTags.includes(t) }"
-            @click="toggleTag(t)"
-          >
-            {{ t }}
-            <span class="ml-1 text-[10px] opacity-60">{{ c }}</span>
-          </button>
+      <!-- Genres et tags : listes à cases à cocher (une pastille par valeur
+           devenait illisible dès 20 entrées). -->
+      <div class="mt-4 grid gap-4 sm:grid-cols-2">
+        <div v-if="availableGenres.length">
+          <p class="mb-2 text-xs font-medium text-fg-muted">Style / genre</p>
+          <ul class="max-h-56 divide-y divide-line overflow-auto rounded-lg border border-line">
+            <li v-for="g in availableGenres" :key="g.name">
+              <label
+                class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm hover:bg-app-surface2"
+              >
+                <input
+                  type="checkbox"
+                  class="h-4 w-4 rounded border-line-strong bg-app-bg"
+                  :checked="selectedGenres.includes(g.name)"
+                  @change="toggleGenre(g.name)"
+                />
+                <span class="min-w-0 flex-1 truncate text-fg">{{ g.name }}</span>
+                <span class="shrink-0 text-[11px] text-fg-faint">{{ g.count }}</span>
+              </label>
+            </li>
+          </ul>
+        </div>
+
+        <div v-if="availableTags.length">
+          <p class="mb-2 text-xs font-medium text-fg-muted">Tags</p>
+          <ul class="max-h-56 divide-y divide-line overflow-auto rounded-lg border border-line">
+            <li v-for="[t, c] in availableTags.slice(0, 30)" :key="t">
+              <label
+                class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm hover:bg-app-surface2"
+              >
+                <input
+                  type="checkbox"
+                  class="h-4 w-4 rounded border-line-strong bg-app-bg"
+                  :checked="selectedTags.includes(t)"
+                  @change="toggleTag(t)"
+                />
+                <span class="min-w-0 flex-1 truncate text-fg">{{ t }}</span>
+                <span class="shrink-0 text-[11px] text-fg-faint">{{ c }}</span>
+              </label>
+            </li>
+          </ul>
         </div>
       </div>
     </div>
