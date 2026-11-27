@@ -178,14 +178,13 @@ async function handleComponent(body: any, res: any) {
     };
 
     /**
-     * La description de l'événement Discord (celle de l'onglet Événements) est
-     * recopiée par la tâche planifiée : `applyInterest` a marqué la ligne
-     * « description à refaire ». On ne l'attend PLUS ici — c'est un appel à
-     * Discord qui, ajouté au reste, faisait dépasser les 3 secondes et Discord
-     * affichait « l'application n'a pas répondu à temps ».
+     * `toggleFromDiscord` a déjà réécrit la description de l'événement (avec un
+     * budget de 900 ms). Si elle n'a pas eu le temps, la ligne reste marquée
+     * « description à refaire » et la tâche planifiée la reprend.
      */
     console.log(
-      `[interaction] ${parsed.kind} ${parsed.eventId} en ${Date.now() - startedAt} ms`,
+      `[interaction] ${parsed.kind} ${parsed.eventId} en ${Date.now() - startedAt} ms` +
+        (result.descriptionUpdated ? ' (description à jour)' : ' (description en retard)'),
     );
     await markInteraction('clic');
 

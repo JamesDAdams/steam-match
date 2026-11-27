@@ -12,7 +12,11 @@ import {
   sendChannelMessage,
 } from './discord-bot.ts';
 import { formatPrice } from './prices.ts';
-import { applyInterest, mergeInterestLists } from './event-interest.ts';
+import {
+  applyInterest,
+  mergeInterestLists,
+  syncDescriptionWith,
+} from './event-interest.ts';
 import type { InterestUser } from './event-interest.ts';
 
 /**
@@ -212,19 +216,21 @@ export interface AnnouncementPayload {
 
 export const BUTTON_INTERESTED = 'in';
 export const BUTTON_MAYBE = 'maybe';
+export const BUTTON_NONE = 'out';
 
 /** `evt:<kind>:<eventId>` — relu par le handler d'interactions. */
-export function buttonCustomId(kind: 'in' | 'maybe', eventId: string): string {
+export function buttonCustomId(kind: 'in' | 'maybe' | 'out', eventId: string): string {
   return `evt:${kind}:${eventId}`;
 }
 
 /** Décode un custom_id de bouton d'annonce (null si ce n'est pas le nôtre). */
 export function parseButtonCustomId(
   customId: string,
-): { kind: 'interested' | 'maybe'; eventId: string } | null {
-  const m = /^evt:(in|maybe):(\d{17,20})$/.exec(customId ?? '');
+): { kind: 'interested' | 'maybe' | 'out'; eventId: string } | null {
+  const m = /^evt:(in|maybe|out):(\d{17,20})$/.exec(customId ?? '');
   if (!m) return null;
-  return { kind: m[1] === 'in' ? 'interested' : 'maybe', eventId: m[2] };
+  const kind = m[1] === 'in' ? 'interested' : m[1] === 'maybe' ? 'maybe' : 'out';
+  return { kind, eventId: m[2] };
 }
 
 /**
@@ -353,6 +359,13 @@ export async function buildAnnouncement(
           style: 2,
           label: '❔ Peut-être',
           custom_id: buttonCustomId(BUTTON_MAYBE, event.id),
+          disabled: closed,
+        },
+        {
+          type: 2,
+          style: 4,
+          label: '🚫 Je ne participe plus',
+          custom_id: buttonCustomId(BUTTON_NONE, event.id),
           disabled: closed,
         },
       ],
@@ -499,8 +512,25 @@ export async function deleteEventAnnouncement(eventId: string): Promise<void> {
 /* ───────────────────── Clic sur un bouton Discord ───────────────────── */
 
 export type ToggleResult =
-  | { ok: true; payload: AnnouncementPayload; active: boolean; interested: number; maybe: number }
+  | {
+      ok: true;
+      payload: AnnouncementPayload;
+      active: boolean;
+      interested: number;
+      maybe: number;
+      /** La description de l'événement a été réécrite tout de suite. */
+      descriptionUpdated: boolean;
+    }
   | { ok: false; reason: 'not-found' | 'closed' | 'unknown-button' };
+
+/**
+ * Budget de la recopie de la description, DANS le clic.
+ *
+ * Il faut que le participant apparaisse aussitôt dans la description de
+ * l'événement (c'est la demande), mais Discord n'accorde que 3 secondes :
+ * au-delà, on répond quand même et la tâche planifiée finit le travail.
+ */
+const DESCRIPTION_BUDGET_MS = 1_200;
 
 /**
  * Applique un clic de bouton venu de Discord.
@@ -511,7 +541,7 @@ export type ToggleResult =
  */
 export async function toggleFromDiscord(args: {
   eventId: string;
-  kind: 'interested' | 'maybe';
+  kind: 'interested' | 'maybe' | 'out';
   user: { id: string; name: string; avatarUrl: string | null };
 }): Promise<ToggleResult> {
   const db = getDb();
@@ -529,28 +559,66 @@ export async function toggleFromDiscord(args: {
   if (!state) return { ok: false, reason: 'not-found' };
   if (state.status === 3 || state.status === 4) return { ok: false, reason: 'closed' };
 
-  const current = (args.kind === 'interested' ? state.siteInterested : state.maybe) ?? [];
+  const current =
+    args.kind === 'interested'
+      ? state.siteInterested
+      : args.kind === 'maybe'
+        ? state.maybe
+        : [...(state.siteInterested ?? []), ...(state.maybe ?? [])];
+
   const already = (Array.isArray(current) ? current : []).some(
     (u: any) => String(u?.id) === args.user.id,
   );
+
+  /**
+   * « Je ne participe plus » est un retrait : on ne bascule pas, on retire des
+   * deux listes. Les autres boutons basculent (re-cliquer retire).
+   */
+  const active = args.kind === 'out' ? false : !already;
 
   /**
    * UNE SEULE requête : bascule de l'inscription ET relecture de la ligne
    * complète (listes, nom, description, jeu). C'est ce qui fait tenir la
    * réponse sous la limite de 3 secondes imposée par Discord.
    */
-  const applied = await applyInterest(args.eventId, args.kind, args.user, !already);
+  const applied = await applyInterest(args.eventId, args.kind, args.user, active);
   if (!applied) return { ok: false, reason: 'not-found' };
 
   const event = rowToEvent(applied.row);
   const game = (applied.row.game ?? null) as AnnouncementGame | null;
 
+  /**
+   * La description de l'événement Discord est réécrite TOUT DE SUITE (avec un
+   * budget) : c'est là que le serveur voit qui participe, et une copie
+   * différée de 5 minutes se remarquait.
+   */
+  const descriptionUpdated = await Promise.race([
+    syncDescriptionWith({
+      eventId: args.eventId,
+      description: event.description,
+      siteInterested: applied.lists.interested,
+      maybe: applied.lists.maybe,
+      discordInterested: event.interestedUsers as {
+        id: string;
+        name: string;
+        avatarUrl: string | null;
+      }[],
+    })
+      .then(() => true)
+      .catch((err: any) => {
+        console.warn('[annonce événement] description non réécrite :', err?.message);
+        return false;
+      }),
+    new Promise<boolean>((resolve) => setTimeout(() => resolve(false), DESCRIPTION_BUDGET_MS)),
+  ]);
+
   return {
     ok: true,
     payload: await buildAnnouncement(event, { game }),
-    active: !already,
+    active,
     interested: applied.lists.interested.length,
     maybe: applied.lists.maybe.length,
+    descriptionUpdated,
   };
 }
 

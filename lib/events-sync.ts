@@ -66,7 +66,12 @@ export async function storeEvent(
       target: discordEvents.id,
       set: {
         name: values.name,
-        description: values.description,
+        /**
+         * La description d'origine ne s'efface jamais : quand Discord ne
+         * renvoie QUE le bloc d'inscriptions, `stripSiteBlock` rend null — et
+         * l'écrire en base ferait perdre le texte de l'événement.
+         */
+        ...(values.description !== null ? { description: values.description } : {}),
         status: values.status,
         entityType: values.entityType,
         location: values.location,

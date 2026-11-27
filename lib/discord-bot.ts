@@ -691,6 +691,28 @@ export async function getScheduledEvents(): Promise<DiscordScheduledEvent[]> {
   return Array.isArray(data) ? data : [];
 }
 
+/**
+ * Relit UN événement programmé.
+ *
+ * Sert de secours quand la description d'origine a été perdue en base : on la
+ * récupère de Discord au lieu de réécrire la description à partir de rien
+ * (ce qui l'effacerait pour de bon).
+ */
+export async function getScheduledEvent(
+  eventId: string,
+): Promise<DiscordScheduledEvent | null> {
+  const res = await discordFetch(
+    `/guilds/${guildId()}/scheduled-events/${encodeURIComponent(eventId)}`,
+    {},
+    4_000,
+  );
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    throw new Error(`Discord a répondu HTTP ${res.status} sur l’événement ${eventId}.`);
+  }
+  return (await res.json()) as DiscordScheduledEvent;
+}
+
 export interface CreateScheduledEventInput {
   name: string;
   description?: string | null;
