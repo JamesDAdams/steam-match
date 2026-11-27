@@ -47,7 +47,8 @@ drizzle/
 .npm-cache/
 .vercel
 
-# Profils Chrome temporaires (captures headless)
+# Fichiers de travail locaux (scripts jetables, état de session de test)
+.tmp-*
 .tmp-chrome*/
 
 # Artefacts du CLI playwright (revue visuelle)

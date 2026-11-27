@@ -1350,6 +1350,83 @@ export const INTERACTION = {
   UPDATE_MESSAGE: 7,
 } as const;
 
+/**
+ * Identité de l'APPLICATION (pas du compte bot), et surtout l'URL
+ * d'interaction qu'elle déclare. Permet à l'admin d'afficher la valeur
+ * réellement enregistrée côté Discord, au lieu de supposer qu'elle est bonne.
+ */
+export interface ApplicationInfo {
+  id: string;
+  name: string;
+  interactionsEndpointUrl: string | null;
+}
+
+let applicationCache: { value: ApplicationInfo; at: number } | null = null;
+const APPLICATION_TTL_MS = 60_000;
+
+export async function getApplicationInfo(
+  opts: { force?: boolean } = {},
+): Promise<ApplicationInfo> {
+  if (!opts.force && applicationCache && Date.now() - applicationCache.at < APPLICATION_TTL_MS) {
+    return applicationCache.value;
+  }
+
+  const res = await discordFetch('/applications/@me', {}, 2_500);
+  if (!res.ok) {
+    throw new Error(`Discord a répondu HTTP ${res.status} en lisant l’application.`);
+  }
+
+  const data = (await res.json()) as {
+    id: string;
+    name: string;
+    interactions_endpoint_url?: string | null;
+  };
+
+  const value: ApplicationInfo = {
+    id: data.id,
+    name: data.name,
+    interactionsEndpointUrl: data.interactions_endpoint_url ?? null,
+  };
+  applicationCache = { value, at: Date.now() };
+  return value;
+}
+
+/**
+ * Déclare l'URL d'interaction côté Discord.
+ *
+ * Discord répond à cet appel par un « ping » signé sur l'URL indiquée : si le
+ * site ne répond pas correctement, la requête échoue. C'est donc un test
+ * complet, et une alternative au passage par le portail développeur.
+ */
+export async function setInteractionsEndpointUrl(
+  url: string,
+): Promise<{ ok: boolean; url?: string | null; error?: string }> {
+  const res = await discordFetch(
+    '/applications/@me',
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ interactions_endpoint_url: url }),
+    },
+    10_000,
+  );
+
+  if (!res.ok) {
+    const raw = await res.text().catch(() => '');
+    let message = raw.slice(0, 300);
+    try {
+      const parsed = JSON.parse(raw) as { message?: string; errors?: unknown };
+      message = parsed.message ?? message;
+    } catch {
+      /* texte brut */
+    }
+    return { ok: false, error: `Discord a refusé l’URL (HTTP ${res.status}) : ${message}` };
+  }
+
+  const data = (await res.json()) as { interactions_endpoint_url?: string | null };
+  applicationCache = null; // relecture forcée ensuite
+  return { ok: true, url: data.interactions_endpoint_url ?? null };
+}
+
 /** URL à coller dans le portail Discord (Interactions Endpoint URL). */
 export function interactionsEndpointUrl(): string | null {
   const base = (process.env.URL || process.env.DEPLOY_PRIME_URL || '').replace(/\/+$/, '');

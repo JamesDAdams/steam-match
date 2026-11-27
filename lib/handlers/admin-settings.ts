@@ -11,10 +11,12 @@ import { countTrackedAccounts, runSteamSync } from '../steam-sync-worker.ts';
 import { runReleaseNotifications, todayInParis } from '../release-notifier.ts';
 import {
   canBotPost,
+  getApplicationInfo,
   getApplicationPublicKey,
   getBotIdentity,
   interactionsEndpointUrl,
   listTextChannels,
+  setInteractionsEndpointUrl,
 } from '../discord-bot.ts';
 import { generateRecapImage, getStoredRecap } from '../recap.ts';
 
@@ -85,6 +87,14 @@ export default async function handler(req: any, res: any) {
         app: await getBotIdentity()
           .then((b) => ({ id: b.id, name: b.username }))
           .catch(() => null),
+        /**
+         * URL RÉELLEMENT enregistrée chez Discord. Sans elle, on ne peut pas
+         * savoir si le portail pointe bien ici : c'est exactement ce qui a
+         * rendu un premier diagnostic difficile.
+         */
+        declaredUrl: await getApplicationInfo()
+          .then((a) => a.interactionsEndpointUrl)
+          .catch(() => null),
         /** Dernier appel reçu de Discord (preuve que l'URL pointe bien ici). */
         lastAt: settings.lastInteractionAt,
         lastKind: settings.lastInteractionKind,
@@ -120,6 +130,20 @@ export default async function handler(req: any, res: any) {
 
     if (method === 'POST') {
       const body = (req.body ?? {}) as Record<string, unknown>;
+
+      if (body.action === 'set-interactions-url') {
+        const url = interactionsEndpointUrl();
+        if (!url) {
+          return res
+            .status(400)
+            .json({ error: 'Adresse publique du site inconnue : impossible de déclarer l’URL.' });
+        }
+        const result = await setInteractionsEndpointUrl(url);
+        if (!result.ok) {
+          return res.status(502).json({ error: result.error ?? 'Discord a refusé l’URL.' });
+        }
+        return res.status(200).json({ ok: true, url: result.url ?? url });
+      }
 
       if (body.action === 'run-releases') {
         const report = await runReleaseNotifications({ force: true });

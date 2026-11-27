@@ -108,9 +108,14 @@ const interactions = ref<{
   url: string | null;
   ready: boolean;
   app?: { id: string; name: string } | null;
+  declaredUrl?: string | null;
   lastAt?: string | null;
   lastKind?: string | null;
 }>({ url: null, ready: false });
+/** Déclaration de l'URL par l'API (sans passer par le portail Discord). */
+const declaring = ref(false);
+const declareMessage = ref<string | null>(null);
+const declareError = ref<string | null>(null);
 /** Message d'échec de publication (affiché en rouge). */
 const recapError = ref<string | null>(null);
 const steamSaving = ref(false);
@@ -139,6 +144,7 @@ async function loadSteamSettings() {
         url: string | null;
         ready: boolean;
         app?: { id: string; name: string } | null;
+        declaredUrl?: string | null;
         lastAt?: string | null;
         lastKind?: string | null;
       };
@@ -238,6 +244,30 @@ async function saveAnnounce(patch: { eventAnnounceChannelId?: string | null }) {
     error.value = e.message;
   } finally {
     announceSaving.value = false;
+  }
+}
+
+/**
+ * Déclare l'URL d'interaction auprès de Discord, par l'API.
+ *
+ * Discord répond en envoyant aussitôt un « ping » signé sur cette URL : si le
+ * site ne répond pas correctement, l'appel échoue. C'est donc un test complet,
+ * et plus sûr qu'une copie manuelle dans le portail.
+ */
+async function declareInteractionsUrl() {
+  declaring.value = true;
+  declareMessage.value = null;
+  declareError.value = null;
+  try {
+    const r = await apiPost<{ ok: boolean; url: string }>('/api/admin/settings', {
+      action: 'set-interactions-url',
+    });
+    declareMessage.value = `URL déclarée et validée par Discord : ${r.url}`;
+    await loadSteamSettings();
+  } catch (e: any) {
+    declareError.value = e.message;
+  } finally {
+    declaring.value = false;
   }
 }
 
@@ -775,7 +805,28 @@ onMounted(load);
           >
             {{ copiedUrl ? 'Copié !' : 'Copier' }}
           </button>
+          <button
+            type="button"
+            class="btn-primary text-xs"
+            :disabled="declaring || !interactions.url"
+            @click="declareInteractionsUrl"
+          >
+            {{ declaring ? 'Déclaration…' : 'Déclarer automatiquement' }}
+          </button>
         </div>
+
+        <p v-if="declareMessage" class="mt-2 text-[11px] text-ok">{{ declareMessage }}</p>
+        <p v-if="declareError" class="mt-2 text-[11px] text-danger">{{ declareError }}</p>
+
+        <p v-if="interactions.declaredUrl" class="mt-2 text-[11px] text-fg-faint">
+          Enregistrée chez Discord :
+          <code class="select-all text-fg">{{ interactions.declaredUrl }}</code>
+          <span
+            v-if="interactions.url && interactions.declaredUrl !== interactions.url"
+            class="ml-1 text-warn"
+            >(différente de celle attendue)</span
+          >
+        </p>
 
         <div class="mt-2 space-y-1 text-[11px] text-fg-faint">
           <p>
