@@ -11,7 +11,6 @@
  */
 
 const ACCOUNT = 'https://account-public-service-prod03.ol.epicgames.com';
-const LAUNCHER = 'https://launcher-public-service-prod06.ol.epicgames.com';
 const LIBRARY = 'https://library-service.live.use1a.on.epicgames.com';
 const CATALOG = 'https://catalog-public-service-prod06.ol.epicgames.com';
 
@@ -134,48 +133,6 @@ interface AssetRecord {
   labelName?: string;
 }
 
-/**
- * Jeux installables, la source EXACTE de la bibliothèque Epic.
- *
- * POURQUOI PAS `/library/api/public/items` : cet endpoint renvoie TOUS les
- * droits du compte — DLC, packs de monnaie, démos, contenus Unreal, artefacts
- * non-jeux. On arrivait à 770 « jeux » pour une ludothèque de quelques
- * dizaines. Les assets sont ce que le launcher sait installer : un jeu = un
- * asset (les DLC en sont exclus plus bas via le catalogue).
- */
-export async function getEpicAssets(accessToken: string): Promise<EpicRawGame[]> {
-  const byApp = new Map<string, EpicRawGame>();
-
-  for (const platform of ['Windows', 'Mac']) {
-    try {
-      const res = await fetch(
-        `${LAUNCHER}/launcher/api/public/assets/${platform}?label=Live`,
-        {
-          headers: { Authorization: `Bearer ${accessToken}`, 'User-Agent': UA },
-          signal: AbortSignal.timeout(15_000),
-        },
-      );
-      if (!res.ok) continue;
-
-      const rows = (await res.json()) as AssetRecord[];
-      for (const a of rows ?? []) {
-        if (!a.appName || !a.catalogItemId || !a.namespace) continue;
-        if (a.namespace === 'ue') continue; // marketplace Unreal
-        if (byApp.has(a.appName)) continue;
-        byApp.set(a.appName, {
-          appName: a.appName,
-          catalogItemId: a.catalogItemId,
-          namespace: a.namespace,
-        });
-      }
-    } catch {
-      /* une plateforme indisponible ne doit pas vider la bibliothèque */
-    }
-  }
-
-  return [...byApp.values()];
-}
-
 interface LibraryRecord {
   appName?: string;
   catalogItemId?: string;
@@ -191,9 +148,41 @@ export interface EpicRawGame {
   namespace: string;
 }
 
+export interface EpicOwnedGame {
+  appName: string;
+  name: string;
+  imageUrl: string | null;
+}
+
+/**
+ * Les VRAIS jeux du compte.
+ *
+ * Trois filtres successifs, appris à la dure :
+ *   1. la bibliothèque brute contient tout (DLL de Fortnite, plugins, assets
+ *      Unreal) — on écarte le namespace `ue` et on déduplique par item ;
+ *   2. seul le catalogue dit si un item est un jeu (`categories: games`,
+ *      hors DLC) ;
+ *   3. on ne garde que ceux dont le catalogue a bien répondu.
+ *
+ * Résultat mesuré sur un compte réel : 1 399 enregistrements bruts → 185 jeux.
+ */
+export async function getEpicGames(accessToken: string): Promise<EpicOwnedGame[]> {
+  const items = await getEpicLibrary(accessToken);
+  const catalog = await getEpicCatalog(accessToken, items);
+
+  const out: EpicOwnedGame[] = [];
+  for (const item of items) {
+    const meta = catalog.get(item.catalogItemId);
+    if (!meta?.isGame) continue;
+    out.push({ appName: item.appName, name: meta.name, imageUrl: meta.imageUrl });
+  }
+  return out;
+}
+
 /** Ludothèque complète (pagination par curseur). */
 export async function getEpicLibrary(accessToken: string): Promise<EpicRawGame[]> {
   const out: EpicRawGame[] = [];
+  const seen = new Set<string>();
   let cursor: string | undefined;
   let guard = 0;
 
@@ -218,6 +207,9 @@ export async function getEpicLibrary(accessToken: string): Promise<EpicRawGame[]
       if (r.namespace === 'ue') continue; // Unreal Marketplace
       if (r.sandboxType === 'PRIVATE') continue;
       if (!r.catalogItemId || !r.namespace) continue;
+      // Un même jeu peut apparaître sous plusieurs sandboxes.
+      if (seen.has(r.catalogItemId)) continue;
+      seen.add(r.catalogItemId);
       out.push({ appName: r.appName, catalogItemId: r.catalogItemId, namespace: r.namespace });
     }
 
@@ -260,8 +252,14 @@ export async function getEpicPlaytime(
 export interface EpicMeta {
   name: string;
   imageUrl: string | null;
-  /** Vrai pour un DLC / add-on : ce n'est pas un jeu de la ludothèque. */
-  isAddon: boolean;
+  /**
+   * Vrai uniquement pour un JEU (catégorie `games`, hors DLC).
+   *
+   * C'est le seul filtre fiable : la bibliothèque brute contient des DLL de
+   * Fortnite, des plugins, des assets Unreal et des packs de monnaie. Sans ce
+   * filtre on annonçait 770 « jeux » pour un compte qui en a 185.
+   */
+  isGame: boolean;
 }
 
 /** Types de jaquettes Epic, du plus joli au plus petit. */
@@ -292,9 +290,23 @@ export async function getEpicCatalog(
 
   const out = new Map<string, EpicMeta>();
 
+  // Les identifiants sont groupés par namespace et envoyés par 20 : une
+  // requête par jeu serait trop lente, et 39 requêtes en série dépassent le
+  // temps d'exécution d'une fonction Netlify. D'où la parallélisation.
+  const tasks: { namespace: string; chunk: string[] }[] = [];
   for (const [namespace, ids] of byNamespace) {
     for (let i = 0; i < ids.length; i += 20) {
-      const chunk = ids.slice(i, i + 20);
+      tasks.push({ namespace, chunk: ids.slice(i, i + 20) });
+    }
+  }
+
+  const CONCURRENCY = 6;
+  let index = 0;
+
+  async function worker() {
+    while (index < tasks.length) {
+      const task = tasks[index++];
+      const { namespace, chunk } = task;
       const url = new URL(`${CATALOG}/catalog/api/shared/namespace/${namespace}/bulk/items`);
       for (const id of chunk) url.searchParams.append('id', id);
       url.searchParams.set('country', 'FR');
@@ -324,23 +336,25 @@ export async function getEpicCatalog(
           const categories = (item.categories ?? [])
             .map((c) => String(c?.path ?? '').toLowerCase())
             .filter(Boolean);
-          // Un DLC porte `mainGameItem`, un add-on est catégorisé comme tel.
-          const isAddon =
-            Boolean(item.mainGameItem) ||
-            (categories.some((c) => c === 'addons' || c === 'digitalextras') &&
-              !categories.some((c) => c === 'games' || c === 'applications'));
+          const isGame =
+            categories.includes('games') &&
+            !item.mainGameItem &&
+            !categories.includes('addons');
 
           out.set(id, {
             name: item.title,
             imageUrl: pickImage(item.keyImages),
-            isAddon,
+            isGame,
           });
         }
       } catch {
-        // Métadonnées manquantes : on retombera sur l'appName.
+        // Métadonnées manquantes : le jeu sera écarté (mieux qu'une fiche
+        // « appName » incompréhensible).
       }
     }
   }
+
+  await Promise.all(Array.from({ length: CONCURRENCY }, () => worker()));
 
   return out;
 }

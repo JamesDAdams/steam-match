@@ -11,9 +11,7 @@ import {
 } from './gog.ts';
 import {
   exchangeEpicCode,
-  getEpicAssets,
-  getEpicCatalog,
-  getEpicLibrary,
+  getEpicGames,
   getEpicPlaytime,
   refreshEpicTokens,
   type EpicTokens,
@@ -283,40 +281,19 @@ async function syncGog(accessToken: string): Promise<SyncedGame[]> {
 }
 
 async function syncEpic(accessToken: string, accountId: string): Promise<SyncedGame[]> {
-  // Les assets sont la vraie liste des jeux installables. Si l'endpoint ne
-  // répond pas, on retombe sur les droits du compte (moins précis, mais
-  // jamais vide).
-  const assets = await getEpicAssets(accessToken);
-  const library = assets.length > 0 ? assets : await getEpicLibrary(accessToken);
-
-  const [playtime, catalog] = await Promise.all([
+  // La liste des jeux est déjà filtrée (catalogue : catégorie « games »).
+  const [games, playtime] = await Promise.all([
+    getEpicGames(accessToken),
     getEpicPlaytime(accessToken, accountId),
-    getEpicCatalog(accessToken, library),
   ]);
 
-  const seen = new Set<string>();
-  const games: SyncedGame[] = [];
-
-  for (const entry of library) {
-    // Deux sandboxes du même jeu partagent l'appName : on ne le compte qu'une fois.
-    if (seen.has(entry.appName)) continue;
-    seen.add(entry.appName);
-
-    const meta = catalog.get(entry.catalogItemId);
-    // DLC et add-ons ne sont pas des jeux à part entière.
-    if (meta?.isAddon) continue;
-
-    const seconds = playtime.get(entry.appName) ?? 0;
-
-    games.push({
-      id: entry.appName,
-      name: meta?.name ?? entry.appName,
-      imageUrl: meta?.imageUrl ?? null,
-      minutes: Math.round(seconds / 60),
-    });
-  }
-
-  return games;
+  return games.map((g) => ({
+    id: g.appName,
+    name: g.name,
+    imageUrl: g.imageUrl,
+    // Le temps de jeu arrive en secondes, indexé par appName (artifactId).
+    minutes: Math.round((playtime.get(g.appName) ?? 0) / 60),
+  }));
 }
 
 /** Compte les jeux et le temps de jeu par plateforme, pour l'affichage. */
