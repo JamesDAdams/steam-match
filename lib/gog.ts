@@ -135,16 +135,30 @@ export async function getGogUser(accessToken: string): Promise<GogUser> {
   return {
     userId: String(data.userId),
     username: data.username,
-    avatarUrl: data.avatar ? normalizeImage(data.avatar) : null,
+    avatarUrl: normalizeImage(data.avatar, '_avm.jpg'),
   };
 }
 
-/** Les images GOG arrivent en `//images-2.gog.com/…` (sans schéma). */
-function normalizeImage(url: string | undefined | null): string | null {
+/**
+ * Les images GOG arrivent en `//images-2.gog.com/<hash>` — un hash NU.
+ *
+ * Sans formateur, le CDN répond 404 : il faut suffixer l'URL selon l'usage
+ * (`_avm.jpg` pour un avatar, `_glx_square_icon_v2.jpg` pour une jaquette).
+ * C'est ce qui laissait l'avatar cassé dans la liste des comptes.
+ */
+function normalizeImage(url: string | undefined | null, suffix: string): string | null {
   if (!url) return null;
-  if (url.startsWith('//')) return `https:${url}`;
-  if (url.startsWith('http')) return url;
-  return `https://images.gog.com/${url}`;
+
+  const absolute = url.startsWith('//')
+    ? `https:${url}`
+    : url.startsWith('http')
+      ? url
+      : `https://images.gog.com/${url.replace(/^\/+/, '')}`;
+
+  const last = absolute.split('/').pop() ?? '';
+  // Déjà un formateur (extension) : on ne touche à rien.
+  if (last.includes('.')) return absolute;
+  return `${absolute}${suffix}`;
 }
 
 export interface GogGame {
@@ -184,7 +198,7 @@ export async function getGogLibrary(accessToken: string): Promise<GogGame[]> {
       games.push({
         id: String(p.id),
         name: p.title,
-        imageUrl: normalizeImage(p.image),
+        imageUrl: normalizeImage(p.image, '_glx_square_icon_v2.jpg'),
       });
     }
 

@@ -1231,8 +1231,9 @@ onUnmounted(() => {
             </template>
             <template v-else>
               <strong>Pas de retour automatique sur le site :</strong> Epic renvoie sur sa
-              propre page, qui affiche un <strong>JSON</strong>. Copie tout ce texte (ou
-              seulement <code>authorizationCode</code>) puis colle-le ci-dessous.
+              propre page, qui affiche un <strong>JSON</strong>. Copie le
+              <strong>texte affiché</strong> (ou seulement <code>authorizationCode</code>)
+              — <strong>pas l’adresse de la page</strong>, elle ne contient pas le code.
             </template>
           </div>
 
@@ -1254,8 +1255,9 @@ onUnmounted(() => {
                 (⌘L / Ctrl+L), puis copie (<strong class="text-fg">⌘C / Ctrl+C</strong>).
               </template>
               <template v-else>
-                Sélectionne tout le JSON affiché et copie
-                (<strong class="text-fg">⌘A puis ⌘C</strong>).
+                Clique dans le texte JSON de la page, sélectionne tout
+                (<strong class="text-fg">⌘A</strong>) et copie
+                (<strong class="text-fg">⌘C</strong>). N’utilise pas la barre d’adresse.
               </template>
             </li>
             <li>Reviens ici et clique sur <strong class="text-fg">Coller</strong>, puis Relier.</li>
@@ -1375,7 +1377,8 @@ onUnmounted(() => {
                       v-if="g.imageUrl"
                       :src="g.imageUrl"
                       :alt="g.name"
-                      class="h-[28px] w-[60px] shrink-0 rounded object-cover"
+                      class="h-[28px] shrink-0 rounded object-cover"
+                      :class="a.platform === 'gog' ? 'w-[28px]' : 'w-[60px]'"
                       loading="lazy"
                     />
                     <span class="min-w-0 flex-1 truncate text-xs text-fg">{{ g.name }}</span>
