@@ -205,6 +205,27 @@ export async function syncExternalAccount(accountRowId: string): Promise<Externa
   try {
     const accessToken = await ensureAccessToken(row as ExternalAccountRow);
 
+    /**
+     * Le profil (pseudo, avatar) est rafraîchi à chaque sync : il change côté
+     * plateforme, et l'avatar GOG n'est correct que s'il est récupéré ici —
+     * à la liaison, le compte peut n'avoir aucune image.
+     */
+    if (row.platform === 'gog') {
+      try {
+        const user = await getGogUser(accessToken);
+        await db
+          .update(externalAccounts)
+          .set({
+            displayName: user.username,
+            avatarUrl: user.avatarUrl,
+            profileUrl: `https://www.gog.com/u/${user.username}`,
+          })
+          .where(eq(externalAccounts.id, row.id));
+      } catch {
+        /* profil indisponible : la ludothèque reste synchronisable */
+      }
+    }
+
     const games =
       row.platform === 'gog'
         ? await syncGog(accessToken)
