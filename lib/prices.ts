@@ -102,41 +102,64 @@ const STORE_NAMES: Record<string, string> = {
 };
 
 /**
- * GG.deals — nécessite une clé.
- * Le schéma de réponse n'étant pas documenté publiquement de façon stable,
- * on reste défensif : toute anomalie fait basculer sur CheapShark.
+ * GG.deals — prix des boutiques de clés, en euros.
+ *
+ * L'API a changé de forme (constaté en novembre 2026) : l'identifiant Steam
+ * **ne fait plus partie du chemin**. Il passe en paramètre `ids` (plusieurs
+ * identifiants séparés par des virgules) et `region=fr` renvoie des euros.
+ *
+ *   GET https://api.gg.deals/v1/prices/by-steam-app-id/?ids=892970&region=fr&key=…
+ *   → { data: { "892970": { prices: { currentKeyshops: "16.50", currency: "EUR" } } } }
+ *
+ * `currentKeyshops` est le prix « en clé » ; `currentRetail` correspond aux
+ * boutiques officielles (Steam, GOG…) : ce n'est pas ce qu'on affiche.
+ * L'ancienne forme (`/v1/prices/by-steam-app-id/<appid>/`) répond 404 : d'où
+ * l'absence de prix en clé tant qu'elle n'était pas corrigée.
  */
+/**
+ * Quota GG.deals : « 1000 jeux par heure » sur l'offre gratuite. Quand il est
+ * atteint, inutile d'insister : on met la source en pause un quart d'heure et
+ * on garde le prix déjà en cache (on ne le remplace surtout pas par un prix
+ * CheapShark en dollars).
+ */
+let ggdealsPausedUntil = 0;
+
+/** Vrai si la clé GG.deals est configurée : c'est notre source de référence. */
+export function hasGGDealsKey(): boolean {
+  return Boolean(process.env.GG_DEALS_API_KEY);
+}
+
 async function fromGGDeals(appid: number): Promise<GamePrice | null> {
   const key = process.env.GG_DEALS_API_KEY;
   if (!key) return null;
+  if (Date.now() < ggdealsPausedUntil) return null;
 
   try {
     const res = await rateLimitedFetch(
-      `https://api.gg.deals/v1/prices/by-steam-app-id/${appid}/?key=${encodeURIComponent(key)}`,
+      `https://api.gg.deals/v1/prices/by-steam-app-id/?ids=${appid}` +
+        `&region=fr&key=${encodeURIComponent(key)}`,
       { signal: AbortSignal.timeout(5000) },
     );
+    if (res.status === 429) {
+      ggdealsPausedUntil = Date.now() + 15 * 60_000;
+      console.warn('[prix] quota GG.deals atteint — pause de 15 min');
+      return null;
+    }
     if (!res.ok) return null;
 
     const json = (await res.json()) as any;
+    const prices = json?.data?.[String(appid)]?.prices;
+    if (!prices) return null;
 
-    // On cherche le prix le plus bas dans la structure renvoyée.
-    const prices: any[] = json?.data?.prices ?? json?.prices ?? [];
-    const candidates = prices
-      .map((p) => ({
-        amount: Number(p?.price?.amount ?? p?.amount),
-        currency: String(p?.price?.currency ?? p?.currency ?? 'EUR'),
-        shop: String(p?.shop?.name ?? p?.shop?.id ?? 'GG.deals'),
-      }))
-      .filter((p) => Number.isFinite(p.amount) && p.amount > 0);
+    // currentKeyshops = meilleur prix chez un revendeur de clés.
+    const amount = Number(prices.currentKeyshops);
+    if (!Number.isFinite(amount) || amount <= 0) return null;
 
-    if (candidates.length === 0) return null;
-
-    const best = candidates.sort((a, b) => a.amount - b.amount)[0];
-
-    // Selon les endpoints, le montant est en euros (float) ou en centimes.
-    const cents = best.amount < 1000 ? Math.round(best.amount * 100) : Math.round(best.amount);
-
-    return { priceCents: cents, currency: best.currency, store: best.shop };
+    return {
+      priceCents: Math.round(amount * 100),
+      currency: String(prices.currency ?? 'EUR').toUpperCase(),
+      store: 'GG.deals',
+    };
   } catch {
     return null;
   }
@@ -243,10 +266,17 @@ export async function fetchSteamPrice(appid: number): Promise<SteamPrice | null>
   }
 }
 
-/** Prix le plus bas connu pour un jeu, ou null si introuvable. */
+/**
+ * Prix « en clé » d'un jeu, ou null s'il n'y en a pas.
+ *
+ * GG.deals est la référence (boutiques de clés, euros). CheapShark ne sert de
+ * secours que si aucune clé GG.deals n'est configurée : ses prix viennent de
+ * boutiques tierces en dollars, ce qui n'est pas la même chose.
+ */
 export async function fetchCheapestPrice(appid: number): Promise<GamePrice | null> {
   const gg = await fromGGDeals(appid);
   if (gg) return gg;
+  if (hasGGDealsKey()) return null;
   return fromCheapShark(appid);
 }
 

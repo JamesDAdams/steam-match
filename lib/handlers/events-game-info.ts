@@ -3,6 +3,7 @@ import { getDb } from '../../db/index.ts';
 import { gameCache } from '../../db/schema.ts';
 import { eq, sql } from 'drizzle-orm';
 import { rateLimitedFetch } from '../rate-limit.ts';
+import { fetchCheapestPrice } from '../prices.ts';
 
 /**
  * GET /api/events/game-info?appid=892970
@@ -79,6 +80,35 @@ export default async function handler(req: any, res: any) {
       }
     }
 
+    /**
+     * Prix en clé absent du cache (jeu jamais enrichi, ou prix récupéré à
+     * l'époque où l'API GG.deals ne répondait plus) : on le demande
+     * maintenant, une fois, et on répare le cache. Sans ça, la fenêtre de
+     * création d'événement affichait « pas de prix » pour toujours.
+     */
+    let cheapestPrice = row.cheapestPrice;
+    let cheapestStore = row.cheapestStore;
+    let cheapestCurrency = row.cheapestCurrency;
+
+    if (cheapestPrice === null || cheapestPrice === undefined) {
+      const price = await fetchCheapestPrice(appid).catch(() => null);
+      if (price) {
+        cheapestPrice = price.priceCents;
+        cheapestStore = price.store;
+        cheapestCurrency = price.currency;
+        await db
+          .update(gameCache)
+          .set({
+            cheapestPrice: price.priceCents,
+            cheapestStore: price.store,
+            cheapestCurrency: price.currency,
+            priceUpdatedAt: new Date(),
+          })
+          .where(eq(gameCache.appid, appid))
+          .catch(() => undefined);
+      }
+    }
+
     return res.status(200).json({
       ok: true,
       game: {
@@ -89,9 +119,9 @@ export default async function handler(req: any, res: any) {
         steamPrice: row.steamPrice,
         steamDiscount: row.steamDiscount,
         steamCurrency: row.steamCurrency ?? 'EUR',
-        cheapestPrice: row.cheapestPrice,
-        cheapestStore: row.cheapestStore,
-        cheapestCurrency: row.cheapestCurrency ?? 'EUR',
+        cheapestPrice,
+        cheapestStore,
+        cheapestCurrency: cheapestCurrency ?? 'EUR',
       },
     });
   } catch (err: any) {
