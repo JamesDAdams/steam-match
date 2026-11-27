@@ -61,22 +61,18 @@ export default async function handler(req: any, res: any) {
       return res.status(404).json({ error: 'Cet événement n’existe plus.' });
     }
 
-    // La description Discord suit, sans bloquer la réponse en cas d'échec :
-    // l'inscription est enregistrée côté site quoi qu'il arrive.
-    const warning = await syncDescription(eventId).then(
-      () => null,
-      (err: any) => {
-        console.warn('[events/interest] description Discord non mise à jour :', err?.message);
-        return 'La description Discord n’a pas pu être mise à jour (droits du bot ?).';
-      },
-    );
+    /**
+     * RÉPONSE IMMÉDIATE : l'inscription est en base, l'utilisateur voit son
+     * clic tout de suite. La recopie dans la description Discord part
+     * ensuite — un aller-retour vers Discord prenait parfois plus d'une
+     * seconde, ce qui donnait l'impression que le bouton ne répondait pas.
+     */
+    res.status(200).json({ ok: true, interested: lists.interested, maybe: lists.maybe });
 
-    return res.status(200).json({
-      ok: true,
-      interested: lists.interested,
-      maybe: lists.maybe,
-      warning,
+    await syncDescription(eventId).catch((err: any) => {
+      console.warn('[events/interest] description Discord non mise à jour :', err?.message);
     });
+    return;
   } catch (err: any) {
     console.error('[events/interest]', err);
     return res.status(500).json({ error: err.message });

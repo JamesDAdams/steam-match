@@ -8,7 +8,7 @@ import {
   guildId,
 } from './discord-bot.ts';
 import type { DiscordScheduledEvent } from './discord-bot.ts';
-import { stripSiteBlock } from './event-interest.ts';
+import { stripSiteBlock, syncDescription } from './event-interest.ts';
 
 /**
  * Recopie les événements du serveur Discord en base.
@@ -81,14 +81,25 @@ export async function syncDiscordEvents(): Promise<{
   // Âge de la dernière lecture des « intéressés », pour ne pas relancer un
   // appel Discord par événement à chaque synchronisation (toutes les 15 s).
   const known = new Map<string, Date | null>();
+  /** Empreinte des intéressés connus, pour ne réécrire la description que si elle change. */
+  const previousInterested = new Map<string, string>();
   try {
     const rows = await db
       .select({
         id: discordEvents.id,
         at: discordEvents.interestedSyncedAt,
+        users: discordEvents.interestedUsers,
       })
       .from(discordEvents);
-    for (const r of rows) known.set(r.id, r.at ?? null);
+    for (const r of rows) {
+      known.set(r.id, r.at ?? null);
+      if (Array.isArray(r.users)) {
+        previousInterested.set(
+          r.id,
+          r.users.map((u: any) => u.id).sort().join(','),
+        );
+      }
+    }
   } catch {
     /* lecture impossible : on relira les intéressés */
   }
@@ -127,6 +138,18 @@ export async function syncDiscordEvents(): Promise<{
         .update(discordEvents)
         .set({ interestedUsers: users, interestedSyncedAt: now })
         .where(sql`${discordEvents.id} = ${e.id}`);
+
+      /**
+       * Quelqu'un a coché « Intéressé » SUR DISCORD : la description doit le
+       * refléter. On ne réécrit que si la liste a réellement changé, pour ne
+       * pas envoyer un PATCH à chaque synchronisation.
+       */
+      const fingerprint = users.map((u) => u.id).sort().join(',');
+      if (fingerprint !== (previousInterested.get(e.id) ?? '')) {
+        await syncDescription(e.id).catch((err: any) =>
+          console.warn('[events-sync] description non mise à jour :', err?.message),
+        );
+      }
     } catch (err: any) {
       // Un événement illisible ne doit pas empêcher la synchronisation des
       // autres : on réessaiera au prochain passage.

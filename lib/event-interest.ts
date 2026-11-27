@@ -46,16 +46,33 @@ export interface EventLists {
   maybe: InterestUser[];
 }
 
-/** Retire le bloc « Inscriptions du site » d'une description Discord. */
+/**
+ * Retire le bloc « Inscriptions du site » d'une description Discord.
+ *
+ * Le bloc est placé EN TÊTE (c'est la première chose qu'on doit voir), suivi
+ * d'une ligne vide puis de la description d'origine : on coupe donc du titre
+ * jusqu'à cette ligne vide.
+ */
 export function stripSiteBlock(description: string | null): string | null {
   if (!description) return null;
-  const index = description.indexOf(SITE_BLOCK_TITLE);
-  const base = index >= 0 ? description.slice(0, index) : description;
-  const trimmed = base.trimEnd();
+
+  const start = description.indexOf(SITE_BLOCK_TITLE);
+  if (start === -1) {
+    const trimmed = description.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  const afterTitle = description.indexOf('\n', start);
+  if (afterTitle === -1) return null;
+
+  // Fin du bloc : la première ligne vide qui suit le titre.
+  const blank = description.indexOf('\n\n', afterTitle);
+  const base = blank === -1 ? '' : description.slice(blank + 2);
+  const trimmed = base.trim();
   return trimmed.length > 0 ? trimmed : null;
 }
 
-/** Description Discord = texte d'origine + bloc d'inscriptions. */
+/** Description Discord = bloc d'inscriptions EN TÊTE, puis le texte d'origine. */
 export function composeDescription(
   base: string | null,
   lists: EventLists,
@@ -69,18 +86,17 @@ export function composeDescription(
 
   const lines: string[] = [SITE_BLOCK_TITLE];
   if (interested.length > 0) {
-    lines.push(`✅ Intéressés (${interested.length}) : ${clip(interested, 320)}`);
+    lines.push(`👍 Intéressés (${interested.length}) : ${clip(interested, 320)}`);
   }
   if (maybe.length > 0) {
     lines.push(`❔ Peut-être (${maybe.length}) : ${clip(maybe, 320)}`);
   }
 
-  // On garde la description d'origine tant qu'il y a de la place : c'est elle
-  // qui porte l'information utile.
-  const block = `\n\n${lines.join('\n')}`;
-  const room = MAX_DESCRIPTION - block.length;
-  const keptBase = base && room > 0 ? base.slice(0, room).trimEnd() : '';
-  return `${keptBase}${block}`.slice(0, MAX_DESCRIPTION);
+  const block = lines.join('\n');
+  const keptBase = base ? base.trim() : '';
+  const room = MAX_DESCRIPTION - block.length - 2;
+  const body = keptBase && room > 0 ? `\n\n${keptBase.slice(0, room).trimEnd()}` : '';
+  return `${block}${body}`.slice(0, MAX_DESCRIPTION);
 }
 
 /** Liste de prénoms tronquée proprement (pas de nom coupé en deux). */
@@ -139,6 +155,25 @@ export async function setInterest(
     `);
   }
 
+  /**
+   * EXCLUSIVITÉ : on est intéressé OU peut-être, jamais les deux. Quand on
+   * répond à l'un, on retire la personne de l'autre liste dans la même
+   * foulée (deux personnes différentes ne se marchent pas dessus : chaque
+   * requête ne touche que cette personne).
+   */
+  if (active) {
+    const other = sql.raw(kind === 'interested' ? 'maybe_users' : 'site_interested_users');
+    await db.execute(sql`
+      UPDATE discord_events
+      SET ${other} = COALESCE((
+        SELECT jsonb_agg(u ORDER BY u->>'at')
+        FROM jsonb_array_elements(${other}) AS u
+        WHERE u->>'id' <> ${user.id}
+      ), '[]'::jsonb)
+      WHERE id = ${eventId}
+    `);
+  }
+
   const [row] = await db
     .select({
       interested: discordEvents.siteInterestedUsers,
@@ -169,6 +204,7 @@ export async function syncDescription(eventId: string): Promise<void> {
       description: discordEvents.description,
       interested: discordEvents.siteInterestedUsers,
       maybe: discordEvents.maybeUsers,
+      discordInterested: discordEvents.interestedUsers,
     })
     .from(discordEvents)
     .where(eq(discordEvents.id, eventId))
@@ -176,10 +212,23 @@ export async function syncDescription(eventId: string): Promise<void> {
 
   if (!row) return;
 
-  const description = composeDescription(stripSiteBlock(row.description), {
-    interested: (row.interested ?? []) as InterestUser[],
-    maybe: (row.maybe ?? []) as InterestUser[],
-  });
+  const site = (row.interested ?? []) as InterestUser[];
+  const discord = (row.discordInterested ?? []) as { id: string; name: string; avatarUrl: string | null }[];
+
+  /**
+   * Les personnes intéressées SUR DISCORD comptent aussi : la description
+   * reflète donc les deux sources, sans doublon (un membre peut être
+   * intéressé sur Discord ET avoir cliqué sur le site).
+   */
+  const merged = new Map<string, InterestUser>();
+  for (const u of discord) merged.set(u.id, { ...u, at: '' });
+  for (const u of site) merged.set(u.id, u);
+
+  const interested = [...merged.values()];
+  const interestedIds = new Set(interested.map((u) => u.id));
+  const maybe = ((row.maybe ?? []) as InterestUser[]).filter((u) => !interestedIds.has(u.id));
+
+  const description = composeDescription(stripSiteBlock(row.description), { interested, maybe });
 
   await updateScheduledEvent(eventId, { description });
 }
