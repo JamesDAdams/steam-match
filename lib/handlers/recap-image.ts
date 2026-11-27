@@ -6,10 +6,9 @@ import { generateRecapImage, getStoredRecap, isValidRecapKey } from '../recap.ts
  * GET /api/recap/image — l'image du récap', en SVG.
  *
  * TROIS PORTES D'ENTRÉE :
- *   1. `?variant=public` — la variante SANS pseudos, servie aux visiteurs non
- *      connectés quand l'admin publie la page. Aucune session requise : c'est
- *      une image publique, mise en cache par le CDN, qui ne contient aucun
- *      pseudo ;
+ *   1. `?variant=public` — la variante SANS pseudos. Aucune session requise :
+ *      c'est une image publique, mise en cache par le CDN, qui ne contient
+ *      aucun pseudo (partage hors Discord, page publique) ;
  *   2. session valide (membre) — la variante complète, avec les pseudos si le
  *      réglage l'autorise ;
  *   3. lien signé `?k=…` — c'est celui que le bot poste dans Discord. Discord

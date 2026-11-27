@@ -520,9 +520,10 @@ export const recapImages = pgTable('recap_images', {
   /** Données chiffrées ayant servi à l'image (réutilisées par la page). */
   stats: jsonb('stats').$type<unknown>().notNull().default({}),
   /**
-   * Variante SANS pseudos, servie aux visiteurs non connectés (page publique).
-   * NULL quand les pseudos sont déjà masqués dans `svg` : une seule variante
-   * suffit alors.
+   * Variante SANS pseudos, servie sur `/api/recap/image?variant=public` :
+   * image partageable hors du serveur (la page du site, elle, n'affiche plus
+   * l'image). NULL quand les pseudos sont déjà masqués dans `svg` : une seule
+   * variante suffit alors.
    */
   svgPublic: text('svg_public'),
   /** Les pseudos ont-ils été inclus dans `svg` ? */
