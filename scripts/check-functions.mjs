@@ -34,6 +34,7 @@ const FILES = [
   'netlify/functions/external-sync-cron.ts',
   'lib/handlers/recap-image.ts',
   'netlify/functions/recap-cron.ts',
+  'netlify/functions/events-sync-cron.ts',
   'netlify/functions/steam-sync-cron.ts',
 ];
 

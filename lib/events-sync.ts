@@ -110,11 +110,14 @@ export async function syncDiscordEvents(): Promise<{
 
   // Liste des personnes intéressées : une requête Discord par événement, donc
   // rafraîchie avec parcimonie (5 min) et plafonnée par synchronisation.
-  const INTERESTED_TTL_MS = 5 * 60_000;
+  // 2 minutes : un clic « Intéressé » fait sur Discord doit apparaître vite
+  // sur le site et dans la description. Le cron tourne toutes les 5 minutes,
+  // donc chaque passage rafraîchit effectivement la liste.
+  const INTERESTED_TTL_MS = 2 * 60_000;
   // Discord limite fortement les appels par événement (bucket « 1 requête
   // toutes les quelques secondes ») : on en rafraîchit donc peu à la fois, en
   // commençant par les plus anciens. La liste est stable, inutile d'insister.
-  const MAX_INTERESTED_FETCH = 3;
+  const MAX_INTERESTED_FETCH = 5;
   const INTERESTED_SPACING_MS = 1_200;
 
   const needUsers = events
