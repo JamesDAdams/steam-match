@@ -88,6 +88,10 @@ const recapInfo = ref<{
   top: string[];
   launched: number;
 } | null>(null);
+/** Diagnostic du salon du récap' : le bot peut-il y écrire ? */
+const recapChannel = ref<{ canPost: boolean; missing: string[]; reason?: string } | null>(null);
+/** Message d'échec de publication (affiché en rouge). */
+const recapError = ref<string | null>(null);
 const steamSaving = ref(false);
 const steamRunning = ref(false);
 const steamMessage = ref<string | null>(null);
@@ -108,11 +112,13 @@ async function loadSteamSettings() {
         top: string[];
         launched: number;
       } | null;
+      recapChannel?: { canPost: boolean; missing: string[]; reason?: string } | null;
     }>('/api/admin/settings');
     steamSettings.value = r.settings;
     steamAccountsCount.value = r.accounts ?? { main: 0, linked: 0 };
     discordChannels.value = r.channels ?? [];
     recapInfo.value = r.recap ?? null;
+    recapChannel.value = r.recapChannel ?? null;
   } catch {
     /* section secondaire : on n'empêche pas l'admin de travailler */
   }
@@ -223,16 +229,41 @@ async function saveRecap(patch: {
 async function runRecapNow() {
   recapRunning.value = true;
   recapMessage.value = null;
+  recapError.value = null;
   error.value = null;
   try {
     const r = await apiPost<{
-      report: { days: number; mode: string; top: { name: string; minutes: number }[]; launched: number; players: number };
+      report: {
+        days: number;
+        mode: string;
+        top: { name: string; minutes: number }[];
+        launched: number;
+        players: number;
+        discord?:
+          | { published: boolean; reason?: string; grantedPermissions?: boolean }
+          | null;
+      };
     }>('/api/admin/settings', { action: 'run-recap' });
     const rep = r.report;
-    recapMessage.value =
-      `Image régénérée : ${rep.days} jours, ${rep.launched} jeu(x) lancé(s), ` +
-      `${rep.players} joueur(s)` +
-      (rep.mode === 'estimated' ? ' — estimation (historique en cours).' : '.');
+    const image =
+      `${rep.days} jours, ${rep.launched} jeu(x) lancé(s), ${rep.players} joueur(s)` +
+      (rep.mode === 'estimated' ? ' — estimation (historique en cours)' : '');
+
+    const discord = rep.discord;
+    if (!steamSettings.value?.recapChannelId) {
+      recapMessage.value = `Image régénérée (${image}). Aucun salon Discord configuré.`;
+    } else if (discord?.published) {
+      recapMessage.value =
+        `Image régénérée (${image}); message Discord mis à jour.` +
+        (discord.grantedPermissions
+          ? ' Le bot s’est autorisé l’écriture dans le salon.'
+          : '');
+    } else {
+      recapMessage.value = `Image régénérée (${image}), mais Discord n’a rien reçu.`;
+      recapError.value =
+        discord?.reason ??
+        'Publication Discord impossible : le bot n’a pas pu écrire dans le salon.';
+    }
     await loadSteamSettings();
   } catch (e: any) {
     error.value = e.message;
@@ -691,6 +722,20 @@ onMounted(load);
         </div>
       </div>
 
+      <!-- Le salon choisi est en lecture seule pour @everyone : sans ce
+           contrôle, l'envoi échouait en 403 sans que rien ne s'affiche. -->
+      <p
+        v-if="recapChannel && !recapChannel.canPost && steamSettings?.recapChannelId"
+        class="mt-3 rounded-lg border border-warn/40 bg-warn-soft px-3 py-2 text-xs text-warn"
+      >
+        Le bot n'a pas encore le droit d'écrire dans ce salon
+        <template v-if="recapChannel.missing.length">
+          ({{ recapChannel.missing.join(', ') }})
+        </template>
+        . « Régénérer maintenant » lui ajoute l'autorisation automatiquement, puis publie le
+        message.
+      </p>
+
       <div class="mt-4 flex flex-wrap items-center gap-3">
         <button class="btn-ghost text-sm" :disabled="recapRunning" @click="runRecapNow">
           {{ recapRunning ? 'Génération…' : 'Régénérer maintenant' }}
@@ -702,7 +747,14 @@ onMounted(load);
         </span>
       </div>
 
-      <p v-if="recapMessage" class="mt-2 text-xs text-ok">{{ recapMessage }}</p>
+      <p
+        v-if="recapMessage"
+        class="mt-2 text-xs"
+        :class="recapError ? 'text-fg-muted' : 'text-ok'"
+      >
+        {{ recapMessage }}
+      </p>
+      <p v-if="recapError" class="mt-1 text-xs text-danger">{{ recapError }}</p>
 
       <p class="mt-3 text-[11px] leading-relaxed text-fg-faint">
         Steam ne publie que le temps de jeu cumulé et les 14 derniers jours : la « fenêtre » est

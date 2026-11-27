@@ -3,7 +3,7 @@ import { recapImages, gameCache } from '../db/schema.ts';
 import { eq, inArray, sql } from 'drizzle-orm';
 import { getSettings, updateSettings } from './settings.ts';
 import { createHmac } from 'node:crypto';
-import { editChannelMessage, sendChannelMessage } from './discord-bot.ts';
+import { editChannelMessage, ensureBotCanPost, sendChannelMessage } from './discord-bot.ts';
 import { daysBetween, formatDay, formatDayShort, shiftDay, todayInParis } from './dates.ts';
 
 /**
@@ -824,6 +824,8 @@ export interface PublishResult {
   published: boolean;
   reason?: string;
   messageId?: string | null;
+  /** Le bot s'est autorisé l'écriture dans le salon pour y arriver. */
+  grantedPermissions?: boolean;
 }
 
 /**
@@ -878,21 +880,58 @@ export async function publishRecapToDiscord(
     },
   ];
 
-  try {
-    // Le message doit vivre dans le salon actuellement configuré.
-    const previousChannel = settings.recapChannelId;
+  const channelId = settings.recapChannelId;
+
+  /**
+   * DROIT D'ÉCRIRE : un salon d'annonces refuse @everyone, donc le bot aussi
+   * par héritage. On vérifie AVANT d'envoyer (et on s'ajoute une dérogation si
+   * le bot en a le pouvoir) : sans ça, Discord renvoie 403 et l'image se
+   * régénérait sans qu'aucun message n'apparaisse.
+   */
+  const post = async (): Promise<PublishResult> => {
     if (settings.recapMessageId) {
-      const ok = await editChannelMessage(previousChannel, settings.recapMessageId, '', {
-        embeds,
-      });
+      const ok = await editChannelMessage(channelId, settings.recapMessageId, '', { embeds });
       if (ok) return { published: true, messageId: settings.recapMessageId };
       // Message supprimé ou salon changé : on en renvoie un.
     }
-
-    const messageId = await sendChannelMessage(previousChannel, '', { embeds });
+    const messageId = await sendChannelMessage(channelId, '', { embeds });
     await updateSettings({ recapMessageId: messageId || null });
     return { published: true, messageId };
+  };
+
+  try {
+    const rights = await ensureBotCanPost(channelId);
+    if (!rights.canPost) {
+      const detail = rights.missing.length ? ` (${rights.missing.join(', ')})` : '';
+      console.error('[récap] écriture refusée dans le salon', channelId, rights.reason);
+      return {
+        published: false,
+        reason: rights.reason ?? `Le bot ne peut pas écrire dans ce salon${detail}`,
+      };
+    }
+    if (rights.granted) {
+      console.log('[récap] autorisation d’écriture ajoutée au bot dans le salon', channelId);
+    }
+
+    const result = await post();
+    if (rights.granted) result.grantedPermissions = true;
+    return result;
   } catch (err: any) {
+    // Deuxième chance : si le 403 vient d'une permission changée entre-temps,
+    // on recalcule et on retente une seule fois.
+    if (/Missing Permissions|HTTP 403/i.test(String(err?.message))) {
+      const retry = await ensureBotCanPost(channelId).catch(() => null);
+      if (retry?.canPost) {
+        try {
+          const result = await post();
+          if (retry.granted) result.grantedPermissions = true;
+          return result;
+        } catch (again: any) {
+          console.error('[récap] publication Discord impossible', again?.message);
+          return { published: false, reason: again?.message ?? 'erreur Discord' };
+        }
+      }
+    }
     console.error('[récap] publication Discord impossible', err?.message);
     return { published: false, reason: err?.message ?? 'erreur Discord' };
   }

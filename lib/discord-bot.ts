@@ -251,6 +251,226 @@ export async function findGuildChannelByName(
   return found ? { id: found.id, name: found.name } : null;
 }
 
+/* ─────────────────── Permissions d'écriture du bot ─────────────────── */
+
+/**
+ * POURQUOI CE BLOC EXISTE
+ * -----------------------
+ * Un salon d'annonces est en lecture seule pour @everyone : le bot hérite donc
+ * du refus et Discord répond « 403 Missing Permissions ». Le récap' échouait
+ * silencieusement (l'image se régénérait, aucun message n'apparaissait).
+ *
+ * On calcule donc les permissions EFFECTIVES du bot dans le salon visé, et on
+ * s'autorise l'écriture au besoin — uniquement pour le bot (dérogation de
+ * membre, la plus spécifique), jamais pour @everyone : le salon reste fermé
+ * aux membres.
+ */
+const PERM = {
+  ADMINISTRATOR: 1n << 3n,
+  MANAGE_CHANNELS: 1n << 4n,
+  VIEW_CHANNEL: 1n << 10n,
+  SEND_MESSAGES: 1n << 11n,
+  EMBED_LINKS: 1n << 14n,
+  ATTACH_FILES: 1n << 15n,
+  READ_MESSAGE_HISTORY: 1n << 16n,
+  MANAGE_ROLES: 1n << 28n,
+} as const;
+
+/** Ce qu'il faut pour publier une image correctement. */
+const POST_NEEDS: { bit: bigint; label: string }[] = [
+  { bit: PERM.VIEW_CHANNEL, label: 'Voir le salon' },
+  { bit: PERM.SEND_MESSAGES, label: 'Envoyer des messages' },
+  { bit: PERM.EMBED_LINKS, label: 'Intégrer des liens' },
+  { bit: PERM.ATTACH_FILES, label: 'Joindre des fichiers' },
+];
+
+interface ChannelOverwrite {
+  id: string;
+  type: number;
+  allow: string;
+  deny: string;
+}
+
+interface PermContext {
+  botId: string;
+  channel: { id: string; name?: string; permission_overwrites?: ChannelOverwrite[] };
+  /** Permissions effectives du bot dans ce salon. */
+  effective: bigint;
+  /** Permissions du bot hors dérogations de salon (rôles + @everyone). */
+  base: bigint;
+  overwrites: ChannelOverwrite[];
+}
+
+let botIdCache: { id: string; at: number } | null = null;
+
+async function botUserId(): Promise<string> {
+  if (botIdCache && Date.now() - botIdCache.at < 3_600_000) return botIdCache.id;
+
+  const res = await discordFetch('/users/@me');
+  if (!res.ok) throw new Error(`Discord a répondu HTTP ${res.status} en identifiant le bot.`);
+
+  const me = (await res.json()) as { id?: string };
+  if (!me.id) throw new Error('Discord n’a pas renvoyé l’identifiant du bot.');
+
+  botIdCache = { id: me.id, at: Date.now() };
+  return me.id;
+}
+
+/** Calcule les permissions effectives du bot dans un salon (algorithme Discord). */
+async function readPermissions(channelId: string): Promise<PermContext> {
+  const [botId, channelRes, rolesRes] = await Promise.all([
+    botUserId(),
+    discordFetch(`/channels/${channelId}`),
+    discordFetch(`/guilds/${guildId()}/roles`),
+  ]);
+
+  if (!channelRes.ok) {
+    throw new Error(`Discord a répondu HTTP ${channelRes.status} en lisant le salon ${channelId}.`);
+  }
+  if (!rolesRes.ok) {
+    throw new Error(`Discord a répondu HTTP ${rolesRes.status} en lisant les rôles du serveur.`);
+  }
+
+  const channel = (await channelRes.json()) as {
+    id: string;
+    name?: string;
+    permission_overwrites?: ChannelOverwrite[];
+  };
+  const roles = (await rolesRes.json()) as { id: string; permissions: string }[];
+
+  const memberRes = await discordFetch(
+    `/guilds/${guildId()}/members/${encodeURIComponent(botId)}`,
+  );
+  if (!memberRes.ok) {
+    throw new Error(`Discord a répondu HTTP ${memberRes.status} en lisant le rôle du bot.`);
+  }
+  const member = (await memberRes.json()) as { roles?: string[] };
+
+  const everyone = roles.find((r) => r.id === guildId());
+  let base = everyone ? BigInt(everyone.permissions) : 0n;
+  for (const roleId of member.roles ?? []) {
+    const role = roles.find((r) => r.id === roleId);
+    if (role) base |= BigInt(role.permissions);
+  }
+
+  const overwrites = channel.permission_overwrites ?? [];
+  let effective = base;
+
+  // 1. Dérogations @everyone.
+  for (const ow of overwrites) {
+    if (ow.type === 0 && ow.id === guildId()) {
+      effective = (effective & ~BigInt(ow.deny)) | BigInt(ow.allow);
+    }
+  }
+  // 2. Dérogations des rôles portés par le bot.
+  for (const ow of overwrites) {
+    if (ow.type === 0 && (member.roles ?? []).includes(ow.id)) {
+      effective = (effective & ~BigInt(ow.deny)) | BigInt(ow.allow);
+    }
+  }
+  // 3. Dérogation nominative : la plus spécifique, elle gagne toujours.
+  for (const ow of overwrites) {
+    if (ow.type === 1 && ow.id === botId) {
+      effective = (effective & ~BigInt(ow.deny)) | BigInt(ow.allow);
+    }
+  }
+
+  return { botId, channel, effective, base, overwrites };
+}
+
+function missingPostBits(perms: bigint): { bit: bigint; label: string }[] {
+  if ((perms & PERM.ADMINISTRATOR) !== 0n) return [];
+  return POST_NEEDS.filter(({ bit }) => (perms & bit) !== bit);
+}
+
+/**
+ * Même diagnostic, SANS rien modifier : sert à l'admin pour afficher un
+ * avertissement avant même le premier envoi.
+ */
+export async function canBotPost(channelId: string): Promise<PostRights> {
+  const ctx = await readPermissions(channelId);
+  const missing = missingPostBits(ctx.effective);
+  return missing.length === 0
+    ? { canPost: true, missing: [] }
+    : { canPost: false, missing: missing.map((m) => m.label) };
+}
+
+export interface PostRights {
+  /** Le bot peut publier (embeds compris) dans ce salon. */
+  canPost: boolean;
+  /** Ce qui manque, en clair, quand ce n'est pas le cas. */
+  missing: string[];
+  /** Dérogation d'écriture ajoutée par le bot à l'instant. */
+  granted?: boolean;
+  /** Explication quand on n'a pas pu corriger. */
+  reason?: string;
+}
+
+/**
+ * Vérifie (et corrige) le droit d'écrire du bot dans un salon.
+ *
+ * La correction est une dérogation nominative sur le compte du bot, possible
+ * seulement si le bot a « Gérer les salons » + « Gérer les rôles ». Sinon on
+ * renvoie le motif : l'admin saura quoi cocher.
+ */
+export async function ensureBotCanPost(channelId: string): Promise<PostRights> {
+  const ctx = await readPermissions(channelId);
+  const missing = missingPostBits(ctx.effective);
+  if (missing.length === 0) return { canPost: true, missing: [] };
+
+  const labels = missing.map((m) => m.label);
+  const botRolesAllows =
+    (ctx.effective & PERM.MANAGE_CHANNELS) === PERM.MANAGE_CHANNELS &&
+    (ctx.effective & PERM.MANAGE_ROLES) === PERM.MANAGE_ROLES;
+
+  if (!botRolesAllows) {
+    return {
+      canPost: false,
+      missing: labels,
+      reason:
+        'Le bot n’a pas « Gérer les salons » + « Gérer les rôles » : donne-lui ces ' +
+        'permissions, ou autorise-le manuellement à écrire dans ce salon.',
+    };
+  }
+
+  // On complète la dérogation EXISTANTE du bot (sans toucher au reste).
+  const current = ctx.overwrites.find((ow) => ow.type === 1 && ow.id === ctx.botId);
+  const allow = (current ? BigInt(current.allow) : 0n) | missing.reduce((acc, m) => acc | m.bit, 0n);
+  const deny = current ? BigInt(current.deny) & ~allow : 0n;
+
+  const nextOverwrites: ChannelOverwrite[] = [
+    ...ctx.overwrites.filter((ow) => !(ow.type === 1 && ow.id === ctx.botId)),
+    { id: ctx.botId, type: 1, allow: String(allow), deny: String(deny) },
+  ];
+
+  const res = await discordFetch(`/channels/${channelId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ permission_overwrites: nextOverwrites }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    return {
+      canPost: false,
+      missing: labels,
+      reason: `Discord a refusé l’autorisation d’écriture (HTTP ${res.status}) ${body.slice(0, 120)}`,
+    };
+  }
+
+  // Relecture : on ne se contente pas de « la requête a marché ».
+  const after = await readPermissions(channelId);
+  const still = missingPostBits(after.effective);
+  if (still.length > 0) {
+    return {
+      canPost: false,
+      missing: still.map((m) => m.label),
+      reason: 'L’autorisation d’écriture a été envoyée mais Discord ne l’applique pas.',
+    };
+  }
+
+  return { canPost: true, missing: [], granted: true };
+}
+
 /**
  * Enveloppe commune aux envois de message.
  *

@@ -9,7 +9,7 @@ import {
 } from '../settings.ts';
 import { countTrackedAccounts, runSteamSync } from '../steam-sync-worker.ts';
 import { runReleaseNotifications, todayInParis } from '../release-notifier.ts';
-import { listTextChannels } from '../discord-bot.ts';
+import { canBotPost, listTextChannels } from '../discord-bot.ts';
 import { generateRecapImage, getStoredRecap } from '../recap.ts';
 
 /**
@@ -36,6 +36,19 @@ export default async function handler(req: any, res: any) {
         listTextChannels().catch(() => []),
         getStoredRecap(),
       ]);
+
+      /**
+       * Le salon du récap' est souvent un salon d'annonces en lecture seule :
+       * sans ce diagnostic, l'admin clique « Régénérer » et rien n'apparaît
+       * sur Discord, sans explication.
+       */
+      const recapChannel = settings.recapChannelId
+        ? await canBotPost(settings.recapChannelId).catch((err) => ({
+            canPost: false,
+            missing: [] as string[],
+            reason: err?.message ?? 'vérification impossible',
+          }))
+        : null;
       return res.status(200).json({
         ok: true,
         settings,
@@ -55,6 +68,7 @@ export default async function handler(req: any, res: any) {
               launched: recap.stats?.launched.length ?? 0,
             }
           : null,
+        recapChannel,
         today: todayInParis(),
         // Sélecteur de salon dans l'admin : plus simple qu'un identifiant à
         // recopier, et évite les erreurs de frappe.
