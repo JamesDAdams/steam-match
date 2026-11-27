@@ -417,6 +417,29 @@ async function loadExternal() {
   }
 }
 
+/**
+ * Remplit le champ depuis le presse-papiers.
+ *
+ * Les deux plateformes renvoient sur LEUR page (GOG : page blanche du client
+ * Galaxy ; Epic : JSON de redirection) : impossible de revenir ici
+ * automatiquement. Le geste utile est donc « copier l'adresse, coller » — ce
+ * bouton l'automatise quand le navigateur l'autorise.
+ */
+async function pasteExternal(platform: 'gog' | 'epic') {
+  extError.value = null;
+  try {
+    const text = await navigator.clipboard.readText();
+    if (!text.trim()) {
+      extError.value = 'Le presse-papiers est vide : copie d’abord l’adresse de retour.';
+      return;
+    }
+    extCode.value[platform] = text.trim();
+  } catch {
+    extError.value =
+      'Le navigateur a refusé l’accès au presse-papiers : colle manuellement (Ctrl/Cmd+V).';
+  }
+}
+
 async function linkExternal(platform: 'gog' | 'epic') {
   const code = extCode.value[platform].trim();
   if (!code || extBusy.value) return;
@@ -1199,6 +1222,20 @@ onUnmounted(() => {
             </span>
           </div>
 
+          <div class="mt-2 rounded-md border border-warn/40 bg-warn-soft px-3 py-2 text-[11px] leading-relaxed text-warn">
+            <template v-if="platform === 'gog'">
+              <strong>Pas de retour automatique sur le site :</strong> GOG n’accepte qu’une
+              adresse de retour fixe (celle de son client Galaxy). Après la connexion, la page
+              reste <strong>blanche — c’est normal</strong>. Le code est dans
+              <strong>l’adresse</strong> : copie-la en entier puis colle-la ci-dessous.
+            </template>
+            <template v-else>
+              <strong>Pas de retour automatique sur le site :</strong> Epic renvoie sur sa
+              propre page, qui affiche un <strong>JSON</strong>. Copie tout ce texte (ou
+              seulement <code>authorizationCode</code>) puis colle-le ci-dessous.
+            </template>
+          </div>
+
           <ol class="mt-2 list-decimal space-y-1 pl-5 text-xs text-fg-muted">
             <li>
               <a
@@ -1209,22 +1246,19 @@ onUnmounted(() => {
               >
                 Se connecter à {{ PLATFORM_LABEL[platform] }} ↗
               </a>
-              (dans un nouvel onglet).
-            </li>
-            <li v-if="platform === 'gog'">
-              Après la connexion, la page de retour
-              <strong class="text-fg">reste blanche : c’est normal</strong> (elle tente
-              d’ouvrir le client Galaxy). Le code est dans
-              <strong class="text-fg">l’adresse</strong>, dans la barre du navigateur.
-            </li>
-            <li v-else>
-              La page affiche un <strong class="text-fg">JSON</strong> avec
-              <code class="text-fg-muted">authorizationCode</code>.
+              (nouvel onglet) et connecte-toi.
             </li>
             <li>
-              Copie <strong class="text-fg">toute l’adresse</strong> (GOG) ou tout le texte
-              (Epic) et colle-le ci-dessous.
+              <template v-if="platform === 'gog'">
+                Sur la page blanche, clique dans la barre d’adresse
+                (⌘L / Ctrl+L), puis copie (<strong class="text-fg">⌘C / Ctrl+C</strong>).
+              </template>
+              <template v-else>
+                Sélectionne tout le JSON affiché et copie
+                (<strong class="text-fg">⌘A puis ⌘C</strong>).
+              </template>
             </li>
+            <li>Reviens ici et clique sur <strong class="text-fg">Coller</strong>, puis Relier.</li>
           </ol>
 
           <div class="mt-2 flex flex-wrap gap-2">
@@ -1239,6 +1273,15 @@ onUnmounted(() => {
               "
               @keydown.enter.prevent="linkExternal(platform)"
             />
+            <button
+              type="button"
+              class="btn-ghost text-sm"
+              :disabled="!!extBusy"
+              title="Coller l’adresse copiée"
+              @click="pasteExternal(platform)"
+            >
+              Coller
+            </button>
             <button
               class="btn-primary text-sm"
               :disabled="
