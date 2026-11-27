@@ -27,8 +27,17 @@ async function logout() {
 
 // Ferme le menu mobile à chaque navigation.
 /**
- * Événements et Twitch sont PUBLICS : visibles avant même la connexion, pour
- * donner envie de rejoindre. Le reste demande l'accès au site.
+ * Le récap' est visible par tous dès que l'admin a ouvert la page au public
+ * (les pseudos y sont masqués pour les visiteurs non connectés). Sinon il
+ * reste réservé aux membres, avec le même drapeau que le reste du site.
+ */
+const showRecap = computed(() =>
+  Boolean(me.value.features?.recap || me.value.features?.recapPublic),
+);
+
+/**
+ * Événements, Twitch et Récap’ public sont visibles avant même la connexion,
+ * pour donner envie de rejoindre. Le reste demande l'accès au site.
  */
 const links = computed(() => [
   { to: '/evenements', label: 'Événements' },
@@ -38,13 +47,15 @@ const links = computed(() => [
         { to: '/membres', label: 'Membres' },
         { to: '/sorties', label: 'Sorties' },
         // Récap' du groupe : masqué si l'admin le désactive.
-        ...(me.value.features?.recap ? [{ to: '/recap', label: 'Récap’' }] : []),
+        ...(showRecap.value ? [{ to: '/recap', label: 'Récap’' }] : []),
         // Page masquée tant que l'admin ne l'active pas (voir réglages).
         ...(me.value.features?.recommendations
           ? [{ to: '/recommandations', label: 'Recommandations' }]
           : []),
       ]
-    : []),
+    : showRecap.value
+      ? [{ to: '/recap', label: 'Récap’' }]
+      : []),
   { to: '/twitch', label: 'Twitch' },
 ]);
 </script>
@@ -222,7 +233,7 @@ const links = computed(() => [
               <router-link v-if="canUseSite" to="/membres" class="block hover:text-fg-strong">Membres</router-link>
               <router-link v-if="canUseSite" to="/sorties" class="block hover:text-fg-strong">Sorties</router-link>
               <router-link
-                v-if="canUseSite && me.features?.recap"
+                v-if="showRecap"
                 to="/recap"
                 class="block hover:text-fg-strong"
               >

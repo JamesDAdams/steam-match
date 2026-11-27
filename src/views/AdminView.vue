@@ -70,6 +70,8 @@ interface SteamSettings {
   releaseChannelId: string | null;
   lastReleaseNotifyAt: string | null;
   recapEnabled: boolean;
+  recapPublicPage: boolean;
+  recapShowNames: boolean;
   recapDays: number;
   recapRefreshHours: number;
   recapHour: number;
@@ -206,6 +208,8 @@ function frequencyLabel(hours: number): string {
 
 async function saveRecap(patch: {
   recapEnabled?: boolean;
+  recapPublicPage?: boolean;
+  recapShowNames?: boolean;
   recapDays?: number;
   recapRefreshHours?: number;
   recapHour?: number;
@@ -621,7 +625,7 @@ onMounted(load);
         téléchargeable en PNG pour la poster sur Discord.
       </p>
 
-      <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div>
           <span class="mb-1 block text-xs font-medium text-fg-muted">Publication</span>
           <button
@@ -638,6 +642,48 @@ onMounted(load);
               "
             >
               {{ steamSettings?.recapEnabled ? 'ON' : 'OFF' }}
+            </span>
+          </button>
+        </div>
+
+        <div>
+          <span class="mb-1 block text-xs font-medium text-fg-muted">Page publique</span>
+          <button
+            type="button"
+            class="flex w-full items-center justify-between rounded-lg border border-line px-3 py-2 text-left text-sm transition hover:border-line-strong disabled:opacity-50"
+            :disabled="recapSaving || !steamSettings"
+            title="Visible sans compte Discord, avec « x joueurs » à la place des pseudos."
+            @click="saveRecap({ recapPublicPage: !steamSettings?.recapPublicPage })"
+          >
+            <span class="text-fg">{{ steamSettings?.recapPublicPage ? 'Visible' : 'Membres' }}</span>
+            <span
+              class="badge"
+              :class="
+                steamSettings?.recapPublicPage ? 'bg-ok-soft text-ok' : 'bg-app-surface2 text-fg-muted'
+              "
+            >
+              {{ steamSettings?.recapPublicPage ? 'PUBLIC' : 'PRIVÉ' }}
+            </span>
+          </button>
+        </div>
+
+        <div>
+          <span class="mb-1 block text-xs font-medium text-fg-muted">Pseudos</span>
+          <button
+            type="button"
+            class="flex w-full items-center justify-between rounded-lg border border-line px-3 py-2 text-left text-sm transition hover:border-line-strong disabled:opacity-50"
+            :disabled="recapSaving || !steamSettings"
+            title="Désactivé : l'image et la page affichent « 3 joueurs » au lieu des noms."
+            @click="saveRecap({ recapShowNames: !steamSettings?.recapShowNames })"
+          >
+            <span class="text-fg">{{ steamSettings?.recapShowNames ? 'Affichés' : 'Masqués' }}</span>
+            <span
+              class="badge"
+              :class="
+                steamSettings?.recapShowNames ? 'bg-ok-soft text-ok' : 'bg-app-surface2 text-fg-muted'
+              "
+            >
+              {{ steamSettings?.recapShowNames ? 'ON' : 'OFF' }}
             </span>
           </button>
         </div>
@@ -757,6 +803,12 @@ onMounted(load);
       <p v-if="recapError" class="mt-1 text-xs text-danger">{{ recapError }}</p>
 
       <p class="mt-3 text-[11px] leading-relaxed text-fg-faint">
+        <strong>Page publique</strong> : la page <code>/recap</code> s'ouvre alors sans compte
+        Discord — les pseudos y sont remplacés par « x joueurs », y compris dans l'image (une
+        variante dédiée est générée). Les membres connectés voient les pseudos quand
+        <strong>Pseudos</strong> est activé.
+      </p>
+      <p class="mt-1 text-[11px] leading-relaxed text-fg-faint">
         Steam ne publie que le temps de jeu cumulé et les 14 derniers jours : la « fenêtre » est
         mesurée par des relevés quotidiens, qui se constituent au fil des synchronisations. Tant que
         l'historique est trop court, l'image l'indique (« estimation »).

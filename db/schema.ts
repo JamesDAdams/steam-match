@@ -433,6 +433,13 @@ export const appSettings = pgTable('app_settings', {
   /** Heure de régénération quand la fréquence est quotidienne (0-23, Paris). */
   recapHour: integer('recap_hour').notNull().default(6),
   lastRecapAt: timestamp('last_recap_at', { withTimezone: true }),
+  /**
+   * Page du récap' consultable SANS être connecté (les pseudos y sont alors
+   * remplacés par « x joueurs »).
+   */
+  recapPublicPage: boolean('recap_public_page').notNull().default(true),
+  /** Afficher les pseudos des joueurs (site + image) ou seulement le nombre. */
+  recapShowNames: boolean('recap_show_names').notNull().default(true),
   /** Salon Discord où le bot publie l'image (null = pas de publication). */
   recapChannelId: text('recap_channel_id'),
   /** Message à éditer au lieu d'en renvoyer un nouveau. */
@@ -512,6 +519,14 @@ export const recapImages = pgTable('recap_images', {
   mode: text('mode').notNull().default('measured'),
   /** Données chiffrées ayant servi à l'image (réutilisées par la page). */
   stats: jsonb('stats').$type<unknown>().notNull().default({}),
+  /**
+   * Variante SANS pseudos, servie aux visiteurs non connectés (page publique).
+   * NULL quand les pseudos sont déjà masqués dans `svg` : une seule variante
+   * suffit alors.
+   */
+  svgPublic: text('svg_public'),
+  /** Les pseudos ont-ils été inclus dans `svg` ? */
+  showNames: boolean('show_names').notNull().default(true),
   generatedAt: timestamp('generated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 

@@ -30,6 +30,10 @@ export interface AppSettings {
   recapRefreshHours: number;
   /** Heure de régénération quand la fréquence est quotidienne (Paris). */
   recapHour: number;
+  /** Page consultable sans connexion (pseudos masqués). */
+  recapPublicPage: boolean;
+  /** Afficher les pseudos des joueurs. */
+  recapShowNames: boolean;
   lastRecapAt: Date | null;
   /** Salon Discord de publication de l'image (null = aucune). */
   recapChannelId: string | null;
@@ -61,6 +65,8 @@ const DEFAULTS: AppSettings = {
   recapDays: 7,
   recapRefreshHours: 24,
   recapHour: 6,
+  recapPublicPage: true,
+  recapShowNames: true,
   lastRecapAt: null,
   recapChannelId: null,
   recapMessageId: null,
@@ -94,6 +100,8 @@ export async function getSettings(): Promise<AppSettings> {
     recapDays: row.recapDays,
     recapRefreshHours: row.recapRefreshHours,
     recapHour: row.recapHour,
+    recapPublicPage: row.recapPublicPage ?? true,
+    recapShowNames: row.recapShowNames ?? true,
     lastRecapAt: row.lastRecapAt ?? null,
     recapChannelId: row.recapChannelId ?? null,
     recapMessageId: row.recapMessageId ?? null,
@@ -117,6 +125,8 @@ export async function updateSettings(
       | 'recapDays'
       | 'recapRefreshHours'
       | 'recapHour'
+      | 'recapPublicPage'
+      | 'recapShowNames'
       | 'lastRecapAt'
       | 'recapChannelId'
       | 'recapMessageId'

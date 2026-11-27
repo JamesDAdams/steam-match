@@ -216,6 +216,10 @@ const statements = [
   `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS last_recap_at timestamp with time zone`,
   `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS recap_channel_id text`,
   `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS recap_message_id text`,
+  `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS recap_public_page boolean NOT NULL DEFAULT true`,
+  `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS recap_show_names boolean NOT NULL DEFAULT true`,
+  `ALTER TABLE recap_images ADD COLUMN IF NOT EXISTS svg_public text`,
+  `ALTER TABLE recap_images ADD COLUMN IF NOT EXISTS show_names boolean NOT NULL DEFAULT true`,
 
   // ── Intéressés des événements Discord ──────────────────────────────
   `ALTER TABLE discord_events ADD COLUMN IF NOT EXISTS interested_users jsonb NOT NULL DEFAULT '[]'::jsonb`,

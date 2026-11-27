@@ -47,8 +47,12 @@ const routes = [
     path: '/recap',
     name: 'recap',
     component: RecapView,
-    // Masquée tant que l'admin ne la publie pas (réglage « Récap’ »).
-    meta: { requiresAccess: true, requiresFeature: 'recap' },
+    /*
+     * Page PUBLIQUE (quand l'admin l'autorise) : pas de garde ici, sinon un
+     * visiteur sans compte serait renvoyé à l'accueil. L'API décide — elle
+     * renvoie les chiffres avec les pseudos pour un membre, sans les pseudos
+     * pour un anonyme, et 401 si la page n'est pas publiée.
+     */
   },
   {
     path: '/membres',

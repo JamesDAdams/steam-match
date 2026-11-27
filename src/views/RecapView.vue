@@ -22,6 +22,8 @@ interface RecapGame {
   minutes: number;
   lastPlayedAt: string | null;
   players: Player[];
+  /** Nombre de joueurs, même quand les pseudos sont masqués. */
+  playerCount?: number;
 }
 
 interface RecapStats {
@@ -40,6 +42,12 @@ interface RecapStats {
 const loading = ref(true);
 const error = ref<string | null>(null);
 const enabled = ref(true);
+/** Visiteur non connecté : les pseudos sont absents des données. */
+const anonymous = ref(false);
+/** Faut-il afficher les pseudos ? (faux aussi si l'admin les masque) */
+const showNames = ref(true);
+/** Les membres verront-ils les pseudos ? (pour l'invitation à se connecter) */
+const namesAvailable = ref(true);
 const stats = ref<RecapStats | null>(null);
 const generatedAt = ref<string | null>(null);
 const imageVersion = ref<string>('');
@@ -51,10 +59,16 @@ async function load() {
   try {
     const r = await apiGet<{
       enabled: boolean;
+      anonymous?: boolean;
+      showNames?: boolean;
+      namesAvailable?: boolean;
       stats: RecapStats | null;
       image: { generatedAt: string } | null;
     }>('/api/recap');
     enabled.value = r.enabled;
+    anonymous.value = Boolean(r.anonymous);
+    showNames.value = r.showNames !== false;
+    namesAvailable.value = r.namesAvailable !== false;
     stats.value = r.stats;
     generatedAt.value = r.image?.generatedAt ?? null;
     imageVersion.value = r.image ? String(new Date(r.image.generatedAt).getTime()) : '0';
@@ -68,7 +82,24 @@ async function load() {
 
 onMounted(load);
 
-const imageUrl = computed(() => `/api/recap/image?v=${imageVersion.value}`);
+/**
+ * Image servie : la variante SANS pseudos pour un visiteur non connecté
+ * (`variant=public`), la complète pour un membre. Les deux ont la même mise en
+ * page, seule la ligne des joueurs change.
+ */
+const imageUrl = computed(
+  () =>
+    `/api/recap/image?variant=${anonymous.value ? 'public' : 'full'}&v=${imageVersion.value}`,
+);
+
+/** « 3 joueurs » quand les pseudos sont masqués. */
+function playersLabel(game: RecapGame): string {
+  if (showNames.value) {
+    return game.players.map((p) => p.name).join(', ') || '—';
+  }
+  const count = game.playerCount ?? game.players.length;
+  return count > 0 ? plural(count, 'joueur') : '—';
+}
 
 function plural(n: number, one: string, many = `${one}s`): string {
   return `${n} ${n === 1 ? one : many}`;
@@ -189,6 +220,19 @@ async function downloadPng() {
       {{ downloadError }}
     </div>
 
+    <!-- Visiteur non connecté : les pseudos sont retirés des données ET de
+         l'image. On explique comment les voir, plutôt que de laisser croire
+         à un bug. -->
+    <div
+      v-if="anonymous && namesAvailable && !loading && !error"
+      class="card mb-6 flex flex-wrap items-center justify-between gap-3 border-brand/40 bg-brand-soft"
+    >
+      <p class="text-sm text-fg">
+        Tu vois le récap’ public : le nombre de joueurs est affiché, pas les pseudos.
+      </p>
+      <a href="/api/auth/discord" class="btn btn-primary text-sm">Se connecter</a>
+    </div>
+
     <div v-if="loading" class="card animate-pulse py-16 text-center text-fg-muted">
       Construction du récap’…
     </div>
@@ -291,7 +335,7 @@ async function downloadPng() {
                 {{ game.name }}
               </a>
               <p class="truncate text-[11px] text-fg-faint">
-                {{ game.players.map((p) => p.name).join(', ') || '—' }}
+                {{ playersLabel(game) }}
               </p>
             </div>
             <span class="shrink-0 text-sm font-semibold text-fg-muted">

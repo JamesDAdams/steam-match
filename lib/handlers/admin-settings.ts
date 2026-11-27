@@ -119,6 +119,8 @@ export default async function handler(req: any, res: any) {
         releaseNotifyHour?: number;
         releaseChannelId?: string | null;
         recapEnabled?: boolean;
+        recapPublicPage?: boolean;
+        recapShowNames?: boolean;
         recapDays?: number;
         recapRefreshHours?: number;
         recapHour?: number;
@@ -157,6 +159,12 @@ export default async function handler(req: any, res: any) {
 
       if (typeof body.recapEnabled === 'boolean') {
         patch.recapEnabled = body.recapEnabled;
+      }
+      if (typeof body.recapPublicPage === 'boolean') {
+        patch.recapPublicPage = body.recapPublicPage;
+      }
+      if (typeof body.recapShowNames === 'boolean') {
+        patch.recapShowNames = body.recapShowNames;
       }
       if (body.recapDays !== undefined && body.recapDays !== null) {
         const d = Number(body.recapDays);
@@ -210,6 +218,18 @@ export default async function handler(req: any, res: any) {
       }
 
       const settings = await updateSettings(patch);
+
+      /**
+       * Basculer « pseudos » change le CONTENU de l'image (et du message
+       * Discord). On régénère tout de suite : sinon l'ancienne version, avec
+       * les pseudos, resterait affichée jusqu'à la prochaine visite.
+       */
+      if (patch.recapShowNames !== undefined) {
+        await generateRecapImage().catch((err) => {
+          console.error('[admin/settings] régénération du récap’ impossible', err?.message);
+        });
+      }
+
       return res.status(200).json({ ok: true, settings });
     }
 

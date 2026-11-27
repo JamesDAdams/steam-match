@@ -39,6 +39,11 @@ export interface RecapGame {
   /** Dernier lancement, ISO (null si inconnu). */
   lastPlayedAt: string | null;
   players: RecapPlayer[];
+  /**
+   * Nombre de joueurs, conservé même quand `players` est vidé pour un visiteur
+   * non connecté : la page affiche alors « 3 joueurs » au lieu des pseudos.
+   */
+  playerCount: number;
 }
 
 export interface RecapStats {
@@ -311,6 +316,7 @@ export async function getRecapStats(daysInput?: number): Promise<RecapStats> {
       minutes: [...bump.minutesByMember.values()].reduce((a, b) => a + b, 0),
       lastPlayedAt: lastPlayed,
       players,
+      playerCount: players.length,
     };
   };
 
@@ -422,10 +428,20 @@ async function fetchCover(url: string | null | undefined): Promise<string | null
   }
 }
 
+export interface RenderOptions {
+  /**
+   * Inclure les pseudos des joueurs. false = variante publique : « 3 joueurs ».
+   * Le reste de l'image (jeux, durées) ne change pas.
+   */
+  showNames?: boolean;
+}
+
 export function renderRecapSvg(
   stats: RecapStats,
   covers: Map<number, string>,
+  opts: RenderOptions = {},
 ): string {
+  const showNames = opts.showNames !== false;
   const top = stats.top.slice(0, IN_IMAGE_TOP);
   const others = stats.launched.filter((g) => !top.some((t) => t.appid === g.appid));
   const shownOthers = others.slice(0, IN_IMAGE_LAUNCHED);
@@ -548,12 +564,16 @@ export function renderRecapSvg(
       )}</text>`,
     );
 
-    const playersLabel = game.players.length
-      ? game.players
-          .slice(0, 4)
-          .map((p) => truncate(cleanName(p.name), 20))
-          .join(', ') + (game.players.length > 4 ? ` +${game.players.length - 4}` : '')
-      : '—';
+    const playersLabel = !showNames
+      ? game.playerCount > 0
+        ? plural(game.playerCount, 'joueur')
+        : '—'
+      : game.players.length
+        ? game.players
+            .slice(0, 4)
+            .map((p) => truncate(cleanName(p.name), 20))
+            .join(', ') + (game.players.length > 4 ? ` +${game.players.length - 4}` : '')
+        : '—';
     parts.push(
       `<text x="${textX}" y="${rowY + 72}" fill="${C.muted}" font-size="14">${esc(playersLabel)}</text>`,
     );
@@ -651,6 +671,7 @@ export interface GenerateResult {
  */
 export async function generateRecapImage(daysInput?: number): Promise<GenerateResult> {
   const db = getDb();
+  const settings = await getSettings();
   const stats = await getRecapStats(daysInput);
 
   const covers = new Map<number, string>();
@@ -661,7 +682,12 @@ export async function generateRecapImage(daysInput?: number): Promise<GenerateRe
     }),
   );
 
-  const svg = renderRecapSvg(stats, covers);
+  // Deux variantes : avec pseudos (membres connectés, Discord) et sans
+  // (page publique). Inutile de doubler le stockage quand les pseudos sont
+  // déjà masqués partout : une seule image suffit alors.
+  const showNames = settings.recapShowNames;
+  const svg = renderRecapSvg(stats, covers, { showNames });
+  const svgPublic = showNames ? renderRecapSvg(stats, covers, { showNames: false }) : null;
 
   // UN SEUL horodatage : c'est lui qui est stocké ET signé dans l'URL Discord.
   // Deux `new Date()` distincts produisaient une signature invalide (401).
@@ -672,6 +698,8 @@ export async function generateRecapImage(daysInput?: number): Promise<GenerateRe
     .values({
       id: ROW_ID,
       svg,
+      svgPublic,
+      showNames,
       windowDays: stats.days,
       mode: stats.mode,
       stats,
@@ -681,6 +709,8 @@ export async function generateRecapImage(daysInput?: number): Promise<GenerateRe
       target: recapImages.id,
       set: {
         svg,
+        svgPublic,
+        showNames,
         windowDays: stats.days,
         mode: stats.mode,
         stats: sql`excluded.stats`,
@@ -697,8 +727,25 @@ export async function generateRecapImage(daysInput?: number): Promise<GenerateRe
   return { stats, svg, publish };
 }
 
+/** Copie des statistiques SANS aucun pseudo (page publique). */
+export function redactRecapStats(stats: RecapStats): RecapStats {
+  const strip = (game: RecapGame): RecapGame => ({
+    ...game,
+    players: [],
+    playerCount: game.playerCount ?? game.players.length,
+  });
+  return {
+    ...stats,
+    top: stats.top.map(strip),
+    launched: stats.launched.map(strip),
+  };
+}
+
 export async function getStoredRecap(): Promise<{
   svg: string;
+  /** Variante sans pseudos (null si `svg` n'en contient déjà pas). */
+  svgPublic: string | null;
+  showNames: boolean;
   windowDays: number;
   mode: string;
   stats: RecapStats | null;
@@ -714,6 +761,8 @@ export async function getStoredRecap(): Promise<{
   if (!row) return null;
   return {
     svg: row.svg,
+    svgPublic: row.svgPublic ?? null,
+    showNames: row.showNames ?? true,
     windowDays: row.windowDays,
     mode: row.mode,
     stats: (row.stats as RecapStats | null) ?? null,

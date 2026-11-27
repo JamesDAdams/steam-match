@@ -19,7 +19,7 @@ import {
 import { isAdminId } from '../lib/discord.ts';
 import { resolveAccess } from '../lib/access.ts';
 import { inviteUrl, isBotConfigured } from '../lib/discord-bot.ts';
-import { recapEnabled, recommendationsEnabled } from '../lib/features.ts';
+import { recapEnabled, recapPublicPage, recommendationsEnabled } from '../lib/features.ts';
 
 /**
  * GET  /api/me  → état complet de la session
@@ -57,6 +57,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // Infos publiques utiles à la page de connexion (lien du serveur).
         guildInviteUrl: inviteUrl(),
         botConfigured: isBotConfigured(),
+        // Pages consultables sans compte : le menu doit les proposer.
+        features: {
+          recommendations: false,
+          recap: await recapEnabled(),
+          recapPublic: await recapPublicPage(),
+        },
       });
     }
 
@@ -310,6 +316,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       features: {
         recommendations: await recommendationsEnabled(),
         recap: await recapEnabled(),
+        recapPublic: await recapPublicPage(),
       },
       discord: {
         id: du.discordId,
