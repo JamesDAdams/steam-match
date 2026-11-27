@@ -51,6 +51,9 @@ export interface AppSettings {
    * Écrite une fois, relue à chaque clic : aucun appel réseau nécessaire.
    */
   discordVerifyKey: string | null;
+  /** Dernier appel d'interaction reçu de Discord (diagnostic admin). */
+  lastInteractionAt: Date | null;
+  lastInteractionKind: string | null;
 }
 
 const ROW_ID = 'app';
@@ -85,6 +88,8 @@ const DEFAULTS: AppSettings = {
   recapMessageId: null,
   eventAnnounceChannelId: null,
   discordVerifyKey: null,
+  lastInteractionAt: null,
+  lastInteractionKind: null,
 };
 
 export async function getSettings(): Promise<AppSettings> {
@@ -123,6 +128,8 @@ export async function getSettings(): Promise<AppSettings> {
     recapMessageId: row.recapMessageId ?? null,
     eventAnnounceChannelId: row.eventAnnounceChannelId ?? null,
     discordVerifyKey: row.discordVerifyKey ?? null,
+    lastInteractionAt: row.lastInteractionAt ?? null,
+    lastInteractionKind: row.lastInteractionKind ?? null,
   };
 }
 
@@ -151,6 +158,8 @@ export async function updateSettings(
       | 'recapMessageId'
       | 'eventAnnounceChannelId'
       | 'discordVerifyKey'
+      | 'lastInteractionAt'
+      | 'lastInteractionKind'
     >
   >,
 ): Promise<AppSettings> {

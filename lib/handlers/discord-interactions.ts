@@ -41,6 +41,16 @@ interface InteractionUser {
   avatar?: string | null;
 }
 
+/** Note l'appel reçu (diagnostic admin). Ne bloque jamais la réponse. */
+async function markInteraction(kind: 'ping' | 'clic'): Promise<void> {
+  try {
+    const { updateSettings } = await import('../settings.ts');
+    await updateSettings({ lastInteractionAt: new Date(), lastInteractionKind: kind });
+  } catch {
+    /* trace seulement : jamais bloquant */
+  }
+}
+
 function ephemeral(content: string) {
   return { type: 4, data: { content, flags: 64 } };
 }
@@ -102,6 +112,9 @@ export default async function handler(req: any, res: any) {
   // 1. Validation de l'URL par le portail Discord.
   if (body.type === 1) {
     console.log(`[interaction] ping validé en ${verifyMs} ms`);
+    // Trace lisible depuis l'admin : c'est la PREUVE que l'URL déclarée dans
+    // le portail Discord pointe bien ici.
+    await markInteraction('ping');
     return res.status(200).json({ type: INTERACTION.PONG });
   }
 
@@ -174,6 +187,7 @@ async function handleComponent(body: any, res: any) {
     console.log(
       `[interaction] ${parsed.kind} ${parsed.eventId} en ${Date.now() - startedAt} ms`,
     );
+    await markInteraction('clic');
 
     return res.status(200).json(response);
   } catch (err: any) {

@@ -233,6 +233,8 @@ const statements = [
   // ── Annonce Discord des événements créés depuis le site ────────────
   `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS event_announce_channel_id text`,
   `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS discord_verify_key text`,
+  `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS last_interaction_at timestamp with time zone`,
+  `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS last_interaction_kind text`,
   `ALTER TABLE discord_events ADD COLUMN IF NOT EXISTS game_appid integer`,
   `ALTER TABLE discord_events ADD COLUMN IF NOT EXISTS announce_message_id text`,
   `ALTER TABLE discord_events ADD COLUMN IF NOT EXISTS announce_channel_id text`,

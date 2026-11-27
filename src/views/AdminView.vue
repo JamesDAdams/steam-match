@@ -104,7 +104,13 @@ const eventAnnounceChannel = ref<{
  * URL à coller dans le portail Discord (Interactions Endpoint URL). Sans elle,
  * les boutons « Je participe » / « Peut-être » ne renvoient rien au site.
  */
-const interactions = ref<{ url: string | null; ready: boolean }>({ url: null, ready: false });
+const interactions = ref<{
+  url: string | null;
+  ready: boolean;
+  app?: { id: string; name: string } | null;
+  lastAt?: string | null;
+  lastKind?: string | null;
+}>({ url: null, ready: false });
 /** Message d'échec de publication (affiché en rouge). */
 const recapError = ref<string | null>(null);
 const steamSaving = ref(false);
@@ -129,7 +135,13 @@ async function loadSteamSettings() {
       } | null;
       recapChannel?: { canPost: boolean; missing: string[]; reason?: string } | null;
       eventAnnounceChannel?: { canPost: boolean; missing: string[]; reason?: string } | null;
-      interactions?: { url: string | null; ready: boolean };
+      interactions?: {
+        url: string | null;
+        ready: boolean;
+        app?: { id: string; name: string } | null;
+        lastAt?: string | null;
+        lastKind?: string | null;
+      };
     }>('/api/admin/settings');
     steamSettings.value = r.settings;
     steamAccountsCount.value = r.accounts ?? { main: 0, linked: 0 };
@@ -765,18 +777,41 @@ onMounted(load);
           </button>
         </div>
 
-        <p class="mt-2 text-[11px] text-fg-faint">
-          <span
-            class="badge"
-            :class="interactions.ready ? 'bg-ok-soft text-ok' : 'bg-warn-soft text-warn'"
-          >
-            {{ interactions.ready ? 'SIGNATURE VÉRIFIABLE' : 'CLÉ PUBLIQUE INDISPONIBLE' }}
-          </span>
-          <span class="ml-2">
-            Sans cette déclaration, les boutons répondent « échec de l'interaction » : le site
-            ne reçoit aucun clic.
-          </span>
-        </p>
+        <div class="mt-2 space-y-1 text-[11px] text-fg-faint">
+          <p>
+            <span
+              class="badge"
+              :class="interactions.ready ? 'bg-ok-soft text-ok' : 'bg-warn-soft text-warn'"
+            >
+              {{ interactions.ready ? 'SIGNATURE VÉRIFIABLE' : 'CLÉ PUBLIQUE INDISPONIBLE' }}
+            </span>
+            <span class="ml-2">
+              L'URL doit être déclarée sur l'application
+              <strong>{{ interactions.app?.name ?? 'du bot' }}</strong>
+              <span v-if="interactions.app?.id" class="text-fg-faint">
+                (id {{ interactions.app.id }})</span
+              > — c'est elle qui a créé les messages, pas l'application OAuth du site.
+            </span>
+          </p>
+          <p>
+            <span
+              class="badge"
+              :class="interactions.lastAt ? 'bg-ok-soft text-ok' : 'bg-warn-soft text-warn'"
+            >
+              {{ interactions.lastAt ? 'DISCORD NOUS PARLE' : 'JAMAIS REÇU' }}
+            </span>
+            <span class="ml-2">
+              <template v-if="interactions.lastAt">
+                Dernier appel reçu : {{ new Date(interactions.lastAt).toLocaleString('fr-FR') }}
+                ({{ interactions.lastKind === 'ping' ? 'validation de l’URL' : 'clic' }}).
+              </template>
+              <template v-else>
+                Aucun appel n'est encore arrivé : si un clic affiche « échec de l'interaction »,
+                l'URL déclarée dans le portail ne pointe pas ici.
+              </template>
+            </span>
+          </p>
+        </div>
       </div>
 
       <p v-if="announceMessage" class="mt-2 text-xs text-ok">{{ announceMessage }}</p>

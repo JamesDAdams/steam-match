@@ -12,6 +12,7 @@ import { runReleaseNotifications, todayInParis } from '../release-notifier.ts';
 import {
   canBotPost,
   getApplicationPublicKey,
+  getBotIdentity,
   interactionsEndpointUrl,
   listTextChannels,
 } from '../discord-bot.ts';
@@ -76,6 +77,17 @@ export default async function handler(req: any, res: any) {
         ready: await getApplicationPublicKey()
           .then((k) => Boolean(k))
           .catch(() => false),
+        /**
+         * Identité de l'application Discord du bot : c'est CELLE-CI qui doit
+         * recevoir l'URL d'interaction. Une confusion entre deux applications
+         * (OAuth du site / bot) explique un bouton qui ne répond jamais.
+         */
+        app: await getBotIdentity()
+          .then((b) => ({ id: b.id, name: b.username }))
+          .catch(() => null),
+        /** Dernier appel reçu de Discord (preuve que l'URL pointe bien ici). */
+        lastAt: settings.lastInteractionAt,
+        lastKind: settings.lastInteractionKind,
       };
       return res.status(200).json({
         ok: true,

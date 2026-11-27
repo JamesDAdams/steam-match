@@ -514,6 +514,15 @@ export const appSettings = pgTable('app_settings', {
   discordVerifyKey: text('discord_verify_key'),
 
   /**
+   * Dernier appel reçu de Discord sur l'URL d'interaction (ping de validation
+   * ou clic). Sert de diagnostic dans l'admin : « jamais reçu » signifie que
+   * l'URL déclarée dans le portail Discord ne pointe pas ici.
+   */
+  lastInteractionAt: timestamp('last_interaction_at', { withTimezone: true }),
+  /** 'ping' (validation de l'URL) ou 'clic'. */
+  lastInteractionKind: text('last_interaction_kind'),
+
+  /**
    * Salon Discord où le bot annonce les événements créés depuis le site
    * (null = aucune annonce). Le message porte les boutons « Je participe » et
    * « Peut-être » : c'est cette route d'interaction, et non le site, qui
