@@ -11,6 +11,7 @@
  */
 
 const ACCOUNT = 'https://account-public-service-prod03.ol.epicgames.com';
+const LAUNCHER = 'https://launcher-public-service-prod06.ol.epicgames.com';
 const LIBRARY = 'https://library-service.live.use1a.on.epicgames.com';
 const CATALOG = 'https://catalog-public-service-prod06.ol.epicgames.com';
 
@@ -126,6 +127,55 @@ export async function refreshEpicTokens(refreshToken: string): Promise<EpicToken
   return toTokens(await requestToken({ grant_type: 'refresh_token', refresh_token: refreshToken }));
 }
 
+interface AssetRecord {
+  appName?: string;
+  catalogItemId?: string;
+  namespace?: string;
+  labelName?: string;
+}
+
+/**
+ * Jeux installables, la source EXACTE de la bibliothèque Epic.
+ *
+ * POURQUOI PAS `/library/api/public/items` : cet endpoint renvoie TOUS les
+ * droits du compte — DLC, packs de monnaie, démos, contenus Unreal, artefacts
+ * non-jeux. On arrivait à 770 « jeux » pour une ludothèque de quelques
+ * dizaines. Les assets sont ce que le launcher sait installer : un jeu = un
+ * asset (les DLC en sont exclus plus bas via le catalogue).
+ */
+export async function getEpicAssets(accessToken: string): Promise<EpicRawGame[]> {
+  const byApp = new Map<string, EpicRawGame>();
+
+  for (const platform of ['Windows', 'Mac']) {
+    try {
+      const res = await fetch(
+        `${LAUNCHER}/launcher/api/public/assets/${platform}?label=Live`,
+        {
+          headers: { Authorization: `Bearer ${accessToken}`, 'User-Agent': UA },
+          signal: AbortSignal.timeout(15_000),
+        },
+      );
+      if (!res.ok) continue;
+
+      const rows = (await res.json()) as AssetRecord[];
+      for (const a of rows ?? []) {
+        if (!a.appName || !a.catalogItemId || !a.namespace) continue;
+        if (a.namespace === 'ue') continue; // marketplace Unreal
+        if (byApp.has(a.appName)) continue;
+        byApp.set(a.appName, {
+          appName: a.appName,
+          catalogItemId: a.catalogItemId,
+          namespace: a.namespace,
+        });
+      }
+    } catch {
+      /* une plateforme indisponible ne doit pas vider la bibliothèque */
+    }
+  }
+
+  return [...byApp.values()];
+}
+
 interface LibraryRecord {
   appName?: string;
   catalogItemId?: string;
@@ -210,6 +260,8 @@ export async function getEpicPlaytime(
 export interface EpicMeta {
   name: string;
   imageUrl: string | null;
+  /** Vrai pour un DLC / add-on : ce n'est pas un jeu de la ludothèque. */
+  isAddon: boolean;
 }
 
 /** Types de jaquettes Epic, du plus joli au plus petit. */
@@ -259,12 +311,30 @@ export async function getEpicCatalog(
 
         const data = (await res.json()) as Record<
           string,
-          { title?: string; keyImages?: { type?: string; url?: string }[] }
+          {
+            title?: string;
+            keyImages?: { type?: string; url?: string }[];
+            categories?: { path?: string }[];
+            mainGameItem?: unknown;
+          }
         >;
 
         for (const [id, item] of Object.entries(data ?? {})) {
           if (!item?.title) continue;
-          out.set(id, { name: item.title, imageUrl: pickImage(item.keyImages) });
+          const categories = (item.categories ?? [])
+            .map((c) => String(c?.path ?? '').toLowerCase())
+            .filter(Boolean);
+          // Un DLC porte `mainGameItem`, un add-on est catégorisé comme tel.
+          const isAddon =
+            Boolean(item.mainGameItem) ||
+            (categories.some((c) => c === 'addons' || c === 'digitalextras') &&
+              !categories.some((c) => c === 'games' || c === 'applications'));
+
+          out.set(id, {
+            name: item.title,
+            imageUrl: pickImage(item.keyImages),
+            isAddon,
+          });
         }
       } catch {
         // Métadonnées manquantes : on retombera sur l'appName.

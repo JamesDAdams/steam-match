@@ -387,13 +387,50 @@ interface ExternalGame {
 
 const extAccounts = ref<ExternalAccount[]>([]);
 const extLogin = ref<{ gog: string; epic: string }>({ gog: '', epic: '' });
-const extMax = ref(5);
 const extCode = ref({ gog: '', epic: '' });
 const extBusy = ref<string | null>(null);
 const extError = ref<string | null>(null);
 const extMessage = ref<string | null>(null);
 const extGames = ref<Record<string, ExternalGame[]>>({});
 const extOpen = ref<string | null>(null);
+
+/** Tous les jeux GOG/Epic du membre, affichés dans la ludothèque. */
+interface ExtLibraryGame {
+  accountId: string;
+  platform: 'gog' | 'epic';
+  displayName: string | null;
+  externalId: string;
+  name: string;
+  imageUrl: string | null;
+  minutes: number;
+}
+
+const extLibrary = ref<ExtLibraryGame[]>([]);
+
+async function loadExternalLibrary() {
+  try {
+    const r = await apiGet<{ games: ExtLibraryGame[] }>('/api/external-accounts', {
+      all: '1',
+    });
+    extLibrary.value = r.games ?? [];
+  } catch {
+    /* section secondaire */
+  }
+}
+
+/** Jeux externes regroupés par plateforme (Epic d'abord : il a des heures). */
+const extLibraryByPlatform = computed<Record<'gog' | 'epic', ExtLibraryGame[]>>(() => {
+  const groups: Record<'gog' | 'epic', ExtLibraryGame[]> = { gog: [], epic: [] };
+  for (const g of extLibrary.value) {
+    if (g.platform === 'gog' || g.platform === 'epic') groups[g.platform].push(g);
+  }
+  for (const key of PLATFORMS) {
+    groups[key].sort(
+      (a, b) => b.minutes - a.minutes || a.name.localeCompare(b.name, 'fr'),
+    );
+  }
+  return groups;
+});
 
 const PLATFORMS = ['gog', 'epic'] as const;
 const PLATFORM_LABEL: Record<'gog' | 'epic', string> = { gog: 'GOG', epic: 'Epic' };
@@ -407,11 +444,10 @@ async function loadExternal() {
     const r = await apiGet<{
       accounts: ExternalAccount[];
       login: { gog: string; epic: string };
-      maxPerPlatform: number;
-    }>('/api/external-accounts');
+      }>('/api/external-accounts');
     extAccounts.value = r.accounts ?? [];
     extLogin.value = r.login ?? { gog: '', epic: '' };
-    extMax.value = r.maxPerPlatform ?? 5;
+    await loadExternalLibrary();
   } catch {
     /* section secondaire : le reste du profil reste utilisable */
   }
@@ -988,24 +1024,6 @@ onUnmounted(() => {
           </div>
         </button>
 
-        <button
-          class="card-flat text-left transition hover:border-brand/50"
-          :class="tab === 'accounts' ? '!border-brand ring-1 ring-brand/30' : ''"
-          @click="tab = 'accounts'"
-        >
-          <div class="flex items-start justify-between gap-3">
-            <div>
-              <p class="text-xs uppercase tracking-wide text-fg-faint">Mes comptes Steam</p>
-              <p class="mt-1 font-display text-2xl font-bold text-fg-strong">
-                {{ accounts.length }}
-              </p>
-              <p class="mt-0.5 text-xs text-fg-muted">
-                {{ accounts.length ? 'comptes secondaires ou famille' : 'secondaire ou famille' }}
-              </p>
-            </div>
-            <span class="text-2xl">👪</span>
-          </div>
-        </button>
 
         <button
           class="card-flat text-left transition hover:border-brand/50"
@@ -1208,9 +1226,6 @@ onUnmounted(() => {
             <h3 class="text-sm font-semibold text-fg-strong">
               {{ PLATFORM_LABEL[platform] }}
             </h3>
-            <span class="badge bg-app-surface2 text-fg-muted">
-              {{ platformCount(platform) }}/{{ extMax }}
-            </span>
             <span
               v-if="platform === 'gog'"
               class="text-[11px] text-fg-faint"
@@ -1286,9 +1301,7 @@ onUnmounted(() => {
             </button>
             <button
               class="btn-primary text-sm"
-              :disabled="
-                !!extBusy || !extCode[platform].trim() || platformCount(platform) >= extMax
-              "
+              :disabled="!!extBusy || !extCode[platform].trim()"
               @click="linkExternal(platform)"
             >
               {{ extBusy === `link:${platform}` ? 'Connexion…' : 'Relier' }}
@@ -1665,6 +1678,60 @@ onUnmounted(() => {
           </button>
         </div>
       </section>
+
+      <!-- Jeux GOG / Epic : ils font partie de la ludothèque, mais restent
+           séparés des totaux Steam (pas d'appid commun). -->
+      <template v-if="tab === 'games'">
+        <section
+          v-for="platform in PLATFORMS"
+          :key="platform"
+          v-show="extLibraryByPlatform[platform].length"
+          class="card mt-4"
+        >
+          <div class="flex flex-wrap items-center gap-2">
+            <h2 class="font-semibold text-fg-strong">
+              Ludothèque {{ PLATFORM_LABEL[platform] }}
+            </h2>
+            <span class="badge bg-app-surface2 text-fg-muted">
+              {{ extLibraryByPlatform[platform].length }}
+            </span>
+            <span class="text-[11px] text-fg-faint">
+              <template v-if="platform === 'gog'">GOG ne transmet pas le temps de jeu</template>
+              <template v-else>temps de jeu fourni par Epic</template>
+            </span>
+          </div>
+
+          <div class="mt-3 grid gap-2 sm:grid-cols-2">
+            <div
+              v-for="g in extLibraryByPlatform[platform]"
+              :key="g.accountId + g.externalId"
+              class="flex items-center gap-3 rounded-lg border border-line bg-app-elevated p-2"
+            >
+              <img
+                v-if="g.imageUrl"
+                :src="g.imageUrl"
+                :alt="g.name"
+                class="h-12 shrink-0 rounded object-cover"
+                :class="platform === 'gog' ? 'w-12' : 'w-20'"
+                loading="lazy"
+              />
+              <div
+                v-else
+                class="flex h-12 w-12 shrink-0 items-center justify-center rounded bg-app-surface2 text-lg"
+              >
+                🎮
+              </div>
+              <div class="min-w-0 flex-1">
+                <p class="truncate text-sm text-fg-strong">{{ g.name }}</p>
+                <p class="text-[11px] text-fg-faint">
+                  {{ g.displayName ?? PLATFORM_LABEL[platform] }}
+                  <template v-if="g.minutes > 0"> · {{ formatPlaytime(g.minutes) }}</template>
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+      </template>
 
       <!-- Liste des jeux -->
       <div v-if="loading && tab === 'games'" class="grid gap-3 sm:grid-cols-2">

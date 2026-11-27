@@ -1,10 +1,10 @@
 import { requireAccess } from '../access.ts';
 import {
+  getAllExternalGames,
   getExternalGames,
   getExternalSummary,
   linkEpicAccount,
   linkGogAccount,
-  MAX_ACCOUNTS_PER_PLATFORM,
   syncExternalAccount,
   unlinkExternalAccount,
 } from '../external-sync.ts';
@@ -30,6 +30,12 @@ export default async function handler(req: any, res: any) {
 
   try {
     if (method === 'GET') {
+      // Tous les jeux externes, pour la ludothèque du profil.
+      if (req.query?.all === '1') {
+        const games = await getAllExternalGames(ctx.discordId);
+        return res.status(200).json({ ok: true, games });
+      }
+
       const accountId = typeof req.query?.account === 'string' ? req.query.account.trim() : '';
 
       if (accountId) {
@@ -45,7 +51,6 @@ export default async function handler(req: any, res: any) {
       return res.status(200).json({
         ok: true,
         accounts: summary.accounts,
-        maxPerPlatform: MAX_ACCOUNTS_PER_PLATFORM,
         login: { gog: gogLoginUrl(), epic: epicLoginUrl() },
       });
     }

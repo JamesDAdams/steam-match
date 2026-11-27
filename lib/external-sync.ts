@@ -11,6 +11,7 @@ import {
 } from './gog.ts';
 import {
   exchangeEpicCode,
+  getEpicAssets,
   getEpicCatalog,
   getEpicLibrary,
   getEpicPlaytime,
@@ -31,8 +32,6 @@ import {
 
 export type Platform = 'gog' | 'epic';
 
-/** Plafond par plateforme : au-delà, c'est du bricolage, pas un usage. */
-export const MAX_ACCOUNTS_PER_PLATFORM = 5;
 
 export interface ExternalAccountRow {
   id: string;
@@ -55,14 +54,6 @@ function rowId(discordId: string, platform: Platform, accountId: string): string
   return `${discordId}:${platform}:${accountId}`;
 }
 
-async function countPlatform(discordId: string, platform: Platform): Promise<number> {
-  const db = getDb();
-  const rows = await db
-    .select({ id: externalAccounts.id })
-    .from(externalAccounts)
-    .where(and(eq(externalAccounts.discordId, discordId), eq(externalAccounts.platform, platform)));
-  return rows.length;
-}
 
 async function storeTokens(
   id: string,
@@ -82,10 +73,6 @@ async function storeTokens(
 /* ─────────────────────────── Liaison ─────────────────────────── */
 
 export async function linkGogAccount(discordId: string, code: string): Promise<ExternalAccountRow> {
-  if ((await countPlatform(discordId, 'gog')) >= MAX_ACCOUNTS_PER_PLATFORM) {
-    throw new Error(`Maximum ${MAX_ACCOUNTS_PER_PLATFORM} comptes GOG par membre.`);
-  }
-
   const tokens: GogTokens = await exchangeGogCode(code);
   // Le profil sert d'identité : on refuse un code qui ne donne rien.
   const user = await getGogUser(tokens.accessToken);
@@ -122,10 +109,6 @@ export async function linkGogAccount(discordId: string, code: string): Promise<E
 }
 
 export async function linkEpicAccount(discordId: string, code: string): Promise<ExternalAccountRow> {
-  if ((await countPlatform(discordId, 'epic')) >= MAX_ACCOUNTS_PER_PLATFORM) {
-    throw new Error(`Maximum ${MAX_ACCOUNTS_PER_PLATFORM} comptes Epic par membre.`);
-  }
-
   const tokens: EpicTokens = await exchangeEpicCode(code);
   if (!tokens.accountId) throw new Error('Epic n’a pas renvoyé d’identifiant de compte.');
 
@@ -300,12 +283,17 @@ async function syncGog(accessToken: string): Promise<SyncedGame[]> {
 }
 
 async function syncEpic(accessToken: string, accountId: string): Promise<SyncedGame[]> {
-  const [library, playtime] = await Promise.all([
-    getEpicLibrary(accessToken),
+  // Les assets sont la vraie liste des jeux installables. Si l'endpoint ne
+  // répond pas, on retombe sur les droits du compte (moins précis, mais
+  // jamais vide).
+  const assets = await getEpicAssets(accessToken);
+  const library = assets.length > 0 ? assets : await getEpicLibrary(accessToken);
+
+  const [playtime, catalog] = await Promise.all([
     getEpicPlaytime(accessToken, accountId),
+    getEpicCatalog(accessToken, library),
   ]);
 
-  const catalog = await getEpicCatalog(accessToken, library);
   const seen = new Set<string>();
   const games: SyncedGame[] = [];
 
@@ -315,6 +303,9 @@ async function syncEpic(accessToken: string, accountId: string): Promise<SyncedG
     seen.add(entry.appName);
 
     const meta = catalog.get(entry.catalogItemId);
+    // DLC et add-ons ne sont pas des jeux à part entière.
+    if (meta?.isAddon) continue;
+
     const seconds = playtime.get(entry.appName) ?? 0;
 
     games.push({
@@ -392,6 +383,55 @@ export async function getExternalGames(accountRowId: string, limit = 60) {
     .where(eq(externalGames.accountRowId, accountRowId))
     .orderBy(sql`${externalGames.minutes} DESC, ${externalGames.name} ASC`)
     .limit(limit);
+}
+
+/**
+ * Tous les jeux GOG/Epic d'un membre, tous comptes confondus.
+ *
+ * Sert à la ludothèque : les jeux externes y apparaissent sous leur
+ * plateforme, sans être mélangés aux totaux Steam.
+ */
+export async function getAllExternalGames(discordId: string): Promise<
+  {
+    accountId: string;
+    platform: Platform;
+    displayName: string | null;
+    externalId: string;
+    name: string;
+    imageUrl: string | null;
+    minutes: number;
+  }[]
+> {
+  const db = getDb();
+  const accounts = await db
+    .select({
+      id: externalAccounts.id,
+      platform: externalAccounts.platform,
+      displayName: externalAccounts.displayName,
+    })
+    .from(externalAccounts)
+    .where(eq(externalAccounts.discordId, discordId));
+
+  if (accounts.length === 0) return [];
+
+  const byId = new Map(accounts.map((a) => [a.id, a]));
+  const rows = await db
+    .select()
+    .from(externalGames)
+    .where(inArray(externalGames.accountRowId, accounts.map((a) => a.id)));
+
+  return rows.map((r) => {
+    const account = byId.get(r.accountRowId)!;
+    return {
+      accountId: account.id,
+      platform: account.platform as Platform,
+      displayName: account.displayName,
+      externalId: r.externalId,
+      name: r.name,
+      imageUrl: r.imageUrl,
+      minutes: r.minutes,
+    };
+  });
 }
 
 /** Détache un compte et ses jeux. */
