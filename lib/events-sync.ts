@@ -8,6 +8,7 @@ import {
   guildId,
 } from './discord-bot.ts';
 import type { DiscordScheduledEvent } from './discord-bot.ts';
+import { stripSiteBlock } from './event-interest.ts';
 
 /**
  * Recopie les événements du serveur Discord en base.
@@ -34,7 +35,10 @@ export async function storeEvent(e: DiscordScheduledEvent, now = new Date()): Pr
     id: e.id,
     guildId: e.guild_id ?? guildId(),
     name: e.name,
-    description: e.description ?? null,
+    // La description stockée est la description D'ORIGINE : le bloc
+    // « Inscriptions du site » qu'on y ajoute ne doit pas être réaffiché dans
+    // la fiche (ni recopié une deuxième fois au prochain envoi).
+    description: stripSiteBlock(e.description ?? null),
     status: e.status ?? 1,
     entityType: e.entity_type ?? 3,
     location: e.entity_metadata?.location ?? null,

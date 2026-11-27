@@ -740,6 +740,59 @@ export async function createScheduledEvent(
   return (await res.json()) as DiscordScheduledEvent;
 }
 
+export interface UpdateScheduledEventInput {
+  name?: string;
+  description?: string | null;
+  startAt?: Date;
+  endAt?: Date | null;
+  status?: 1 | 3 | 4;
+  location?: string | null;
+}
+
+/**
+ * Modifie un événement programmé existant.
+ *
+ * Sert aux inscriptions du site (« Peut-être »…) : on réécrit la description
+ * en conservant le texte d'origine. Le bot doit avoir « Gérer les événements ».
+ */
+export async function updateScheduledEvent(
+  eventId: string,
+  input: UpdateScheduledEventInput,
+): Promise<void> {
+  const body: Record<string, unknown> = {};
+
+  if (input.name !== undefined) body.name = input.name;
+  // `null` efface la description, une chaîne la remplace.
+  if (input.description !== undefined) body.description = input.description ?? '';
+  if (input.startAt) body.scheduled_start_time = input.startAt.toISOString();
+  if (input.endAt !== undefined) {
+    body.scheduled_end_time = input.endAt ? input.endAt.toISOString() : null;
+  }
+  if (input.status !== undefined) body.status = input.status;
+  if (input.location !== undefined) body.entity_metadata = { location: input.location };
+
+  if (Object.keys(body).length === 0) return;
+
+  await assertGuildAccessible();
+
+  const res = await discordFetch(
+    `/guilds/${guildId()}/scheduled-events/${encodeURIComponent(eventId)}`,
+    { method: 'PATCH', body: JSON.stringify(body) },
+  );
+
+  if (res.status === 403) {
+    throw new Error(
+      'Discord a refusé la modification de l’événement : le bot doit avoir la ' +
+        'permission « Gérer les événements ».',
+    );
+  }
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Discord a refusé la modification (HTTP ${res.status}). ${text.slice(0, 200)}`.trim());
+  }
+}
+
+
 /**
  * Supprime un événement programmé sur le serveur.
  *

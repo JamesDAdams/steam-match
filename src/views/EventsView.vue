@@ -17,6 +17,9 @@ interface DiscordEvent {
   coverImage: string | null;
   interestedCount: number;
   interestedUsers: { id: string; name: string; avatarUrl: string | null }[];
+  /** Inscriptions faites sur le site (Discord ne les connaît pas). */
+  siteInterestedUsers: { id: string; name: string; avatarUrl: string | null }[];
+  maybeUsers: { id: string; name: string; avatarUrl: string | null }[];
   startAt: string;
   endAt: string | null;
   isPast: boolean;
@@ -33,6 +36,49 @@ const syncing = ref(false);
 const syncMessage = ref<string | null>(null);
 const configured = ref(true);
 const lastSyncAt = ref<string | null>(null);
+/** Inscription en cours (un seul bouton à la fois). */
+const busy = ref<string | null>(null);
+/** Message d'avertissement (description Discord non mise à jour, par ex.). */
+const interestWarning = ref<string | null>(null);
+
+/**
+ * « Intéressé » / « Peut-être » depuis le site.
+ *
+ * Discord n'autorise pas un bot à cocher « Intéressé » à la place d'un
+ * membre : on tient donc nos listes, et le serveur recopie le résultat dans la
+ * description de l'événement Discord.
+ */
+async function toggleInterest(event: DiscordEvent, kind: 'interested' | 'maybe') {
+  const list = kind === 'maybe' ? event.maybeUsers : event.siteInterestedUsers;
+  const meId = me.value.discord?.id;
+  const active = meId ? !list.some((u) => u.id === meId) : true;
+
+  busy.value = `${event.id}:${kind}`;
+  interestWarning.value = null;
+  try {
+    const r = await apiPost<{
+      ok: boolean;
+      interested: DiscordEvent['siteInterestedUsers'];
+      maybe: DiscordEvent['maybeUsers'];
+      warning?: string | null;
+    }>('/api/events/interest', { eventId: event.id, kind, active });
+
+    event.siteInterestedUsers = r.interested ?? [];
+    event.maybeUsers = r.maybe ?? [];
+    if (r.warning) interestWarning.value = r.warning;
+  } catch (e: any) {
+    error.value = e.message;
+  } finally {
+    busy.value = null;
+  }
+}
+
+function hasJoined(event: DiscordEvent, kind: 'interested' | 'maybe'): boolean {
+  const list = kind === 'maybe' ? event.maybeUsers : event.siteInterestedUsers;
+  const meId = me.value.discord?.id;
+  return meId ? list.some((u) => u.id === meId) : false;
+}
+
 // Modal de création (admin uniquement).
 const showCreate = ref(false);
 const createMessage = ref<string | null>(null);
@@ -341,6 +387,19 @@ onBeforeUnmount(() => {
                 {{ nextEvent.description }}
               </p>
 
+              <p
+                v-if="nextEvent.maybeUsers.length"
+                class="mt-2 text-xs text-fg-muted"
+              >
+                ❔ Peut-être : {{ nextEvent.maybeUsers.map((u) => u.name).join(', ') }}
+              </p>
+              <p
+                v-if="nextEvent.siteInterestedUsers.length"
+                class="mt-1 text-xs text-fg-muted"
+              >
+                👍 Intéressés (site) : {{ nextEvent.siteInterestedUsers.map((u) => u.name).join(', ') }}
+              </p>
+
               <div class="mt-3 flex flex-wrap items-center gap-3 text-xs text-fg-faint">
                 <EventInterested
                   v-if="nextEvent.interestedCount > 0 || nextEvent.interestedUsers.length"
@@ -358,6 +417,42 @@ onBeforeUnmount(() => {
                 >
                   Voir sur Discord ↗
                 </a>
+
+                <!-- Inscriptions depuis le site -->
+                <div v-if="me.authenticated && me.allowed" class="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    class="rounded-md border px-2 py-1 text-xs transition"
+                    :class="
+                      hasJoined(nextEvent, 'interested')
+                        ? 'border-brand bg-brand-soft text-fg-strong'
+                        : 'border-line text-fg-muted hover:border-brand/60 hover:text-fg'
+                    "
+                    :disabled="busy === `${nextEvent.id}:interested`"
+                    @click="toggleInterest(nextEvent, 'interested')"
+                  >
+                    👍 Intéressé
+                    <span v-if="nextEvent.siteInterestedUsers.length" class="ml-1 opacity-70">
+                      {{ nextEvent.siteInterestedUsers.length }}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    class="rounded-md border px-2 py-1 text-xs transition"
+                    :class="
+                      hasJoined(nextEvent, 'maybe')
+                        ? 'border-gold bg-gold-soft text-gold'
+                        : 'border-line text-fg-muted hover:border-gold/60 hover:text-fg'
+                    "
+                    :disabled="busy === `${nextEvent.id}:maybe`"
+                    @click="toggleInterest(nextEvent, 'maybe')"
+                  >
+                    ❔ Peut-être
+                    <span v-if="nextEvent.maybeUsers.length" class="ml-1 opacity-70">
+                      {{ nextEvent.maybeUsers.length }}
+                    </span>
+                  </button>
+                </div>
                 <button
                   v-if="me.isAdmin && configured"
                   class="ml-auto inline-flex items-center gap-1 rounded px-1.5 py-1 text-danger transition hover:bg-danger-soft"
@@ -420,6 +515,37 @@ onBeforeUnmount(() => {
                     :count="e.interestedCount"
                     compact
                   />
+                </div>
+
+                <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
+                  <button
+                    v-if="me.authenticated && me.allowed"
+                    type="button"
+                    class="rounded border px-1.5 py-0.5 text-[11px] transition"
+                    :class="
+                      hasJoined(e, 'interested')
+                        ? 'border-brand bg-brand-soft text-fg-strong'
+                        : 'border-line text-fg-muted hover:text-fg'
+                    "
+                    :disabled="busy === `${e.id}:interested`"
+                    @click="toggleInterest(e, 'interested')"
+                  >
+                    👍 {{ e.siteInterestedUsers.length || 'Intéressé' }}
+                  </button>
+                  <button
+                    v-if="me.authenticated && me.allowed"
+                    type="button"
+                    class="rounded border px-1.5 py-0.5 text-[11px] transition"
+                    :class="
+                      hasJoined(e, 'maybe')
+                        ? 'border-gold bg-gold-soft text-gold'
+                        : 'border-line text-fg-muted hover:text-fg'
+                    "
+                    :disabled="busy === `${e.id}:maybe`"
+                    @click="toggleInterest(e, 'maybe')"
+                  >
+                    ❔ {{ e.maybeUsers.length || 'Peut-être' }}
+                  </button>
                 </div>
               </div>
             </article>

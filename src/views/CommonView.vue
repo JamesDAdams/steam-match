@@ -8,6 +8,7 @@ import {
   hideBrokenImage,
   formatPrice,
 } from '../lib/api';
+import MultiSelect from '../components/MultiSelect.vue';
 
 interface Game {
   appid: number;
@@ -301,50 +302,16 @@ onUnmounted(stopAutoRefresh);
 
     <!-- Choix des membres pris en compte -->
     <div class="card mb-6">
-      <div class="flex items-center justify-between gap-3">
-        <span class="text-xs font-medium text-fg-muted">Membres pris en compte</span>
-        <button
-          v-if="selectedMembers.length"
-          class="text-xs text-fg-muted hover:text-fg-strong"
-          @click="selectedMembers = []"
-        >
-          Réinitialiser
-        </button>
+      <div class="sm:max-w-md">
+        <MultiSelect
+          v-model="selectedMembers"
+          label="Membres pris en compte"
+          all-label="Tout le groupe"
+          empty-label="Tout le groupe"
+          search-placeholder="Rechercher un membre…"
+          :options="availableMembers.map((m) => ({ value: m.steamid, label: m.name, avatar: m.avatarUrl }))"
+        />
       </div>
-
-      <!-- Liste (et non des pastilles) : on coche les membres dont on veut
-           l'intersection de ludothèques. -->
-      <ul class="mt-2 divide-y divide-line rounded-lg border border-line">
-        <li>
-          <label class="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-app-surface2">
-            <input
-              type="checkbox"
-              class="h-4 w-4 rounded border-line-strong bg-app-bg"
-              :checked="selectedMembers.length === 0"
-              @change="selectedMembers = []"
-            />
-            <span class="font-medium text-fg">Tout le groupe</span>
-          </label>
-        </li>
-        <li v-for="m in availableMembers" :key="m.steamid">
-          <label class="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-app-surface2">
-            <input
-              type="checkbox"
-              class="h-4 w-4 rounded border-line-strong bg-app-bg"
-              :checked="selectedMembers.includes(m.steamid)"
-              @change="toggleMember(m.steamid)"
-            />
-            <img
-              v-if="m.avatarUrl"
-              :src="m.avatarUrl"
-              :alt="m.name"
-              class="h-5 w-5 rounded-full object-cover"
-              loading="lazy"
-            />
-            <span class="text-fg">{{ m.name }}</span>
-          </label>
-        </li>
-      </ul>
       <p v-if="selectedMembers.length" class="mt-2 text-[11px] text-fg-faint">
         Seuls les jeux que ces {{ selectedMembers.length }} membre(s) possèdent
         tous les {{ selectedMembers.length }} sont affichés.
@@ -403,48 +370,24 @@ onUnmounted(stopAutoRefresh);
         </div>
       </div>
 
-      <!-- Genres et tags : listes à cases à cocher (une pastille par valeur
-           devenait illisible dès 20 entrées). -->
+      <!-- Genres et tags : listes déroulantes à cases à cocher. -->
       <div class="mt-4 grid gap-4 sm:grid-cols-2">
-        <div v-if="availableGenres.length">
-          <p class="mb-2 text-xs font-medium text-fg-muted">Style / genre</p>
-          <ul class="max-h-56 divide-y divide-line overflow-auto rounded-lg border border-line">
-            <li v-for="g in availableGenres" :key="g.name">
-              <label
-                class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm hover:bg-app-surface2"
-              >
-                <input
-                  type="checkbox"
-                  class="h-4 w-4 rounded border-line-strong bg-app-bg"
-                  :checked="selectedGenres.includes(g.name)"
-                  @change="toggleGenre(g.name)"
-                />
-                <span class="min-w-0 flex-1 truncate text-fg">{{ g.name }}</span>
-                <span class="shrink-0 text-[11px] text-fg-faint">{{ g.count }}</span>
-              </label>
-            </li>
-          </ul>
-        </div>
-
-        <div v-if="availableTags.length">
-          <p class="mb-2 text-xs font-medium text-fg-muted">Tags</p>
-          <ul class="max-h-56 divide-y divide-line overflow-auto rounded-lg border border-line">
-            <li v-for="[t, c] in availableTags.slice(0, 30)" :key="t">
-              <label
-                class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm hover:bg-app-surface2"
-              >
-                <input
-                  type="checkbox"
-                  class="h-4 w-4 rounded border-line-strong bg-app-bg"
-                  :checked="selectedTags.includes(t)"
-                  @change="toggleTag(t)"
-                />
-                <span class="min-w-0 flex-1 truncate text-fg">{{ t }}</span>
-                <span class="shrink-0 text-[11px] text-fg-faint">{{ c }}</span>
-              </label>
-            </li>
-          </ul>
-        </div>
+        <MultiSelect
+          v-if="availableGenres.length"
+          v-model="selectedGenres"
+          label="Style / genre"
+          empty-label="Tous les styles"
+          search-placeholder="Rechercher un style…"
+          :options="availableGenres.map((g) => ({ value: g.name, label: g.name, count: g.count }))"
+        />
+        <MultiSelect
+          v-if="availableTags.length"
+          v-model="selectedTags"
+          label="Tags"
+          empty-label="Tous les tags"
+          search-placeholder="Rechercher un tag…"
+          :options="availableTags.slice(0, 30).map(([t, c]) => ({ value: t, label: t, count: c }))"
+        />
       </div>
     </div>
 

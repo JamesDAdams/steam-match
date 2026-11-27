@@ -279,6 +279,22 @@ export const discordEvents = pgTable(
       .default([]),
     /** Dernière lecture de cette liste (on ne la relit pas à chaque sync). */
     interestedSyncedAt: timestamp('interested_synced_at', { withTimezone: true }),
+    /**
+     * Inscriptions depuis le SITE (Discord n'autorise pas un bot à cocher
+     * « Intéressé » à la place d'un membre).
+     *
+     * `siteInterestedUsers` : « Intéressé » cliqué sur le site.
+     * `maybeUsers` : « Peut-être », recopié dans la description de l'événement
+     * Discord pour que tout le monde le voie.
+     */
+    siteInterestedUsers: jsonb('site_interested_users')
+      .$type<{ id: string; name: string; avatarUrl: string | null; at: string }[]>()
+      .notNull()
+      .default([]),
+    maybeUsers: jsonb('maybe_users')
+      .$type<{ id: string; name: string; avatarUrl: string | null; at: string }[]>()
+      .notNull()
+      .default([]),
     scheduledStartAt: timestamp('scheduled_start_at', { withTimezone: true }).notNull(),
     scheduledEndAt: timestamp('scheduled_end_at', { withTimezone: true }),
     syncedAt: timestamp('synced_at', { withTimezone: true }).notNull().defaultNow(),

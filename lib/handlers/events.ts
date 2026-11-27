@@ -83,6 +83,10 @@ export default async function handler(req: any, res: any) {
       // Une liste vide peut simplement signifier « personne », affichée comme
       // telle ; le décompte Discord reste la référence.
       interestedUsers: e.interestedUsers ?? [],
+      // Inscriptions faites SUR LE SITE (Discord interdit à un bot de cocher
+      // « Intéressé » à la place d'un membre).
+      siteInterestedUsers: e.siteInterestedUsers ?? [],
+      maybeUsers: e.maybeUsers ?? [],
       startAt: e.scheduledStartAt,
       endAt: e.scheduledEndAt,
       isPast: e.scheduledStartAt.getTime() < now.getTime(),

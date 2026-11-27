@@ -227,6 +227,8 @@ const statements = [
   // ── Intéressés des événements Discord ──────────────────────────────
   `ALTER TABLE discord_events ADD COLUMN IF NOT EXISTS interested_users jsonb NOT NULL DEFAULT '[]'::jsonb`,
   `ALTER TABLE discord_events ADD COLUMN IF NOT EXISTS interested_synced_at timestamp with time zone`,
+  `ALTER TABLE discord_events ADD COLUMN IF NOT EXISTS site_interested_users jsonb NOT NULL DEFAULT '[]'::jsonb`,
+  `ALTER TABLE discord_events ADD COLUMN IF NOT EXISTS maybe_users jsonb NOT NULL DEFAULT '[]'::jsonb`,
 
   // ── Prix des jeux (colonnes ajoutées après coup) ───────────────────
   `ALTER TABLE game_cache ADD COLUMN IF NOT EXISTS cheapest_price integer`,

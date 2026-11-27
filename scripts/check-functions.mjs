@@ -24,6 +24,7 @@ const FILES = [
   'lib/handlers/admin-settings.ts',
   'lib/handlers/twitch.ts',
   'lib/handlers/members.ts',
+  'lib/handlers/events-interest.ts',
   'lib/handlers/profile-settings.ts',
   'lib/handlers/releases.ts',
   'lib/handlers/notifications.ts',
