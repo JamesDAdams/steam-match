@@ -36,6 +36,7 @@ import steamAccountsHandler from '../../lib/handlers/steam-accounts.ts';
 import adminSettingsHandler from '../../lib/handlers/admin-settings.ts';
 import twitchHandler from '../../lib/handlers/twitch.ts';
 import membersHandler from '../../lib/handlers/members.ts';
+import profileSettingsHandler from '../../lib/handlers/profile-settings.ts';
 import releasesHandler from '../../lib/handlers/releases.ts';
 import notificationsHandler from '../../lib/handlers/notifications.ts';
 import recapHandler from '../../lib/handlers/recap.ts';
@@ -69,6 +70,7 @@ const ROUTES: Record<string, Route> = {
   '/steam-accounts': { methods: ['GET', 'POST', 'DELETE'], module: steamAccountsHandler },
   '/twitch': { methods: ['GET', 'POST', 'DELETE'], module: twitchHandler },
   '/members': { methods: ['GET'], module: membersHandler },
+  '/profile-settings': { methods: ['GET', 'POST'], module: profileSettingsHandler },
   '/releases': { methods: ['GET'], module: releasesHandler },
   '/notifications': { methods: ['GET', 'POST'], module: notificationsHandler },
   '/recap': { methods: ['GET'], module: recapHandler },

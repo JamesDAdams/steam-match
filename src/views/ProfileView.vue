@@ -13,6 +13,7 @@ import {
   reviewLabel,
 } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { mergeLibraries } from '../lib/library';
 
 interface ProfileGame {
   /** null pour un jeu qui n'existe que sur GOG / Epic. */
@@ -579,7 +580,43 @@ const selectedGenre = ref<string | null>(null);
  * Onglet actif : la ludothèque ou la wishlist.
  * Les deux listes empilées devenaient illisibles (177 + 293 entrées).
  */
-const tab = ref<'games' | 'wishlist' | 'accounts' | 'twitch'>('games');
+const tab = ref<'games' | 'wishlist' | 'accounts' | 'twitch' | 'visibility'>('games');
+
+/**
+ * Ce que les autres voient de moi (réglé ici, appliqué par l'API).
+ * Par défaut tout est fermé : personne n'est exposé sans l'avoir voulu.
+ */
+const visibility = ref({ gamesPublic: false, profilePublic: false });
+const visibilitySaving = ref(false);
+const visibilityMessage = ref<string | null>(null);
+
+async function loadVisibility() {
+  try {
+    const r = await apiGet<{ gamesPublic: boolean; profilePublic: boolean }>(
+      '/api/profile-settings',
+    );
+    visibility.value = { gamesPublic: r.gamesPublic, profilePublic: r.profilePublic };
+  } catch {
+    /* section secondaire */
+  }
+}
+
+async function saveVisibility(patch: { gamesPublic?: boolean; profilePublic?: boolean }) {
+  visibilitySaving.value = true;
+  visibilityMessage.value = null;
+  try {
+    const r = await apiPost<{ gamesPublic: boolean; profilePublic: boolean }>(
+      '/api/profile-settings',
+      patch,
+    );
+    visibility.value = { gamesPublic: r.gamesPublic, profilePublic: r.profilePublic };
+    visibilityMessage.value = 'Réglage enregistré.';
+  } catch (e: any) {
+    visibilityMessage.value = e.message ?? 'Enregistrement impossible.';
+  } finally {
+    visibilitySaving.value = false;
+  }
+}
 
 async function load(silent = false) {
   if (!silent) loading.value = true;
@@ -627,46 +664,6 @@ const unidentifiedCount = computed(() => {
 });
 
 /**
- * Clé de rapprochement entre plateformes.
- *
- * Steam, GOG et Epic n'ont aucun identifiant commun : le seul pont est le
- * titre. On normalise donc (minuscules, accents, ponctuation) et on retire les
- * suffixes d'édition, sinon « Cyberpunk 2077 » et « Cyberpunk 2077: Ultimate
- * Edition » compteraient deux fois.
- */
-const EDITION_WORDS = [
-  'definitive edition',
-  'game of the year edition',
-  'goty edition',
-  'ultimate edition',
-  'deluxe edition',
-  'complete edition',
-  'enhanced edition',
-  'remastered',
-  'director s cut',
-  'special edition',
-  'legendary edition',
-  'gold edition',
-  'classic edition',
-];
-
-function titleKey(name: string): string {
-  let key = name
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[™®©]/g, ' ')
-    .replace(/[^a-z0-9]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-  for (const suffix of EDITION_WORDS) {
-    key = key.replace(new RegExp(`\\b${suffix}\\b`, 'g'), ' ');
-  }
-  return key.replace(/\s+/g, ' ').trim();
-}
-
-/**
  * LA ludothèque : Steam + GOG + Epic, fusionnés.
  *
  * Un jeu présent sur plusieurs plateformes n'apparaît qu'une fois (appariement
@@ -674,68 +671,35 @@ function titleKey(name: string): string {
  * prioritaire ; s'il est nul, on prend celui d'Epic (seule plateforme qui en
  * publie).
  */
-const libraryGames = computed<ProfileGame[]>(() => {
-  const merged = new Map<string, ProfileGame>();
-
-  for (const game of games.value) {
-    merged.set(titleKey(game.name), {
-      ...game,
-      platforms: ['steam'],
-      external: [],
-    });
-  }
-
-  for (const ext of extLibrary.value) {
-    const key = titleKey(ext.name);
-    const existing = merged.get(key);
-
-    if (existing) {
-      if (!existing.platforms) existing.platforms = ['steam'];
-      if (!existing.platforms.includes(ext.platform)) existing.platforms.push(ext.platform);
-      existing.external = existing.external ?? [];
-      existing.external.push({
-        platform: ext.platform,
-        accountName: ext.displayName,
-        minutes: ext.minutes,
-      });
-      // Une jaquette manquante est complétée par celle de l'autre plateforme.
-      if (!existing.headerImage && ext.imageUrl) existing.headerImage = ext.imageUrl;
-      // Aucune heure côté Steam : on affiche celle d'Epic.
-      if (existing.playtime === 0 && ext.minutes > 0) existing.playtime = ext.minutes;
-      continue;
-    }
-
-    merged.set(key, {
-      appid: null,
-      source: ext.platform,
-      name: ext.name,
-      headerImage: ext.imageUrl,
-      genres: [],
-      tags: [],
-      enriched: false,
-      playtime: ext.minutes,
-      playtime2Weeks: 0,
-      cheapestPrice: null,
-      cheapestStore: null,
-      cheapestCurrency: null,
-      steamPrice: null,
-      steamInitialPrice: null,
-      steamDiscount: null,
-      steamCurrency: null,
-      reviewScore: null,
-      reviewPositive: null,
-      reviewNegative: null,
-      releaseDate: null,
-      playModes: [],
-      platforms: [ext.platform],
-      external: [
-        { platform: ext.platform, accountName: ext.displayName, minutes: ext.minutes },
-      ],
-    });
-  }
-
-  return [...merged.values()];
-});
+const libraryGames = computed<ProfileGame[]>(() =>
+  mergeLibraries<ProfileGame>(games.value as unknown as ProfileGame[], extLibrary.value, (ext) => ({
+    appid: null,
+    source: ext.platform,
+    name: ext.name,
+    headerImage: ext.imageUrl,
+    genres: [],
+    tags: [],
+    enriched: false,
+    playtime: ext.minutes,
+    playtime2Weeks: 0,
+    cheapestPrice: null,
+    cheapestStore: null,
+    cheapestCurrency: null,
+    steamPrice: null,
+    steamInitialPrice: null,
+    steamDiscount: null,
+    steamCurrency: null,
+    reviewScore: null,
+    reviewPositive: null,
+    reviewNegative: null,
+    releaseDate: null,
+    playModes: [],
+    platforms: [ext.platform],
+    external: [
+      { platform: ext.platform, accountName: ext.displayName ?? null, minutes: ext.minutes },
+    ],
+  })),
+);
 
 /**
  * Chiffres de la ludothèque FUSIONNÉE (Steam + GOG + Epic).
@@ -950,6 +914,7 @@ onMounted(async () => {
     loadExternal(),
     loadTwitch(),
     loadNotifications(),
+    loadVisibility(),
   ]);
   if (unidentifiedCount.value > 0 || enrichProgress.value.pending > 0) {
     startPolling();
@@ -1119,8 +1084,8 @@ onUnmounted(() => {
         </ol>
       </section>
 
-      <!-- Sélecteur : ludothèque / wishlist / comptes / twitch -->
-      <section class="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <!-- Sélecteur : ludothèque / wishlist / comptes / twitch / visibilité -->
+      <section class="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <button
           class="card-flat text-left transition hover:border-brand/50"
           :class="tab === 'games' ? '!border-brand ring-1 ring-brand/30' : ''"
@@ -1225,6 +1190,90 @@ onUnmounted(() => {
             <span class="text-2xl">🎥</span>
           </div>
         </button>
+
+        <!-- Visibilité : ce que voient les visiteurs non connectés. -->
+        <button
+          class="card-flat text-left transition hover:border-brand/50"
+          :class="tab === 'visibility' ? '!border-brand ring-1 ring-brand/30' : ''"
+          @click="tab = 'visibility'"
+        >
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <p class="text-xs uppercase tracking-wide text-fg-faint">Visibilité</p>
+              <p class="mt-1 font-display text-2xl font-bold text-fg-strong">
+                {{ visibility.profilePublic || visibility.gamesPublic ? 'Public' : 'Membres' }}
+              </p>
+              <p class="mt-0.5 text-xs text-fg-muted">
+                {{ visibility.profilePublic ? 'fiche visible' : 'fiche fermée' }}
+              </p>
+            </div>
+            <span class="text-2xl">👁</span>
+          </div>
+        </button>
+      </section>
+
+      <!-- Visibilité : réglages personnels, appliqués par l'API -->
+      <section v-if="tab === 'visibility'" class="card mb-6">
+        <h2 class="font-semibold text-fg-strong">Qui peut voir quoi ?</h2>
+        <p class="mt-1 max-w-2xl text-xs text-fg-muted">
+          Les membres connectés du site voient toujours ta ludothèque. Ces deux réglages ne
+          concernent que les <strong>visiteurs non connectés</strong> — et ils sont fermés par
+          défaut.
+        </p>
+
+        <div class="mt-4 space-y-3">
+          <div
+            class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line px-3 py-3"
+          >
+            <div class="min-w-0">
+              <p class="text-sm font-medium text-fg-strong">Afficher mes chiffres en public</p>
+              <p class="mt-0.5 text-xs text-fg-muted">
+                Nombre de jeux et temps de jeu, dans l'annuaire des membres et sur ma fiche.
+              </p>
+            </div>
+            <button
+              type="button"
+              class="btn-ghost shrink-0 text-sm"
+              :disabled="visibilitySaving"
+              @click="saveVisibility({ gamesPublic: !visibility.gamesPublic })"
+            >
+              {{ visibility.gamesPublic ? 'Public' : 'Masqué' }}
+            </button>
+          </div>
+
+          <div
+            class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line px-3 py-3"
+          >
+            <div class="min-w-0">
+              <p class="text-sm font-medium text-fg-strong">Ouvrir ma fiche aux visiteurs</p>
+              <p class="mt-0.5 text-xs text-fg-muted">
+                Sans connexion, on peut consulter ma ludothèque (Steam, GOG, Epic). Ma wishlist
+                reste réservée aux membres.
+              </p>
+            </div>
+            <button
+              type="button"
+              class="btn-ghost shrink-0 text-sm"
+              :disabled="visibilitySaving"
+              @click="saveVisibility({ profilePublic: !visibility.profilePublic })"
+            >
+              {{ visibility.profilePublic ? 'Ouverte' : 'Fermée' }}
+            </button>
+          </div>
+        </div>
+
+        <p v-if="visibilityMessage" class="mt-3 text-xs text-fg-muted">{{ visibilityMessage }}</p>
+
+        <p class="mt-4 text-xs text-fg-faint">
+          Ton pseudo Steam n'est jamais affiché à un visiteur non connecté.
+          <router-link
+            v-if="me.discord?.id"
+            :to="`/membres/${me.discord.id}`"
+            class="text-brand hover:underline"
+          >
+            Voir ma fiche telle qu'elle apparaît →
+          </router-link>
+        </p>
       </section>
 
       <!-- Comptes Steam liés -->

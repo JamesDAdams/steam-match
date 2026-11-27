@@ -41,10 +41,12 @@ const showRecap = computed(() =>
  */
 const links = computed(() => [
   { to: '/evenements', label: 'Événements' },
+  // L'annuaire des membres est public : les fiches, elles, sont réglées par
+  // chaque personne.
+  { to: '/membres', label: 'Membres' },
   ...(canUseSite.value
     ? [
         { to: '/commun', label: 'Jeux en commun' },
-        { to: '/membres', label: 'Membres' },
         { to: '/sorties', label: 'Sorties' },
         // Récap' du groupe : masqué si l'admin le désactive.
         ...(showRecap.value ? [{ to: '/recap', label: 'Récap’' }] : []),
@@ -230,7 +232,7 @@ const links = computed(() => [
               <p class="mb-2 font-semibold uppercase tracking-wide text-fg-faint">Navigation</p>
               <router-link to="/evenements" class="block hover:text-fg-strong">Événements</router-link>
               <router-link v-if="canUseSite" to="/commun" class="block hover:text-fg-strong">Jeux en commun</router-link>
-              <router-link v-if="canUseSite" to="/membres" class="block hover:text-fg-strong">Membres</router-link>
+              <router-link to="/membres" class="block hover:text-fg-strong">Membres</router-link>
               <router-link v-if="canUseSite" to="/sorties" class="block hover:text-fg-strong">Sorties</router-link>
               <router-link
                 v-if="showRecap"

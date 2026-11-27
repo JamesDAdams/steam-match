@@ -67,6 +67,8 @@ const ROUTES = [
   ['POST', '/api/steam-accounts', '/lib/handlers/steam-accounts.ts'],
   ['DELETE', '/api/steam-accounts', '/lib/handlers/steam-accounts.ts'],
   ['GET', '/api/members', '/lib/handlers/members.ts'],
+  ['GET', '/api/profile-settings', '/lib/handlers/profile-settings.ts'],
+  ['POST', '/api/profile-settings', '/lib/handlers/profile-settings.ts'],
   ['GET', '/api/releases', '/lib/handlers/releases.ts'],
   ['GET', '/api/twitch', '/lib/handlers/twitch.ts'],
   ['POST', '/api/twitch', '/lib/handlers/twitch.ts'],

@@ -41,6 +41,19 @@ export const discordUsers = pgTable('discord_users', {
    */
   isMember: boolean('is_member').notNull().default(false),
   memberCheckedAt: timestamp('member_checked_at', { withTimezone: true }),
+  /**
+   * VISIBILITÉ PUBLIQUE (réglée par la personne sur son profil).
+   *
+   * `gamesPublic` : nombre de jeux et temps de jeu visibles par les visiteurs
+   * NON CONNECTÉS (dans l'annuaire et sur la fiche).
+   * `profilePublic` : la fiche est consultable sans compte (ludothèque
+   * comprise). Les membres connectés du site voient toujours tout : ces
+   * réglages ne concernent que l'extérieur.
+   *
+   * Défaut false dans les deux cas : personne n'est exposé sans l'avoir voulu.
+   */
+  gamesPublic: boolean('games_public').notNull().default(false),
+  profilePublic: boolean('profile_public').notNull().default(false),
   lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });

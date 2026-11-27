@@ -16,9 +16,14 @@ interface Member {
   isAdmin: boolean;
   joinedAt: string | null;
   hasAccount: boolean;
-  steam: { steamid: string; personaName: string; avatarUrl: string | null } | null;
-  gamesCount: number;
-  totalMinutes: number;
+  /** Pseudo Steam et identifiant masqués pour un visiteur non connecté. */
+  steam: { steamid: string | null; personaName: string | null; avatarUrl: string | null } | null;
+  /** null quand la personne ne publie pas ses chiffres (visiteur anonyme). */
+  gamesCount: number | null;
+  totalMinutes: number | null;
+  gamesPublic: boolean;
+  profilePublic: boolean;
+  statsVisible: boolean;
 }
 
 const loading = ref(true);
@@ -26,6 +31,8 @@ const error = ref<string | null>(null);
 const members = ref<Member[]>([]);
 const withSteam = ref(0);
 const search = ref('');
+/** Visiteur non connecté : l'annuaire est public, les chiffres non. */
+const anonymous = ref(false);
 
 const filtered = computed(() => {
   const q = search.value.trim().toLowerCase();
@@ -40,9 +47,12 @@ const filtered = computed(() => {
 async function load() {
   loading.value = true;
   try {
-    const r = await apiGet<{ members: Member[]; withSteam: number }>('/api/members');
+    const r = await apiGet<{ members: Member[]; withSteam: number; viewer?: string }>(
+      '/api/members',
+    );
     members.value = r.members ?? [];
     withSteam.value = r.withSteam ?? 0;
+    anonymous.value = r.viewer === 'anonymous';
     error.value = null;
   } catch (e: any) {
     error.value = e.message;
@@ -78,6 +88,16 @@ onMounted(load);
       {{ error }}
     </div>
 
+    <div
+      v-if="anonymous && !loading"
+      class="card mb-4 flex flex-wrap items-center justify-between gap-3 border-brand/40 bg-brand-soft"
+    >
+      <p class="text-sm text-fg">
+        Annuaire public : chaque membre décide de publier ou non ses chiffres et sa ludothèque.
+      </p>
+      <a href="/api/auth/discord" class="btn btn-primary text-sm">Se connecter</a>
+    </div>
+
     <div v-if="loading" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       <div v-for="i in 6" :key="i" class="h-24 animate-pulse rounded-lg bg-app-surface2"></div>
     </div>
@@ -108,14 +128,16 @@ onMounted(load);
             <span class="truncate">{{ m.name }}</span>
             <span v-if="m.isAdmin" class="badge bg-gold-soft text-gold">admin</span>
           </p>
-          <p v-if="m.steam" class="truncate text-[11px] text-fg-faint">
+          <p v-if="m.steam?.personaName" class="truncate text-[11px] text-fg-faint">
             Steam : {{ m.steam.personaName }}
           </p>
+          <p v-else-if="m.steam" class="text-[11px] text-fg-faint">Compte Steam relié</p>
           <p v-else class="text-[11px] text-fg-faint">Compte Steam non relié</p>
-          <p v-if="m.steam" class="mt-0.5 text-[11px] text-fg-muted">
+          <p v-if="m.gamesCount !== null" class="mt-0.5 text-[11px] text-fg-muted">
             {{ m.gamesCount }} jeu{{ m.gamesCount > 1 ? 'x' : '' }} ·
-            {{ formatPlaytime(m.totalMinutes) }}
+            {{ formatPlaytime(m.totalMinutes ?? 0) }}
           </p>
+          <p v-else class="mt-0.5 text-[11px] text-fg-faint">Chiffres non publics</p>
         </div>
       </router-link>
     </div>

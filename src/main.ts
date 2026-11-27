@@ -54,18 +54,13 @@ const routes = [
      * pour un anonyme, et 401 si la page n'est pas publiée.
      */
   },
-  {
-    path: '/membres',
-    name: 'members',
-    component: MembersView,
-    meta: { requiresAccess: true },
-  },
-  {
-    path: '/membres/:discordId',
-    name: 'member',
-    component: MemberView,
-    meta: { requiresAccess: true },
-  },
+  /*
+   * Annuaire et fiches PUBLICS. Ce que montre une fiche dépend des réglages
+   * de la personne (profil ouvert / chiffres publics, fermés par défaut) :
+   * c'est l'API qui tranche, pas le routeur.
+   */
+  { path: '/membres', name: 'members', component: MembersView },
+  { path: '/membres/:discordId', name: 'member', component: MemberView },
   {
     path: '/admin',
     name: 'admin',
