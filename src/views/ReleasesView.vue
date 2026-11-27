@@ -22,6 +22,8 @@ interface Release {
   steamCurrency: string | null;
   steamDiscount: number | null;
   ownedBySomeone: boolean;
+  /** Membres qui l'attendent (avatars affichés en vue « tout le serveur »). */
+  wishers: { discordId: string; name: string; avatarUrl: string | null }[];
 }
 
 /** Jaquettes qui n'ont pas pu être chargées (l'URL du CDN peut manquer). */
@@ -184,11 +186,49 @@ onMounted(load);
               <p class="truncate text-sm font-semibold text-fg-strong">{{ e.name }}</p>
               <div class="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-fg-faint">
                 <span>{{ e.releaseDate }}</span>
-                <span v-if="e.wishCount > 1" class="badge bg-app-surface2 text-fg-muted">
-                  {{ e.wishCount }} membres
-                </span>
                 <span v-if="e.steamPrice !== null" class="ml-auto text-fg-muted">
                   {{ formatPrice(e.steamPrice, e.steamCurrency ?? 'EUR') }}
+                </span>
+              </div>
+              <!-- Qui attend ce jeu : avatars des membres, pseudo au survol. -->
+              <div
+                v-if="scope === 'all' && e.wishers.length"
+                class="mt-2 flex items-center gap-2"
+              >
+                <div class="flex items-center -space-x-1.5">
+                  <div
+                    v-for="w in e.wishers.slice(0, 5)"
+                    :key="w.discordId"
+                    class="group/av relative"
+                  >
+                    <img
+                      v-if="w.avatarUrl"
+                      :src="w.avatarUrl"
+                      :alt="w.name"
+                      class="h-5 w-5 rounded-full object-cover ring-2 ring-app-surface"
+                      loading="lazy"
+                    />
+                    <span
+                      v-else
+                      class="flex h-5 w-5 items-center justify-center rounded-full bg-app-surface2 text-[9px] font-semibold text-fg-muted ring-2 ring-app-surface"
+                    >
+                      {{ w.name.charAt(0).toUpperCase() }}
+                    </span>
+                    <span
+                      class="pointer-events-none absolute bottom-full left-0 z-20 mb-1 whitespace-nowrap rounded bg-black/90 px-1.5 py-0.5 text-[10px] font-medium text-white opacity-0 shadow-lg transition-opacity group-hover/av:opacity-100"
+                    >
+                      {{ w.name }}
+                    </span>
+                  </div>
+                  <span
+                    v-if="e.wishers.length > 5"
+                    class="flex h-5 items-center rounded-full bg-app-surface2 px-1.5 text-[10px] text-fg-muted ring-2 ring-app-surface"
+                  >
+                    +{{ e.wishers.length - 5 }}
+                  </span>
+                </div>
+                <span v-if="e.wishers.length > 1" class="text-[10px] text-fg-faint">
+                  {{ e.wishers.length }} membres
                 </span>
               </div>
             </div>
@@ -240,9 +280,43 @@ onMounted(load);
               <p class="truncate text-sm font-semibold text-fg-strong">{{ e.name }}</p>
               <div class="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-fg-faint">
                 <span>{{ e.releaseDate }}</span>
-                <span v-if="e.wishCount > 1" class="badge bg-app-surface2 text-fg-muted">
-                  {{ e.wishCount }} membres
-                </span>
+              </div>
+              <div
+                v-if="scope === 'all' && e.wishers.length"
+                class="mt-2 flex items-center gap-2"
+              >
+                <div class="flex items-center -space-x-1.5">
+                  <div
+                    v-for="w in e.wishers.slice(0, 5)"
+                    :key="w.discordId"
+                    class="group/av relative"
+                  >
+                    <img
+                      v-if="w.avatarUrl"
+                      :src="w.avatarUrl"
+                      :alt="w.name"
+                      class="h-5 w-5 rounded-full object-cover ring-2 ring-app-surface"
+                      loading="lazy"
+                    />
+                    <span
+                      v-else
+                      class="flex h-5 w-5 items-center justify-center rounded-full bg-app-surface2 text-[9px] font-semibold text-fg-muted ring-2 ring-app-surface"
+                    >
+                      {{ w.name.charAt(0).toUpperCase() }}
+                    </span>
+                    <span
+                      class="pointer-events-none absolute bottom-full left-0 z-20 mb-1 whitespace-nowrap rounded bg-black/90 px-1.5 py-0.5 text-[10px] font-medium text-white opacity-0 shadow-lg transition-opacity group-hover/av:opacity-100"
+                    >
+                      {{ w.name }}
+                    </span>
+                  </div>
+                  <span
+                    v-if="e.wishers.length > 5"
+                    class="flex h-5 items-center rounded-full bg-app-surface2 px-1.5 text-[10px] text-fg-muted ring-2 ring-app-surface"
+                  >
+                    +{{ e.wishers.length - 5 }}
+                  </span>
+                </div>
               </div>
             </div>
           </a>

@@ -1,5 +1,6 @@
 import { getDb } from '../db/index.ts';
-import { sql } from 'drizzle-orm';
+import { discordUsers, steamLinks, users, wishlistItems } from '../db/schema.ts';
+import { eq, inArray, sql } from 'drizzle-orm';
 
 /**
  * Calendrier des sorties du groupe.
@@ -107,6 +108,13 @@ export function parseReleaseDate(raw: string | null | undefined): ParsedRelease 
 const UPCOMING_DAYS = 30;
 const RECENT_DAYS = 90;
 
+/** Membre qui attend ce jeu (avatar + pseudo pour la fiche sortie). */
+export interface ReleaseWisher {
+  discordId: string;
+  name: string;
+  avatarUrl: string | null;
+}
+
 export interface ReleaseEntry {
   appid: number;
   name: string;
@@ -121,6 +129,11 @@ export interface ReleaseEntry {
   steamCurrency: string | null;
   steamDiscount: number | null;
   ownedBySomeone: boolean;
+  /**
+   * Qui l'a dans sa wishlist : sert à afficher les avatars des membres sur la
+   * carte (vue « tout le serveur »). Vide en vue personnelle.
+   */
+  wishers: ReleaseWisher[];
 }
 
 export interface ReleaseCalendar {
@@ -202,6 +215,7 @@ export async function getReleaseCalendar(
       steamCurrency: (raw.steam_currency as string) ?? null,
       steamDiscount: raw.steam_discount === null ? null : Number(raw.steam_discount),
       ownedBySomeone: Boolean(raw.owned_by_someone),
+      wishers: [],
     };
 
     if (parsed.date) {
@@ -216,6 +230,48 @@ export async function getReleaseCalendar(
       // Plus vieux que 90 jours : on ignore (ce n'est plus une sortie).
     } else if (parsed.upcoming) {
       undated.push(entry);
+    }
+  }
+
+  // ── Qui attend quoi ────────────────────────────────────────────────
+  // Une seule requête pour toutes les sorties listées : les avatars sont
+  // ensuite répartis par jeu. On passe par steam_links pour retrouver le
+  // compte Discord (c'est lui qui porte le pseudo et l'avatar affichés).
+  const appids = [
+    ...new Set([...upcoming, ...recent, ...later, ...undated].map((e) => e.appid)),
+  ];
+
+  if (appids.length > 0) {
+    const wishRows = await db
+      .select({
+        appid: wishlistItems.appid,
+        discordId: steamLinks.discordId,
+        name: sql<string>`COALESCE(${discordUsers.globalName}, ${discordUsers.username}, ${users.personaName}, 'Membre')`,
+        avatarUrl: discordUsers.avatarUrl,
+      })
+      .from(wishlistItems)
+      .innerJoin(steamLinks, eq(steamLinks.steamid, wishlistItems.steamid))
+      .leftJoin(discordUsers, eq(discordUsers.discordId, steamLinks.discordId))
+      .leftJoin(users, eq(users.steamid, wishlistItems.steamid))
+      .where(inArray(wishlistItems.appid, appids));
+
+    const byApp = new Map<number, ReleaseWisher[]>();
+    for (const row of wishRows) {
+      const list = byApp.get(row.appid) ?? [];
+      // Un même membre peut avoir plusieurs comptes Steam : on ne le liste
+      // qu'une fois.
+      if (!list.some((w) => w.discordId === row.discordId)) {
+        list.push({
+          discordId: row.discordId,
+          name: row.name ?? 'Membre',
+          avatarUrl: row.avatarUrl ?? null,
+        });
+      }
+      byApp.set(row.appid, list);
+    }
+
+    for (const list of [upcoming, recent, later, undated]) {
+      for (const entry of list) entry.wishers = byApp.get(entry.appid) ?? [];
     }
   }
 
