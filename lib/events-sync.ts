@@ -9,6 +9,7 @@ import {
 } from './discord-bot.ts';
 import type { DiscordScheduledEvent } from './discord-bot.ts';
 import { stripSiteBlock, syncDescription } from './event-interest.ts';
+import { refreshEventAnnouncement } from './event-announcement.ts';
 
 /**
  * Recopie les événements du serveur Discord en base.
@@ -27,7 +28,11 @@ import { stripSiteBlock, syncDescription } from './event-interest.ts';
  * synchronisation complète : un POST suivi d'un GET immédiat sur les
  * événements tombe dans le même bucket très serré de Discord et récolte un 429.
  */
-export async function storeEvent(e: DiscordScheduledEvent, now = new Date()): Promise<void> {
+export async function storeEvent(
+  e: DiscordScheduledEvent,
+  now = new Date(),
+  extra: { gameAppid?: number | null } = {},
+): Promise<void> {
   const start = new Date(e.scheduled_start_time);
   if (Number.isNaN(start.getTime())) return;
 
@@ -42,11 +47,15 @@ export async function storeEvent(e: DiscordScheduledEvent, now = new Date()): Pr
     status: e.status ?? 1,
     entityType: e.entity_type ?? 3,
     location: e.entity_metadata?.location ?? null,
+    channelId: e.channel_id ?? null,
     coverImage: eventCoverUrl(e.id, e.image),
     interestedCount: e.user_count ?? 0,
     scheduledStartAt: start,
     scheduledEndAt: e.scheduled_end_time ? new Date(e.scheduled_end_time) : null,
     syncedAt: now,
+    // Le jeu associé n'est connu qu'à la création depuis le site : une
+    // synchronisation Discord ne doit jamais l'effacer.
+    ...(extra.gameAppid ? { gameAppid: extra.gameAppid } : {}),
   };
 
   await getDb()
@@ -60,11 +69,13 @@ export async function storeEvent(e: DiscordScheduledEvent, now = new Date()): Pr
         status: values.status,
         entityType: values.entityType,
         location: values.location,
+        channelId: values.channelId,
         coverImage: values.coverImage,
         interestedCount: values.interestedCount,
         scheduledStartAt: values.scheduledStartAt,
         scheduledEndAt: values.scheduledEndAt,
         syncedAt: now,
+        ...(extra.gameAppid ? { gameAppid: extra.gameAppid } : {}),
       },
     });
 }
@@ -151,6 +162,11 @@ export async function syncDiscordEvents(): Promise<{
       if (fingerprint !== (previousInterested.get(e.id) ?? '')) {
         await syncDescription(e.id).catch((err: any) =>
           console.warn('[events-sync] description non mise à jour :', err?.message),
+        );
+        // L'annonce du salon affiche aussi les participants : elle doit
+        // suivre, sinon le message contredit la fiche de l'événement.
+        await refreshEventAnnouncement(e.id).catch((err: any) =>
+          console.warn('[events-sync] annonce non mise à jour :', err?.message),
         );
       }
     } catch (err: any) {

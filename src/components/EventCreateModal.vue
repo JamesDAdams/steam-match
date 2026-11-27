@@ -51,7 +51,14 @@ interface BotInfo {
 
 const emit = defineEmits<{
   (e: 'close'): void;
-  (e: 'created', payload: { name: string }): void;
+  (
+    e: 'created',
+    payload: {
+      name: string;
+      /** Résultat de l'annonce publiée dans le salon configuré. */
+      announce?: { published: boolean; reason?: string } | null;
+    },
+  ): void;
 }>();
 
 /* ── Champs ─────────────────────────────────────────────────────────── */
@@ -513,7 +520,11 @@ async function submit() {
 
   sending.value = true;
   try {
-    const r = await apiPost<{ ok: boolean; event: { name: string } }>('/api/events/create', {
+    const r = await apiPost<{
+      ok: boolean;
+      event: { name: string };
+      announce?: { published: boolean; reason?: string } | null;
+    }>('/api/events/create', {
       name: name.value.trim(),
       description: description.value.trim() || null,
       startAt: startAt.value!.toISOString(),
@@ -527,7 +538,7 @@ async function submit() {
       gameAppid: selectedGame.value?.appid ?? null,
     });
 
-    emit('created', r.event);
+    emit('created', { name: r.event.name, announce: r.announce ?? null });
     emit('close');
   } catch (e: any) {
     error.value = e.message ?? 'Création impossible.';

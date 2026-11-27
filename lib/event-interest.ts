@@ -47,6 +47,30 @@ export interface EventLists {
 }
 
 /**
+ * Fusionne les trois sources en deux listes cohérentes.
+ *
+ * Les intéressés viennent de DEUX endroits : ceux qui ont cliqué sur Discord
+ * (recopiés par la synchronisation) et ceux qui ont cliqué sur le site. Un même
+ * membre peut être dans les deux : on déduplique par identifiant, la version
+ * « site » (qui porte un horodatage) l'emportant. « Peut-être » exclut les
+ * intéressés — l'un ou l'autre, jamais les deux.
+ */
+export function mergeInterestLists(
+  discordInterested: { id: string; name: string; avatarUrl: string | null }[],
+  siteInterested: InterestUser[],
+  maybe: InterestUser[],
+): EventLists {
+  const merged = new Map<string, InterestUser>();
+  for (const u of discordInterested) merged.set(u.id, { ...u, at: '' });
+  for (const u of siteInterested) merged.set(u.id, u);
+
+  const interested = [...merged.values()];
+  const ids = new Set(interested.map((u) => u.id));
+
+  return { interested, maybe: maybe.filter((u) => !ids.has(u.id)) };
+}
+
+/**
  * Retire le bloc « Inscriptions du site » d'une description Discord.
  *
  * Le bloc est placé EN TÊTE (c'est la première chose qu'on doit voir), suivi
@@ -220,15 +244,9 @@ export async function syncDescription(eventId: string): Promise<void> {
    * reflète donc les deux sources, sans doublon (un membre peut être
    * intéressé sur Discord ET avoir cliqué sur le site).
    */
-  const merged = new Map<string, InterestUser>();
-  for (const u of discord) merged.set(u.id, { ...u, at: '' });
-  for (const u of site) merged.set(u.id, u);
+  const lists = mergeInterestLists(discord, site, (row.maybe ?? []) as InterestUser[]);
 
-  const interested = [...merged.values()];
-  const interestedIds = new Set(interested.map((u) => u.id));
-  const maybe = ((row.maybe ?? []) as InterestUser[]).filter((u) => !interestedIds.has(u.id));
-
-  const description = composeDescription(stripSiteBlock(row.description), { interested, maybe });
+  const description = composeDescription(stripSiteBlock(row.description), lists);
 
   await updateScheduledEvent(eventId, { description });
 }

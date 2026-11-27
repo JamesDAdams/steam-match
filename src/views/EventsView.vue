@@ -152,9 +152,21 @@ async function sync() {
 }
 
 /** Retour du modal : l'événement existe sur Discord, on rafraîchit la liste. */
-function onCreated(evt: { name: string }) {
+function onCreated(evt: {
+  name: string;
+  announce?: { published: boolean; reason?: string } | null;
+}) {
   syncMessage.value = null;
-  createMessage.value = `Événement « ${evt.name} » créé sur Discord.`;
+  const base = `Événement « ${evt.name} » créé sur Discord.`;
+  if (evt.announce?.published) {
+    createMessage.value = `${base} Annonce publiée dans le salon Discord (avec les boutons « Je participe » / « Peut-être »).`;
+  } else if (evt.announce && evt.announce.reason && evt.announce.reason !== 'no-channel') {
+    // Salon configuré mais envoi refusé : on le dit, sinon l'admin croit que
+    // tout est parti alors que le salon est resté vide.
+    createMessage.value = `${base} En revanche, l'annonce n'a pas pu être publiée : ${evt.announce.reason}`;
+  } else {
+    createMessage.value = base;
+  }
   load();
 }
 

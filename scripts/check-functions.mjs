@@ -20,6 +20,7 @@ const FILES = [
   'lib/handlers/events-channels.ts',
   'lib/handlers/events-game-search.ts',
   'lib/handlers/events-game-info.ts',
+  'lib/handlers/discord-interactions.ts',
   'lib/handlers/steam-accounts.ts',
   'lib/handlers/admin-settings.ts',
   'lib/handlers/twitch.ts',

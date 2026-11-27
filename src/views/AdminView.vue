@@ -79,6 +79,7 @@ interface SteamSettings {
   lastRecapAt: string | null;
   recapChannelId: string | null;
   recapMessageId: string | null;
+  eventAnnounceChannelId: string | null;
 }
 
 const steamSettings = ref<SteamSettings | null>(null);
@@ -93,6 +94,17 @@ const recapInfo = ref<{
 } | null>(null);
 /** Diagnostic du salon du récap' : le bot peut-il y écrire ? */
 const recapChannel = ref<{ canPost: boolean; missing: string[]; reason?: string } | null>(null);
+/** Diagnostic du salon des annonces d'événements. */
+const eventAnnounceChannel = ref<{
+  canPost: boolean;
+  missing: string[];
+  reason?: string;
+} | null>(null);
+/**
+ * URL à coller dans le portail Discord (Interactions Endpoint URL). Sans elle,
+ * les boutons « Je participe » / « Peut-être » ne renvoient rien au site.
+ */
+const interactions = ref<{ url: string | null; ready: boolean }>({ url: null, ready: false });
 /** Message d'échec de publication (affiché en rouge). */
 const recapError = ref<string | null>(null);
 const steamSaving = ref(false);
@@ -116,12 +128,16 @@ async function loadSteamSettings() {
         launched: number;
       } | null;
       recapChannel?: { canPost: boolean; missing: string[]; reason?: string } | null;
+      eventAnnounceChannel?: { canPost: boolean; missing: string[]; reason?: string } | null;
+      interactions?: { url: string | null; ready: boolean };
     }>('/api/admin/settings');
     steamSettings.value = r.settings;
     steamAccountsCount.value = r.accounts ?? { main: 0, linked: 0 };
     discordChannels.value = r.channels ?? [];
     recapInfo.value = r.recap ?? null;
     recapChannel.value = r.recapChannel ?? null;
+    eventAnnounceChannel.value = r.eventAnnounceChannel ?? null;
+    if (r.interactions) interactions.value = r.interactions;
   } catch {
     /* section secondaire : on n'empêche pas l'admin de travailler */
   }
@@ -188,6 +204,41 @@ async function runReleaseNow() {
     error.value = e.message;
   } finally {
     releaseRunning.value = false;
+  }
+}
+
+/* ── Annonces d'événements (salon Discord + boutons) ────────────────── */
+
+const announceSaving = ref(false);
+const announceMessage = ref<string | null>(null);
+const copiedUrl = ref(false);
+
+async function saveAnnounce(patch: { eventAnnounceChannelId?: string | null }) {
+  announceSaving.value = true;
+  announceMessage.value = null;
+  error.value = null;
+  try {
+    const r = await apiPost<{ settings: SteamSettings }>('/api/admin/settings', patch);
+    steamSettings.value = r.settings;
+    announceMessage.value = 'Réglage enregistré.';
+    await loadSteamSettings();
+  } catch (e: any) {
+    error.value = e.message;
+  } finally {
+    announceSaving.value = false;
+  }
+}
+
+/** Copie l'URL d'interaction (une seule fois, dans le portail Discord). */
+async function copyInteractionsUrl() {
+  const url = interactions.value.url;
+  if (!url) return;
+  try {
+    await navigator.clipboard.writeText(url);
+    copiedUrl.value = true;
+    setTimeout(() => (copiedUrl.value = false), 2000);
+  } catch {
+    /* presse-papiers refusé : l'URL reste sélectionnable à la main */
   }
 }
 
@@ -611,6 +662,124 @@ onMounted(load);
       </div>
 
       <p v-if="releaseMessage" class="mt-2 text-xs text-ok">{{ releaseMessage }}</p>
+    </section>
+
+    <!-- Annonces d'événements -->
+    <section class="card mb-6">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <h2 class="font-semibold text-fg-strong">Annonces d'événements</h2>
+        <router-link to="/evenements" class="text-xs text-gold hover:underline">
+          Voir les événements →
+        </router-link>
+      </div>
+      <p class="mt-1 max-w-2xl text-xs text-fg-faint">
+        À chaque événement créé depuis le site, le bot publie un message dans le salon choisi :
+        description, jeu (nom, lien, prix Steam, prix en clé), date, lieu, participants et
+        « peut-être », avec deux boutons — <strong>Je participe</strong> et
+        <strong>Peut-être</strong>. Le message est ensuite mis à jour sur place, jamais reposté.
+      </p>
+
+      <div class="mt-4 grid gap-3 sm:grid-cols-2">
+        <div>
+          <label for="announce-channel" class="mb-1 block text-xs font-medium text-fg-muted">
+            Salon Discord des annonces
+          </label>
+          <select
+            id="announce-channel"
+            class="input"
+            :disabled="announceSaving"
+            :value="steamSettings?.eventAnnounceChannelId ?? ''"
+            @change="
+              saveAnnounce({
+                eventAnnounceChannelId: ($event.target as HTMLSelectElement).value || null,
+              })
+            "
+          >
+            <option value="">Aucun (pas d'annonce)</option>
+            <option v-for="c in discordChannels" :key="c.id" :value="c.id">
+              {{ c.name }}
+            </option>
+          </select>
+        </div>
+
+        <div>
+          <span class="mb-1 block text-xs font-medium text-fg-muted">État</span>
+          <div class="flex h-9 items-center gap-2 text-sm">
+            <span
+              class="badge"
+              :class="
+                steamSettings?.eventAnnounceChannelId
+                  ? 'bg-ok-soft text-ok'
+                  : 'bg-app-surface2 text-fg-muted'
+              "
+            >
+              {{ steamSettings?.eventAnnounceChannelId ? 'ACTIF' : 'INACTIF' }}
+            </span>
+            <span class="text-[11px] text-fg-faint">
+              {{
+                steamSettings?.eventAnnounceChannelId
+                  ? 'annonce publiée à chaque création'
+                  : 'aucun message envoyé'
+              }}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <p
+        v-if="eventAnnounceChannel && !eventAnnounceChannel.canPost && steamSettings?.eventAnnounceChannelId"
+        class="mt-3 rounded-lg border border-warn/40 bg-warn-soft px-3 py-2 text-xs text-warn"
+      >
+        Le bot n'a pas encore le droit d'écrire dans ce salon
+        <template v-if="eventAnnounceChannel.missing.length">
+          ({{ eventAnnounceChannel.missing.join(', ') }})
+        </template>
+        . La prochaine création d'événement lui ajoutera l'autorisation
+        automatiquement, puis publiera l'annonce.
+      </p>
+
+      <!-- Boutons : le portail Discord doit pointer vers cette URL, une fois. -->
+      <div class="mt-4 rounded-lg border border-line bg-app-elevated px-3 py-3">
+        <p class="text-xs font-medium text-fg-muted">
+          Boutons « Je participe » / « Peut-être » — URL d'interaction à déclarer
+        </p>
+        <p class="mt-1 text-[11px] leading-relaxed text-fg-faint">
+          Les clics sur les boutons sont envoyés par Discord à cette adresse. Colle-la
+          <strong>une seule fois</strong> dans le portail développeur Discord →
+          ton application → <strong>Interactions Endpoint URL</strong>, puis enregistre :
+          Discord vérifie l'adresse immédiatement.
+        </p>
+
+        <div class="mt-2 flex flex-wrap items-center gap-2">
+          <code
+            class="min-w-0 flex-1 select-all overflow-x-auto rounded border border-line bg-app-surface2 px-2 py-1 text-[11px] text-fg-strong"
+            >{{ interactions.url ?? 'URL indisponible (site sans adresse publique)' }}</code
+          >
+          <button
+            type="button"
+            class="btn-ghost text-xs"
+            :disabled="!interactions.url"
+            @click="copyInteractionsUrl"
+          >
+            {{ copiedUrl ? 'Copié !' : 'Copier' }}
+          </button>
+        </div>
+
+        <p class="mt-2 text-[11px] text-fg-faint">
+          <span
+            class="badge"
+            :class="interactions.ready ? 'bg-ok-soft text-ok' : 'bg-warn-soft text-warn'"
+          >
+            {{ interactions.ready ? 'SIGNATURE VÉRIFIABLE' : 'CLÉ PUBLIQUE INDISPONIBLE' }}
+          </span>
+          <span class="ml-2">
+            Sans cette déclaration, les boutons répondent « échec de l'interaction » : le site
+            ne reçoit aucun clic.
+          </span>
+        </p>
+      </div>
+
+      <p v-if="announceMessage" class="mt-2 text-xs text-ok">{{ announceMessage }}</p>
     </section>
 
     <!-- Récap' du groupe -->

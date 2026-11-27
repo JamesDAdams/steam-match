@@ -9,7 +9,12 @@ import {
 } from '../settings.ts';
 import { countTrackedAccounts, runSteamSync } from '../steam-sync-worker.ts';
 import { runReleaseNotifications, todayInParis } from '../release-notifier.ts';
-import { canBotPost, listTextChannels } from '../discord-bot.ts';
+import {
+  canBotPost,
+  getApplicationPublicKey,
+  interactionsEndpointUrl,
+  listTextChannels,
+} from '../discord-bot.ts';
 import { generateRecapImage, getStoredRecap } from '../recap.ts';
 
 /**
@@ -49,6 +54,29 @@ export default async function handler(req: any, res: any) {
             reason: err?.message ?? 'vérification impossible',
           }))
         : null;
+
+      /**
+       * Annonces d'événements : même diagnostic que le récap' (le salon peut
+       * être en lecture seule), plus l'URL à coller dans le portail Discord —
+       * sans elle, les boutons « Je participe » / « Peut-être » ne renvoient
+       * jamais rien au site.
+       */
+      const eventAnnounceChannel = settings.eventAnnounceChannelId
+        ? await canBotPost(settings.eventAnnounceChannelId).catch((err) => ({
+            canPost: false,
+            missing: [] as string[],
+            reason: err?.message ?? 'vérification impossible',
+          }))
+        : null;
+
+      const interactions = {
+        url: interactionsEndpointUrl(),
+        // Clé publique récupérable : sans elle, aucune signature ne peut être
+        // vérifiée, donc aucun clic accepté.
+        ready: await getApplicationPublicKey()
+          .then((k) => Boolean(k))
+          .catch(() => false),
+      };
       return res.status(200).json({
         ok: true,
         settings,
@@ -69,6 +97,8 @@ export default async function handler(req: any, res: any) {
             }
           : null,
         recapChannel,
+        eventAnnounceChannel,
+        interactions,
         today: todayInParis(),
         // Sélecteur de salon dans l'admin : plus simple qu'un identifiant à
         // recopier, et évite les erreurs de frappe.
@@ -127,6 +157,7 @@ export default async function handler(req: any, res: any) {
         recapHour?: number;
         recapChannelId?: string | null;
         recapMessageId?: string | null;
+        eventAnnounceChannelId?: string | null;
       } = {};
 
       if (typeof body.recommendationsEnabled === 'boolean') {
@@ -159,6 +190,14 @@ export default async function handler(req: any, res: any) {
           return res.status(400).json({ error: 'Identifiant de salon Discord invalide.' });
         }
         patch.recapChannelId = raw || null;
+      }
+
+      if (body.eventAnnounceChannelId !== undefined) {
+        const raw = String(body.eventAnnounceChannelId ?? '').trim();
+        if (raw && !/^\d{17,20}$/.test(raw)) {
+          return res.status(400).json({ error: 'Identifiant de salon Discord invalide.' });
+        }
+        patch.eventAnnounceChannelId = raw || null;
       }
 
       if (typeof body.recapEnabled === 'boolean') {

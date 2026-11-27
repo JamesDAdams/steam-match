@@ -6,6 +6,7 @@ import {
 } from '../discord-bot.ts';
 import { storeEvent } from '../events-sync.ts';
 import { gameBannerDataUri } from '../game-banner.ts';
+import { publishEventAnnouncement } from '../event-announcement.ts';
 
 /**
  * POST /api/events/create — crée un événement programmé sur le serveur Discord.
@@ -180,15 +181,33 @@ export default async function handler(req: any, res: any) {
     // (1 requête toutes les ~4 s) et récoltait un 429.
     let synced = false;
     try {
-      await storeEvent(created);
+      await storeEvent(created, new Date(), {
+        gameAppid: Number.isInteger(gameAppid) && gameAppid > 0 ? gameAppid : null,
+      });
       synced = true;
     } catch (err: any) {
       console.warn('[events/create] enregistrement local échoué', err?.message);
     }
 
+    /**
+     * ANNONCE DANS LE SALON CHOISI (admin → « Annonces d'événements »).
+     *
+     * Le message récapitule l'événement et porte les boutons « Je participe »
+     * / « Peut-être ». Un échec ici ne défait PAS la création : l'événement
+     * existe sur Discord, l'admin est simplement prévenu que l'annonce n'est
+     * pas partie (salon en lecture seule, bot sans droits…).
+     */
+    const announce = synced
+      ? await publishEventAnnouncement(created.id).catch((err: any) => ({
+          published: false,
+          reason: err?.message ?? 'erreur Discord',
+        }))
+      : { published: false, reason: 'événement non enregistré localement' };
+
     return res.status(201).json({
       ok: true,
       synced,
+      announce,
       event: {
         id: created.id,
         name: created.name,

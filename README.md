@@ -19,7 +19,7 @@ Production : <https://lbdg.eu> · dépôt : <https://github.com/JamesDAdams/stea
 | **Membres** | Annuaire et fiches ; chaque personne choisit ce qui est public |
 | **Profil** | Ludothèque fusionnée Steam + GOG + Epic, wishlist, comptes liés, Twitch, visibilité |
 | **Twitch** | Chaînes de la communauté (public) |
-| **Admin** | Synchronisation Steam, rappels de sortie, récap', pages visibles, autorisations, comptes |
+| **Admin** | Synchronisation Steam, rappels de sortie, annonces d'événements, récap', pages visibles, autorisations, comptes |
 
 Fonctionnement notable :
 
@@ -31,8 +31,14 @@ Fonctionnement notable :
 - **Visibilité** : la page Récap' et la page Sorties peuvent être publiques
   (réglages admin). Un visiteur non connecté voit des chiffres et un nombre de
   membres, **jamais** les pseudos Steam ni Discord.
+- **Annonces d'événements** : à chaque événement créé depuis le site, le bot
+  publie un message dans le salon choisi (description, jeu, lien, prix Steam,
+  prix en clé, participants, « peut-être ») avec deux boutons — **Je participe**
+  et **Peut-être**. Les clics arrivent par `/api/discord/interactions` (signature
+  Ed25519 vérifiée), puis le message est mis à jour sur place.
 - **Cron Netlify** : synchronisation Steam (toutes les heures), publications
-  Discord (sorties le matin, récap' à l'heure choisie), synchro GOG/Epic.
+  Discord (sorties le matin, récap' à l'heure choisie), synchro GOG/Epic,
+  relecture des événements et de leurs intéressés toutes les 5 minutes.
 
 ## Stack
 
@@ -99,6 +105,24 @@ git push origin main     # Netlify construit et déploie
   un changement, il faut redéployer.
 - `DEPLOIEMENT.md` contient l'ancien guide Vercel, conservé pour historique ;
   le déploiement actuel est bien Netlify.
+
+### Boutons des annonces d'événements (une seule fois)
+
+Les boutons « Je participe » / « Peut-être » d'un message Discord ne peuvent pas
+être reçus par un bot qui ne se connecte pas en temps réel : Discord les envoie
+à une **URL d'interaction**. À déclarer une seule fois :
+
+1. Page **Admin** → *Annonces d'événements* → copie l'URL affichée
+   (`https://<domaine>/api/discord/interactions`).
+2. Portail développeur Discord → ton application → **Interactions Endpoint URL**
+   → colle l'URL → **Save**. Discord envoie aussitôt un « ping » signé : le site
+   répond, la validation passe.
+3. Choisis le salon des annonces dans la même section de l'admin.
+
+Sans cette déclaration, les boutons répondent « échec de l'interaction » (le
+site ne reçoit rien). La clé publique servant à vérifier les signatures est lue
+par l'API (`verify_key`), donc aucune variable supplémentaire n'est nécessaire —
+`DISCORD_PUBLIC_KEY` reste possible pour forcer une clé.
 
 ## Structure
 

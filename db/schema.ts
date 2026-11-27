@@ -265,6 +265,12 @@ export const discordEvents = pgTable(
     entityType: integer('entity_type').notNull().default(3),
     /** Lien externe, ou identifiant du salon vocal/scène. */
     location: text('location'),
+    /**
+     * Salon vocal/scène de l'événement (Discord renvoie `channel_id`). Sert à
+     * nommer le lieu dans l'annonce : `entity_metadata` est vide pour un
+     * événement vocal.
+     */
+    channelId: text('channel_id'),
     coverImage: text('cover_image'),
     /** Nombre de personnes intéressées côté Discord. */
     interestedCount: integer('interested_count').notNull().default(0),
@@ -298,6 +304,15 @@ export const discordEvents = pgTable(
     scheduledStartAt: timestamp('scheduled_start_at', { withTimezone: true }).notNull(),
     scheduledEndAt: timestamp('scheduled_end_at', { withTimezone: true }),
     syncedAt: timestamp('synced_at', { withTimezone: true }).notNull().defaultNow(),
+    /**
+     * Jeu associé à l'événement (créé depuis le site). Sert à retrouver le nom,
+     * le lien, le prix Steam et le prix en clé pour l'annonce Discord.
+     */
+    gameAppid: integer('game_appid'),
+    /** Message d'annonce publié dans le salon configuré (édité ensuite). */
+    announceMessageId: text('announce_message_id'),
+    /** Salon de ce message — mémorisé pour éditer au bon endroit après un changement de réglage. */
+    announceChannelId: text('announce_channel_id'),
   },
   (t) => ({
     byStart: index('discord_events_start_idx').on(t.scheduledStartAt),
@@ -478,6 +493,14 @@ export const appSettings = pgTable('app_settings', {
   recapChannelId: text('recap_channel_id'),
   /** Message à éditer au lieu d'en renvoyer un nouveau. */
   recapMessageId: text('recap_message_id'),
+
+  /**
+   * Salon Discord où le bot annonce les événements créés depuis le site
+   * (null = aucune annonce). Le message porte les boutons « Je participe » et
+   * « Peut-être » : c'est cette route d'interaction, et non le site, qui
+   * enregistre les clics faits dans Discord.
+   */
+  eventAnnounceChannelId: text('event_announce_channel_id'),
 });
 
 /**

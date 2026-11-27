@@ -62,6 +62,8 @@ const ROUTES = [
   ['GET', '/api/events/channels', '/lib/handlers/events-channels.ts'],
   ['GET', '/api/events/game-search', '/lib/handlers/events-game-search.ts'],
   ['GET', '/api/events/game-info', '/lib/handlers/events-game-info.ts'],
+  // Interactions Discord (boutons des annonces d'événements)
+  ['POST', '/api/discord/interactions', '/lib/handlers/discord-interactions.ts'],
   // Comptes Steam liés, membres, sorties, Twitch, notifications
   ['GET', '/api/steam-accounts', '/lib/handlers/steam-accounts.ts'],
   ['POST', '/api/steam-accounts', '/lib/handlers/steam-accounts.ts'],
@@ -135,19 +137,20 @@ function makeRes(raw) {
   return res;
 }
 
+/** Corps de requête : version analysée + version brute (signatures). */
 function readBody(req) {
   return new Promise((resolve) => {
     let data = '';
     req.on('data', (c) => (data += c));
     req.on('end', () => {
-      if (!data) return resolve(undefined);
+      if (!data) return resolve({ body: undefined, rawBody: '' });
       try {
-        resolve(JSON.parse(data));
+        resolve({ body: JSON.parse(data), rawBody: data });
       } catch {
-        resolve(data);
+        resolve({ body: data, rawBody: data });
       }
     });
-    req.on('error', () => resolve(undefined));
+    req.on('error', () => resolve({ body: undefined, rawBody: '' }));
   });
 }
 
@@ -160,12 +163,14 @@ async function handleApi(rawReq, rawRes, route, url) {
       throw new Error(`Le handler ${route[2]} n'exporte pas de fonction.`);
     }
 
+    const { body, rawBody } = await readBody(rawReq);
     const req = {
       method: rawReq.method,
       url: rawReq.url,
       headers: rawReq.headers,
       query: Object.fromEntries(url.searchParams),
-      body: await readBody(rawReq),
+      body,
+      rawBody,
       cookies: {},
     };
     await handler(req, res);

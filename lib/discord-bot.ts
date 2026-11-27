@@ -480,6 +480,12 @@ export async function ensureBotCanPost(channelId: string): Promise<PostRights> {
  */
 export interface MessageOptions {
   embeds?: Record<string, unknown>[];
+  /**
+   * Boutons (composants) attachés au message. Discord les renvoie ensuite à
+   * l'URL d'interaction de l'application — c'est ainsi qu'un clic dans Discord
+   * arrive jusqu'au site, sans connexion temps réel.
+   */
+  components?: Record<string, unknown>[];
 }
 
 function messageBody(content: string, opts: MessageOptions = {}) {
@@ -491,6 +497,7 @@ function messageBody(content: string, opts: MessageOptions = {}) {
       users: [...content.matchAll(/<(?:@!?|@)(\d{17,20})>/g)].map((m) => m[1]),
     },
     ...(opts.embeds && opts.embeds.length > 0 ? { embeds: opts.embeds } : {}),
+    ...(opts.components ? { components: opts.components } : {}),
   };
 }
 
@@ -554,7 +561,10 @@ export interface EventInterestedUser {
 }
 
 /** Avatar Discord, avec la pastille par défaut quand le compte n'en a pas. */
-function avatarUrl(userId: string, avatar: string | null | undefined): string | null {
+export function discordAvatarUrl(
+  userId: string,
+  avatar: string | null | undefined,
+): string | null {
   if (avatar) {
     const ext = avatar.startsWith('a_') ? 'gif' : 'png';
     return `https://cdn.discordapp.com/avatars/${userId}/${avatar}.${ext}?size=64`;
@@ -608,7 +618,7 @@ export async function getEventInterestedUsers(
     .map((u) => ({
       id: u.id,
       name: u.global_name?.trim() || u.username,
-      avatarUrl: avatarUrl(u.id, u.avatar),
+      avatarUrl: discordAvatarUrl(u.id, u.avatar),
     }));
 }
 
@@ -1202,4 +1212,132 @@ export function eventDiscordUrl(eventId: string): string {
   } catch {
     return 'https://discord.com';
   }
+}
+
+/* ═════════════════ Interactivité (boutons des annonces) ═════════════════ */
+
+/**
+ * POURQUOI CE BLOC EXISTE
+ * -----------------------
+ * Les boutons « Je participe » / « Peut-être » d'un message sont renvoyés par
+ * Discord à une URL d'interaction (Developer Portal → Interactions Endpoint
+ * URL). Un bot uniquement REST ne reçoit rien par la passerelle : c'est donc
+ * NOTRE fonction qui répond, et qui doit prouver que la requête vient bien de
+ * Discord.
+ *
+ * La preuve est une signature Ed25519 : `X-Signature-Ed25519` sur
+ * `<X-Signature-Timestamp><corps brut>`, vérifiée avec la clé publique de
+ * l'application. Discord l'affiche dans le portail, mais l'API la donne aussi
+ * (`verify_key`) : on évite ainsi une variable d'environnement supplémentaire.
+ * `DISCORD_PUBLIC_KEY`, si elle est renseignée, reste prioritaire.
+ */
+
+/** Clé publique de l'application, en hexadécimal (null si indisponible). */
+let publicKeyCache: { key: string; at: number } | null = null;
+const PUBLIC_KEY_TTL_MS = 24 * 3_600_000;
+
+export async function getApplicationPublicKey(): Promise<string | null> {
+  const fromEnv = process.env.DISCORD_PUBLIC_KEY?.trim();
+  if (fromEnv && /^[0-9a-f]{64}$/i.test(fromEnv)) return fromEnv.toLowerCase();
+
+  if (publicKeyCache && Date.now() - publicKeyCache.at < PUBLIC_KEY_TTL_MS) {
+    return publicKeyCache.key;
+  }
+
+  if (!isBotConfigured()) return null;
+
+  const res = await discordFetch('/applications/@me');
+  if (!res.ok) {
+    throw new Error(
+      `Discord a répondu HTTP ${res.status} en lisant la clé publique de l’application.`,
+    );
+  }
+
+  const data = (await res.json()) as { verify_key?: string; id?: string };
+  const key = (data.verify_key ?? '').trim().toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(key)) {
+    throw new Error(
+      'Discord n’a pas renvoyé de clé publique (verify_key) pour cette application.',
+    );
+  }
+
+  publicKeyCache = { key, at: Date.now() };
+  return key;
+}
+
+/**
+ * Vérifie la signature d'une requête d'interaction.
+ *
+ * `rawBody` doit être le corps EXACT reçu (avant tout JSON.parse/stringify) :
+ * un seul octet de différence et la signature ne correspond plus.
+ */
+export async function verifyInteractionSignature(args: {
+  signature: string | undefined;
+  timestamp: string | undefined;
+  rawBody: string;
+}): Promise<{ ok: boolean; reason?: string }> {
+  const { signature, timestamp, rawBody } = args;
+
+  if (!signature || !timestamp) {
+    return { ok: false, reason: 'En-têtes de signature absents.' };
+  }
+
+  let keyHex: string | null;
+  try {
+    keyHex = await getApplicationPublicKey();
+  } catch (err: any) {
+    return { ok: false, reason: err?.message ?? 'Clé publique indisponible.' };
+  }
+  if (!keyHex) return { ok: false, reason: 'Clé publique indisponible (bot non configuré).' };
+
+  try {
+    // Une clé Ed25519 « brute » (32 octets) arrive sans en-tête : on la
+    // présente comme une SubjectPublicKeyInfo DER.
+    const { createPublicKey, verify } = await import('node:crypto');
+    const der = Buffer.concat([
+      Buffer.from('302a300506032b6570032100', 'hex'),
+      Buffer.from(keyHex, 'hex'),
+    ]);
+    const key = createPublicKey({ key: der, format: 'der', type: 'spki' });
+    const ok = verify(
+      null,
+      Buffer.from(`${timestamp}${rawBody}`, 'utf8'),
+      key,
+      Buffer.from(signature, 'hex'),
+    );
+    return ok ? { ok: true } : { ok: false, reason: 'Signature invalide.' };
+  } catch (err: any) {
+    return { ok: false, reason: `Vérification impossible : ${err?.message ?? 'erreur'}` };
+  }
+}
+
+/** Types de réponse d'interaction utilisés ici. */
+export const INTERACTION = {
+  /** Réponse au « ping » de validation d'une URL d'interaction. */
+  PONG: 1,
+  /** Met à jour le message qui porte le bouton cliqué. */
+  UPDATE_MESSAGE: 7,
+} as const;
+
+/** URL à coller dans le portail Discord (Interactions Endpoint URL). */
+export function interactionsEndpointUrl(): string | null {
+  const base = (process.env.URL || process.env.DEPLOY_PRIME_URL || '').replace(/\/+$/, '');
+  return base ? `${base}/api/discord/interactions` : null;
+}
+
+/** Nom d'un salon (texte ou vocal), avec un petit cache mémoire. */
+const channelNameCache = new Map<string, { name: string; at: number }>();
+
+export async function getChannelName(channelId: string): Promise<string | null> {
+  const hit = channelNameCache.get(channelId);
+  if (hit && Date.now() - hit.at < 10 * 60_000) return hit.name;
+
+  const res = await discordFetch(`/channels/${channelId}`);
+  if (!res.ok) return null;
+
+  const data = (await res.json()) as { name?: string };
+  if (!data.name) return null;
+
+  channelNameCache.set(channelId, { name: data.name, at: Date.now() });
+  return data.name;
 }

@@ -41,6 +41,11 @@ export interface AppSettings {
   recapChannelId: string | null;
   /** Message existant à éditer à chaque mise à jour. */
   recapMessageId: string | null;
+  /**
+   * Salon Discord où annoncer les événements créés depuis le site (message
+   * formaté + boutons « Je participe » / « Peut-être »). null = aucune annonce.
+   */
+  eventAnnounceChannelId: string | null;
 }
 
 const ROW_ID = 'app';
@@ -73,6 +78,7 @@ const DEFAULTS: AppSettings = {
   lastRecapAt: null,
   recapChannelId: null,
   recapMessageId: null,
+  eventAnnounceChannelId: null,
 };
 
 export async function getSettings(): Promise<AppSettings> {
@@ -109,6 +115,7 @@ export async function getSettings(): Promise<AppSettings> {
     lastRecapAt: row.lastRecapAt ?? null,
     recapChannelId: row.recapChannelId ?? null,
     recapMessageId: row.recapMessageId ?? null,
+    eventAnnounceChannelId: row.eventAnnounceChannelId ?? null,
   };
 }
 
@@ -135,6 +142,7 @@ export async function updateSettings(
       | 'lastRecapAt'
       | 'recapChannelId'
       | 'recapMessageId'
+      | 'eventAnnounceChannelId'
     >
   >,
 ): Promise<AppSettings> {

@@ -3,6 +3,7 @@ import { discordEvents } from '../../db/schema.ts';
 import { eq } from 'drizzle-orm';
 import { requireAdmin } from '../access.ts';
 import { deleteScheduledEvent, isBotConfigured } from '../discord-bot.ts';
+import { deleteEventAnnouncement } from '../event-announcement.ts';
 
 /**
  * POST /api/events/delete — supprime un événement programmé.
@@ -45,6 +46,12 @@ export default async function handler(req: any, res: any) {
     console.error('[events/delete]', err);
     return res.status(502).json({ error: err.message });
   }
+
+  // L'annonce du salon n'a plus de sens : on la retire (avant la ligne en
+  // base, qui porte l'identifiant du message).
+  await deleteEventAnnouncement(id).catch((err: any) =>
+    console.warn('[events/delete] annonce non supprimée :', err?.message),
+  );
 
   // On retire la ligne même si Discord a répondu 404 (déjà supprimé) : dans
   // les deux cas, l'événement ne doit plus apparaître sur le site.

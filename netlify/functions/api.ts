@@ -43,6 +43,7 @@ import notificationsHandler from '../../lib/handlers/notifications.ts';
 import recapHandler from '../../lib/handlers/recap.ts';
 import recapImageHandler from '../../lib/handlers/recap-image.ts';
 import externalAccountsHandler from '../../lib/handlers/external-accounts.ts';
+import discordInteractionsHandler from '../../lib/handlers/discord-interactions.ts';
 
 interface Route {
   /** Méthodes acceptées. Vide = toutes. */
@@ -87,6 +88,12 @@ const ROUTES: Record<string, Route> = {
   '/events/channels': { methods: ['GET'], module: eventsChannelsHandler },
   '/events/game-search': { methods: ['GET'], module: eventsGameSearchHandler },
   '/events/game-info': { methods: ['GET'], module: eventsGameInfoHandler },
+  /**
+   * URL d'interaction Discord (boutons des annonces d'événements). Discord
+   * n'envoie pas de cookie : l'authentification est la signature Ed25519 de la
+   * requête, vérifiée dans le handler.
+   */
+  '/discord/interactions': { methods: ['POST'], module: discordInteractionsHandler },
 };
 
 /**
@@ -112,6 +119,9 @@ function toRequest(event: HandlerEvent, pathname: string): any {
   if (body && event.isBase64Encoded) {
     body = Buffer.from(body, 'base64').toString('utf8');
   }
+  // Corps brut conservé : la signature Ed25519 des interactions Discord porte
+  // sur les octets exacts reçus, pas sur le JSON re-sérialisé.
+  const rawBody = typeof body === 'string' ? body : '';
   if (typeof body === 'string') {
     try {
       body = JSON.parse(body);
@@ -127,6 +137,7 @@ function toRequest(event: HandlerEvent, pathname: string): any {
     headers: event.headers ?? {},
     query: event.queryStringParameters ?? {},
     body,
+    rawBody,
     cookies: {},
   };
 }

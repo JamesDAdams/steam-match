@@ -3,6 +3,7 @@ import { discordEvents } from '../../db/schema.ts';
 import { eq } from 'drizzle-orm';
 import { requireAccess } from '../access.ts';
 import { syncDescription, setInterest } from '../event-interest.ts';
+import { refreshEventAnnouncement } from '../event-announcement.ts';
 
 /**
  * POST /api/events/interest — « Intéressé » / « Peut-être » depuis le site.
@@ -71,6 +72,12 @@ export default async function handler(req: any, res: any) {
 
     await syncDescription(eventId).catch((err: any) => {
       console.warn('[events/interest] description Discord non mise à jour :', err?.message);
+    });
+
+    // Le message d'annonce du salon affiche les mêmes listes : il doit suivre,
+    // sinon un clic sur le site laisse le message Discord périmé.
+    await refreshEventAnnouncement(eventId).catch((err: any) => {
+      console.warn('[events/interest] annonce Discord non mise à jour :', err?.message);
     });
     return;
   } catch (err: any) {
