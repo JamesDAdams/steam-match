@@ -37,12 +37,12 @@ const routes = [
   },
   // Page publique : consultable sans compte.
   { path: '/twitch', name: 'twitch', component: TwitchView },
-  {
-    path: '/sorties',
-    name: 'releases',
-    component: ReleasesView,
-    meta: { requiresAccess: true },
-  },
+  /*
+   * Page PUBLIQUE (réglable dans l'admin) : un visiteur voit le calendrier,
+   * avec le nombre de membres intéressés mais sans aucun pseudo. L'API tranche
+   * (401 si l'admin a refermé la page).
+   */
+  { path: '/sorties', name: 'releases', component: ReleasesView },
   {
     path: '/recap',
     name: 'recap',

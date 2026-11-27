@@ -1,5 +1,6 @@
-import { requireAccess } from '../access.ts';
+import { optionalAccess } from '../access.ts';
 import { getReleaseCalendar } from '../releases.ts';
+import { getSettings } from '../settings.ts';
 
 /**
  * GET /api/releases — calendrier des sorties du groupe.
@@ -9,17 +10,29 @@ import { getReleaseCalendar } from '../releases.ts';
  * partagé par tout le serveur (et lisible sans session Steam).
  */
 export default async function handler(req: any, res: any) {
-  const ctx = await requireAccess(req, res);
-  if (!ctx) return;
+  // Page PUBLIQUE (réglable dans l'admin) : un visiteur non connecté voit le
+  // calendrier, mais jamais les pseudos — seulement le nombre de membres.
+  const ctx = await optionalAccess(req);
 
   if ((req.method || 'GET').toUpperCase() !== 'GET') {
     return res.status(405).json({ error: `Méthode ${req.method} non supportée.` });
   }
 
   try {
-    // `?scope=mine` : uniquement MA wishlist. Sans paramètre, tout le serveur.
+    const settings = await getSettings();
     const scope = String(req.query?.scope ?? '') === 'mine' ? 'mine' : 'all';
-    if (scope === 'mine' && !ctx.steamid) {
+
+    if (!ctx) {
+      // « Mes sorties » est personnel : connexion obligatoire.
+      if (scope === 'mine') {
+        return res.status(401).json({ error: 'Connecte-toi pour voir tes sorties.' });
+      }
+      if (!settings.releasePublicPage) {
+        return res.status(401).json({ error: 'Connecte-toi pour voir le calendrier des sorties.' });
+      }
+    }
+
+    if (scope === 'mine' && !ctx?.steamid) {
       return res.status(200).json({
         ok: true,
         scope,
@@ -33,12 +46,22 @@ export default async function handler(req: any, res: any) {
     }
 
     const calendar = await getReleaseCalendar(
-      scope === 'mine' ? { steamid: ctx.steamid } : {},
+      scope === 'mine' ? { steamid: ctx?.steamid } : {},
     );
+
+    // Visiteur non connecté : on retire les identités, on garde les compteurs.
+    if (!ctx) {
+      for (const list of [calendar.upcoming, calendar.recent, calendar.later, calendar.undated]) {
+        for (const entry of list) entry.wishers = [];
+      }
+    }
+
     return res.status(200).json({
       ok: true,
       scope,
-      hasSteam: Boolean(ctx.steamid),
+      viewer: ctx ? 'member' : 'anonymous',
+      anonymous: !ctx,
+      hasSteam: Boolean(ctx?.steamid),
       ...calendar,
       total: calendar.upcoming.length + calendar.undated.length + calendar.recent.length,
     });

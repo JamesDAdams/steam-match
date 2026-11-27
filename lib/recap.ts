@@ -644,7 +644,11 @@ export function renderRecapSvg(
     `<text x="${PAD}" y="${footY + 12}" fill="${C.muted}" font-size="13">${esc(note)}</text>`,
   );
   parts.push(
-    `<text x="${W - PAD}" y="${footY + 12}" fill="${C.gold}" font-size="13" text-anchor="end">le-bastion-des-gamers.netlify.app</text>`,
+    `<text x="${W - PAD}" y="${footY + 12}" fill="${C.gold}" font-size="13" text-anchor="end">${esc(
+      // Le domaine du site vient de l'environnement (Netlify fournit l'URL
+      // publique) : un changement de domaine n'oblige pas à retoucher l'image.
+      (SITE_URL || 'le-bastion-des-gamers.netlify.app').replace(/^https?:\/\//, ''),
+    )}</text>`,
   );
 
   parts.push('</svg>');

@@ -435,6 +435,11 @@ export const appSettings = pgTable('app_settings', {
   releaseNotifyHour: integer('release_notify_hour').notNull().default(6),
   /** Salon Discord cible ; vide = recherche du salon nommé « games ». */
   releaseChannelId: text('release_channel_id'),
+  /**
+   * Page « Sorties » consultable sans être connecté. Les visiteurs ne voient
+   * que le nombre de membres intéressés, jamais les pseudos.
+   */
+  releasePublicPage: boolean('release_public_page').notNull().default(true),
   lastReleaseNotifyAt: timestamp('last_release_notify_at', { withTimezone: true }),
 
   /** Récap' du groupe : l'image publiée sur le site (activée par défaut). */

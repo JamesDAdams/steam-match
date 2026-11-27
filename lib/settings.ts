@@ -21,6 +21,8 @@ export interface AppSettings {
   releaseNotifyHour: number;
   /** Salon cible ; null = chercher le salon nommé « games ». */
   releaseChannelId: string | null;
+  /** Page « Sorties » publique (sans pseudo côté visiteurs). */
+  releasePublicPage: boolean;
   lastReleaseNotifyAt: Date | null;
   /** Récap' du groupe : image publiée sur le site. */
   recapEnabled: boolean;
@@ -60,6 +62,7 @@ const DEFAULTS: AppSettings = {
   releaseNotifyEnabled: false,
   releaseNotifyHour: 6,
   releaseChannelId: null,
+  releasePublicPage: true,
   lastReleaseNotifyAt: null,
   recapEnabled: true,
   recapDays: 7,
@@ -95,6 +98,7 @@ export async function getSettings(): Promise<AppSettings> {
     releaseNotifyEnabled: row.releaseNotifyEnabled,
     releaseNotifyHour: row.releaseNotifyHour,
     releaseChannelId: row.releaseChannelId ?? null,
+    releasePublicPage: row.releasePublicPage ?? true,
     lastReleaseNotifyAt: row.lastReleaseNotifyAt ?? null,
     recapEnabled: row.recapEnabled,
     recapDays: row.recapDays,
@@ -120,6 +124,7 @@ export async function updateSettings(
       | 'releaseNotifyEnabled'
       | 'releaseNotifyHour'
       | 'releaseChannelId'
+      | 'releasePublicPage'
       | 'lastReleaseNotifyAt'
       | 'recapEnabled'
       | 'recapDays'

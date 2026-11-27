@@ -19,7 +19,12 @@ import {
 import { isAdminId } from '../lib/discord.ts';
 import { resolveAccess } from '../lib/access.ts';
 import { inviteUrl, isBotConfigured } from '../lib/discord-bot.ts';
-import { recapEnabled, recapPublicPage, recommendationsEnabled } from '../lib/features.ts';
+import {
+  recapEnabled,
+  recapPublicPage,
+  recommendationsEnabled,
+  releasesPublicPage,
+} from '../lib/features.ts';
 
 /**
  * GET  /api/me  → état complet de la session
@@ -62,6 +67,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           recommendations: false,
           recap: await recapEnabled(),
           recapPublic: await recapPublicPage(),
+          releasesPublic: await releasesPublicPage(),
         },
       });
     }
@@ -317,6 +323,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         recommendations: await recommendationsEnabled(),
         recap: await recapEnabled(),
         recapPublic: await recapPublicPage(),
+        releasesPublic: await releasesPublicPage(),
       },
       discord: {
         id: du.discordId,

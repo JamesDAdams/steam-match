@@ -116,6 +116,7 @@ export default async function handler(req: any, res: any) {
         steamSyncEnabled?: boolean;
         steamSyncIntervalHours?: number;
         releaseNotifyEnabled?: boolean;
+        releasePublicPage?: boolean;
         releaseNotifyHour?: number;
         releaseChannelId?: string | null;
         recapEnabled?: boolean;
@@ -133,6 +134,9 @@ export default async function handler(req: any, res: any) {
       }
       if (typeof body.releaseNotifyEnabled === 'boolean') {
         patch.releaseNotifyEnabled = body.releaseNotifyEnabled;
+      }
+      if (typeof body.releasePublicPage === 'boolean') {
+        patch.releasePublicPage = body.releasePublicPage;
       }
       if (body.releaseNotifyHour !== undefined && body.releaseNotifyHour !== null) {
         const hour = Number(body.releaseNotifyHour);

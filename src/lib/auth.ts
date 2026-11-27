@@ -14,7 +14,12 @@ export interface SteamState {
 export interface MeState {
   authenticated: boolean;
   /** Drapeaux d'affichage pilotés depuis l'admin. */
-  features?: { recommendations?: boolean; recap?: boolean; recapPublic?: boolean };
+  features?: {
+    recommendations?: boolean;
+    recap?: boolean;
+    recapPublic?: boolean;
+    releasesPublic?: boolean;
+  };
   allowed?: boolean;
   isAdmin?: boolean;
   /** Pourquoi l'accès est accordé : admin, membre du serveur, ou exception. */

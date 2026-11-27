@@ -36,6 +36,21 @@ export async function recapPublicPage(): Promise<boolean> {
   }
 }
 
+/**
+ * La page « Sorties » est-elle consultable sans connexion ?
+ *
+ * Utilisée par le menu : un visiteur ne voit le lien que si l'admin a ouvert
+ * la page au public.
+ */
+export async function releasesPublicPage(): Promise<boolean> {
+  try {
+    const settings = await getSettings();
+    return settings.releasePublicPage;
+  } catch {
+    return false;
+  }
+}
+
 export async function recommendationsEnabled(): Promise<boolean> {
   try {
     const settings = await getSettings();

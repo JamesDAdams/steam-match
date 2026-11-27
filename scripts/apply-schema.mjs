@@ -216,6 +216,7 @@ const statements = [
   `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS last_recap_at timestamp with time zone`,
   `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS recap_channel_id text`,
   `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS recap_message_id text`,
+  `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS release_public_page boolean NOT NULL DEFAULT true`,
   `ALTER TABLE discord_users ADD COLUMN IF NOT EXISTS games_public boolean NOT NULL DEFAULT false`,
   `ALTER TABLE discord_users ADD COLUMN IF NOT EXISTS profile_public boolean NOT NULL DEFAULT false`,
   `ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS recap_public_page boolean NOT NULL DEFAULT true`,

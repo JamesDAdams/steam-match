@@ -38,6 +38,8 @@ const error = ref<string | null>(null);
 const scope = ref<'all' | 'mine'>('all');
 /** Faux quand on demande « mes sorties » sans compte Steam relié. */
 const hasSteam = ref(true);
+/** Visiteur non connecté : pas de pseudo, seulement le nombre de membres. */
+const anonymous = ref(false);
 const upcoming = ref<Release[]>([]);
 const recent = ref<Release[]>([]);
 const later = ref<Release[]>([]);
@@ -66,7 +68,9 @@ async function load() {
       later: Release[];
       undated: Release[];
       hasSteam?: boolean;
+      anonymous?: boolean;
     }>('/api/releases', { scope: scope.value });
+    anonymous.value = Boolean(r.anonymous);
     upcoming.value = r.upcoming ?? [];
     recent.value = r.recent ?? [];
     later.value = r.later ?? [];
@@ -97,6 +101,10 @@ onMounted(load);
           <template v-if="scope === 'mine'">
             Les jeux de <strong>ta</strong> wishlist Steam et leurs dates de sortie.
           </template>
+          <template v-else-if="anonymous">
+            Les jeux que le serveur attend, d'après les wishlists Steam des membres —
+            avec leurs dates de sortie.
+          </template>
           <template v-else>
             Les jeux que le groupe attend, d'après vos wishlists Steam — avec leurs
             dates de sortie. Ceux que quelqu'un possède déjà sont signalés.
@@ -104,8 +112,8 @@ onMounted(load);
         </p>
       </div>
 
-      <!-- Bascule : mes sorties / celles de tout le monde -->
-      <div class="flex rounded border border-line p-0.5 text-sm" role="tablist">
+      <!-- Bascule : mes sorties / celles de tout le monde (membres seulement) -->
+      <div v-if="!anonymous" class="flex rounded border border-line p-0.5 text-sm" role="tablist">
         <button
           type="button"
           role="tab"
@@ -131,6 +139,16 @@ onMounted(load);
 
     <div v-if="error" class="card mb-4 border-danger bg-danger-soft text-sm text-danger">
       {{ error }}
+    </div>
+
+    <div
+      v-if="anonymous && !loading && !error"
+      class="card mb-4 flex flex-wrap items-center justify-between gap-3 border-brand/40 bg-brand-soft"
+    >
+      <p class="text-sm text-fg">
+        Calendrier public : on indique combien de membres attendent chaque jeu, sans les pseudos.
+      </p>
+      <a href="/api/auth/discord" class="btn btn-primary text-sm">Se connecter</a>
     </div>
 
     <div v-if="loading" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -186,13 +204,16 @@ onMounted(load);
               <p class="truncate text-sm font-semibold text-fg-strong">{{ e.name }}</p>
               <div class="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-fg-faint">
                 <span>{{ e.releaseDate }}</span>
+                <span v-if="anonymous && e.wishCount > 0" class="badge bg-app-surface2 text-fg-muted">
+                  {{ e.wishCount }} membre{{ e.wishCount > 1 ? 's' : '' }}
+                </span>
                 <span v-if="e.steamPrice !== null" class="ml-auto text-fg-muted">
                   {{ formatPrice(e.steamPrice, e.steamCurrency ?? 'EUR') }}
                 </span>
               </div>
               <!-- Qui attend ce jeu : avatars des membres, pseudo au survol. -->
               <div
-                v-if="scope === 'all' && e.wishers.length"
+                v-if="!anonymous && scope === 'all' && e.wishers.length"
                 class="mt-2 flex items-center gap-2"
               >
                 <div class="flex items-center -space-x-1.5">
@@ -280,9 +301,12 @@ onMounted(load);
               <p class="truncate text-sm font-semibold text-fg-strong">{{ e.name }}</p>
               <div class="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-fg-faint">
                 <span>{{ e.releaseDate }}</span>
+                <span v-if="anonymous && e.wishCount > 0" class="badge bg-app-surface2 text-fg-muted">
+                  {{ e.wishCount }} membre{{ e.wishCount > 1 ? 's' : '' }}
+                </span>
               </div>
               <div
-                v-if="scope === 'all' && e.wishers.length"
+                v-if="!anonymous && scope === 'all' && e.wishers.length"
                 class="mt-2 flex items-center gap-2"
               >
                 <div class="flex items-center -space-x-1.5">
@@ -409,6 +433,9 @@ onMounted(load);
           <template v-if="scope === 'mine'">
             Aucun jeu de ta wishlist n'a de date de sortie connue. Elle se
             remplit depuis ton profil.
+          </template>
+          <template v-else-if="anonymous">
+            Le calendrier se remplit avec les wishlists des membres du serveur.
           </template>
           <template v-else>
             Le calendrier se remplit avec les wishlists des membres. Synchronise

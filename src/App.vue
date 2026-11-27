@@ -34,6 +34,10 @@ async function logout() {
 const showRecap = computed(() =>
   Boolean(me.value.features?.recap || me.value.features?.recapPublic),
 );
+/** Page Sorties : publique si l'admin l'a ouverte (visiteurs : sans pseudos). */
+const showReleases = computed(() =>
+  Boolean(me.value.features?.releasesPublic || canUseSite.value),
+);
 
 /**
  * Événements, Twitch et Récap’ public sont visibles avant même la connexion,
@@ -58,6 +62,7 @@ const links = computed(() => [
     : showRecap.value
       ? [{ to: '/recap', label: 'Récap’' }]
       : []),
+  ...(showReleases.value ? [{ to: '/sorties', label: 'Sorties' }] : []),
   { to: '/twitch', label: 'Twitch' },
 ]);
 </script>
@@ -233,7 +238,7 @@ const links = computed(() => [
               <router-link to="/evenements" class="block hover:text-fg-strong">Événements</router-link>
               <router-link v-if="canUseSite" to="/commun" class="block hover:text-fg-strong">Jeux en commun</router-link>
               <router-link to="/membres" class="block hover:text-fg-strong">Membres</router-link>
-              <router-link v-if="canUseSite" to="/sorties" class="block hover:text-fg-strong">Sorties</router-link>
+              <router-link v-if="showReleases" to="/sorties" class="block hover:text-fg-strong">Sorties</router-link>
               <router-link
                 v-if="showRecap"
                 to="/recap"

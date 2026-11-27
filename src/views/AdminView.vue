@@ -68,6 +68,7 @@ interface SteamSettings {
   releaseNotifyEnabled: boolean;
   releaseNotifyHour: number;
   releaseChannelId: string | null;
+  releasePublicPage: boolean;
   lastReleaseNotifyAt: string | null;
   recapEnabled: boolean;
   recapPublicPage: boolean;
@@ -151,6 +152,7 @@ const HOURS = Array.from({ length: 24 }, (_, i) => i);
 
 async function saveRelease(patch: {
   releaseNotifyEnabled?: boolean;
+  releasePublicPage?: boolean;
   releaseNotifyHour?: number;
   releaseChannelId?: string | null;
 }) {
@@ -852,6 +854,31 @@ onMounted(load);
           "
         >
           {{ steamSettings?.recommendationsEnabled ? 'ON' : 'OFF' }}
+        </span>
+      </button>
+
+      <!-- Page Sorties : accessible sans compte, sans aucun pseudo. -->
+      <button
+        type="button"
+        class="mt-2 flex w-full max-w-md items-center justify-between rounded-lg border border-line px-3 py-2 text-left text-sm transition hover:border-line-strong disabled:opacity-50"
+        :disabled="releaseSaving || !steamSettings"
+        @click="saveRelease({ releasePublicPage: !steamSettings?.releasePublicPage })"
+      >
+        <span>
+          <span class="block text-fg">Sorties publiques</span>
+          <span class="text-[11px] text-fg-faint">
+            Visibles sans compte — les visiteurs ne voient que le nombre de membres
+          </span>
+        </span>
+        <span
+          class="badge"
+          :class="
+            steamSettings?.releasePublicPage
+              ? 'bg-ok-soft text-ok'
+              : 'bg-app-surface2 text-fg-muted'
+          "
+        >
+          {{ steamSettings?.releasePublicPage ? 'ON' : 'OFF' }}
         </span>
       </button>
     </section>
