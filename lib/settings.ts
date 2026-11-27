@@ -46,6 +46,11 @@ export interface AppSettings {
    * formaté + boutons « Je participe » / « Peut-être »). null = aucune annonce.
    */
   eventAnnounceChannelId: string | null;
+  /**
+   * Clé publique de l'application Discord (vérification des interactions).
+   * Écrite une fois, relue à chaque clic : aucun appel réseau nécessaire.
+   */
+  discordVerifyKey: string | null;
 }
 
 const ROW_ID = 'app';
@@ -79,6 +84,7 @@ const DEFAULTS: AppSettings = {
   recapChannelId: null,
   recapMessageId: null,
   eventAnnounceChannelId: null,
+  discordVerifyKey: null,
 };
 
 export async function getSettings(): Promise<AppSettings> {
@@ -116,6 +122,7 @@ export async function getSettings(): Promise<AppSettings> {
     recapChannelId: row.recapChannelId ?? null,
     recapMessageId: row.recapMessageId ?? null,
     eventAnnounceChannelId: row.eventAnnounceChannelId ?? null,
+    discordVerifyKey: row.discordVerifyKey ?? null,
   };
 }
 
@@ -143,6 +150,7 @@ export async function updateSettings(
       | 'recapChannelId'
       | 'recapMessageId'
       | 'eventAnnounceChannelId'
+      | 'discordVerifyKey'
     >
   >,
 ): Promise<AppSettings> {

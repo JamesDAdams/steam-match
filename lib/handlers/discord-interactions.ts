@@ -9,7 +9,6 @@ import {
   toggleFromDiscord,
   type AnnouncementPayload,
 } from '../event-announcement.ts';
-import { syncDescription } from '../event-interest.ts';
 
 /**
  * POST /api/discord/interactions — boutons des annonces d'événements.
@@ -35,14 +34,6 @@ import { syncDescription } from '../event-interest.ts';
  *     utilisé pour les erreurs
  */
 
-/**
- * Discord exige une réponse en moins de 3 s. La copie de la description dans
- * l'événement Discord est la seule tâche non indispensable : mieux vaut
- * répondre à temps et laisser la tâche planifiée la rattraper (drapeau
- * `description_dirty`) que faire expirer l'interaction.
- */
-const SLOW_TASK_BUDGET_MS = 500;
-
 interface InteractionUser {
   id: string;
   username: string;
@@ -52,14 +43,6 @@ interface InteractionUser {
 
 function ephemeral(content: string) {
   return { type: 4, data: { content, flags: 64 } };
-}
-
-/** Exécute une tâche Discord sans pouvoir dépasser le budget de la réponse. */
-function withBudget(task: Promise<unknown>, ms = SLOW_TASK_BUDGET_MS): Promise<void> {
-  return Promise.race([
-    task.then(() => undefined).catch(() => undefined),
-    new Promise<void>((resolve) => setTimeout(resolve, ms)),
-  ]);
 }
 
 export default async function handler(req: any, res: any) {
@@ -88,15 +71,19 @@ export default async function handler(req: any, res: any) {
     return key ? String(headers[key]) : undefined;
   };
 
+  const verifyStartedAt = Date.now();
   const check = await verifyInteractionSignature({
     signature: header('x-signature-ed25519'),
     timestamp: header('x-signature-timestamp'),
     rawBody,
   });
+  const verifyMs = Date.now() - verifyStartedAt;
 
   if (!check.ok) {
     // 401 : Discord n'accepte pas (et n'affichera) qu'une validation échouée.
-    console.warn('[discord/interactions] signature refusée :', check.reason);
+    console.warn(
+      `[interaction] signature refusée en ${verifyMs} ms : ${check.reason}`,
+    );
     return res.status(401).json({ error: 'invalid request signature' });
   }
 
@@ -114,6 +101,7 @@ export default async function handler(req: any, res: any) {
 
   // 1. Validation de l'URL par le portail Discord.
   if (body.type === 1) {
+    console.log(`[interaction] ping validé en ${verifyMs} ms`);
     return res.status(200).json({ type: INTERACTION.PONG });
   }
 
@@ -127,6 +115,7 @@ export default async function handler(req: any, res: any) {
 }
 
 async function handleComponent(body: any, res: any) {
+  const startedAt = Date.now();
   const customId: string = body?.data?.custom_id ?? '';
   const parsed = parseButtonCustomId(customId);
   if (!parsed) {
@@ -177,11 +166,14 @@ async function handleComponent(body: any, res: any) {
 
     /**
      * La description de l'événement Discord (celle de l'onglet Événements) est
-     * recopiée juste après, avec un budget serré. Si elle ne rentre pas dans le
-     * délai, l'événement reste marqué « description à refaire » et la tâche
-     * planifiée (toutes les 5 min) s'en occupe.
+     * recopiée par la tâche planifiée : `applyInterest` a marqué la ligne
+     * « description à refaire ». On ne l'attend PLUS ici — c'est un appel à
+     * Discord qui, ajouté au reste, faisait dépasser les 3 secondes et Discord
+     * affichait « l'application n'a pas répondu à temps ».
      */
-    await withBudget(syncDescription(parsed.eventId));
+    console.log(
+      `[interaction] ${parsed.kind} ${parsed.eventId} en ${Date.now() - startedAt} ms`,
+    );
 
     return res.status(200).json(response);
   } catch (err: any) {

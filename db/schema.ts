@@ -507,6 +507,13 @@ export const appSettings = pgTable('app_settings', {
   recapMessageId: text('recap_message_id'),
 
   /**
+   * Clé publique de l'application Discord, mémorisée dès qu'on l'a lue.
+   * Un clic sur un bouton doit répondre en moins de 3 s : la vérification de
+   * signature ne peut pas dépendre d'un appel réseau à Discord.
+   */
+  discordVerifyKey: text('discord_verify_key'),
+
+  /**
    * Salon Discord où le bot annonce les événements créés depuis le site
    * (null = aucune annonce). Le message porte les boutons « Je participe » et
    * « Peut-être » : c'est cette route d'interaction, et non le site, qui

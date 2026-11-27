@@ -92,9 +92,18 @@ export function inviteUrl(): string | null {
 
 /* ─────────────────────────── Transport ─────────────────────────── */
 
-function discordFetch(path: string, init: RequestInit = {}) {
+/**
+ * Appel à l'API Discord, avec un délai MAXIMAL.
+ *
+ * POURQUOI : une fonction serverless réveillée garde des connexions TCP en
+ * veille. Une socket devenue muette fait patienter `fetch` très longtemps —
+ * et un clic sur un bouton n'a que 3 secondes pour répondre. Sans plafond, on
+ * préférait laisser échouer l'interaction plutôt que d'attendre indéfiniment.
+ */
+function discordFetch(path: string, init: RequestInit = {}, timeoutMs = 5_000) {
   return fetch(`${API_BASE}${path}`, {
     ...init,
+    signal: AbortSignal.timeout(timeoutMs),
     headers: {
       Authorization: `Bot ${botToken()}`,
       'Content-Type': 'application/json',
@@ -1244,9 +1253,26 @@ export async function getApplicationPublicKey(): Promise<string | null> {
     return publicKeyCache.key;
   }
 
+  /**
+   * La clé ne change jamais : on la garde AUSSI en base. Un appel à l'API
+   * Discord sur le chemin d'un clic coûtait 200 à 400 ms et pouvait bloquer
+   * (socket gelée) — de quoi dépasser les 3 secondes accordées par Discord.
+   */
+  try {
+    const { getSettings, updateSettings } = await import('./settings.ts');
+    const settings = await getSettings();
+    if (settings.discordVerifyKey && /^[0-9a-f]{64}$/i.test(settings.discordVerifyKey)) {
+      const key = settings.discordVerifyKey.toLowerCase();
+      publicKeyCache = { key, at: Date.now() };
+      return key;
+    }
+  } catch {
+    /* base indisponible : on retombe sur l'API Discord */
+  }
+
   if (!isBotConfigured()) return null;
 
-  const res = await discordFetch('/applications/@me');
+  const res = await discordFetch('/applications/@me', {}, 1_500);
   if (!res.ok) {
     throw new Error(
       `Discord a répondu HTTP ${res.status} en lisant la clé publique de l’application.`,
@@ -1262,6 +1288,11 @@ export async function getApplicationPublicKey(): Promise<string | null> {
   }
 
   publicKeyCache = { key, at: Date.now() };
+  // Mémorisation pour les prochaines instances (aucune attente réseau ensuite).
+  await import('./settings.ts')
+    .then((m) => m.updateSettings({ discordVerifyKey: key }))
+    .catch(() => undefined);
+
   return key;
 }
 
