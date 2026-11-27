@@ -187,13 +187,12 @@ const generatedLabel = computed(() =>
         </div>
       </div>
 
-      <p class="mb-8 text-[11px] leading-relaxed text-fg-faint">
-        Données Steam des membres du serveur. Les comptes « famille » sont exclus : leur temps de
-        jeu appartient à quelqu’un d’autre.
-        <template v-if="stats.mode === 'measured' && stats.coverageDays < stats.days">
-          Historique mesuré depuis le {{ shortDate(`${stats.historyStart}T12:00:00Z`) }} — il
-          s’allonge à chaque synchronisation.
-        </template>
+      <p
+        v-if="stats.mode === 'measured' && stats.coverageDays < stats.days"
+        class="mb-8 text-[11px] leading-relaxed text-fg-faint"
+      >
+        Historique mesuré depuis le {{ shortDate(`${stats.historyStart}T12:00:00Z`) }} — il
+        s’allonge à chaque synchronisation.
       </p>
 
       <!-- Top détaillé -->

@@ -17,9 +17,28 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    const calendar = await getReleaseCalendar();
+    // `?scope=mine` : uniquement MA wishlist. Sans paramètre, tout le serveur.
+    const scope = String(req.query?.scope ?? '') === 'mine' ? 'mine' : 'all';
+    if (scope === 'mine' && !ctx.steamid) {
+      return res.status(200).json({
+        ok: true,
+        scope,
+        hasSteam: false,
+        upcoming: [],
+        recent: [],
+        later: [],
+        undated: [],
+        total: 0,
+      });
+    }
+
+    const calendar = await getReleaseCalendar(
+      scope === 'mine' ? { steamid: ctx.steamid } : {},
+    );
     return res.status(200).json({
       ok: true,
+      scope,
+      hasSteam: Boolean(ctx.steamid),
       ...calendar,
       total: calendar.upcoming.length + calendar.undated.length + calendar.recent.length,
     });

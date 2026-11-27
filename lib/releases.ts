@@ -134,8 +134,17 @@ export interface ReleaseCalendar {
   undated: ReleaseEntry[];
 }
 
-export async function getReleaseCalendar(): Promise<ReleaseCalendar> {
+/**
+ * Sorties attendues.
+ *
+ * `steamid` restreint le calcul à UNE wishlist (« mes sorties ») ; sans lui on
+ * agrège celles de tout le serveur. Le site expose les deux vues.
+ */
+export async function getReleaseCalendar(
+  opts: { steamid?: string | null } = {},
+): Promise<ReleaseCalendar> {
   const db = getDb();
+  const only = opts.steamid ?? null;
 
   const rows = await db.execute(sql`
     SELECT c.appid,
@@ -146,11 +155,18 @@ export async function getReleaseCalendar(): Promise<ReleaseCalendar> {
            c.steam_currency,
            c.steam_discount,
            count(DISTINCT w.steamid)::int AS wish_count,
-           EXISTS (SELECT 1 FROM owned_games o WHERE o.appid = c.appid) AS owned_by_someone
+           -- Vue « mes sorties » : « déjà possédé » veut dire PAR MOI ;
+           -- vue groupe : par n'importe qui.
+           EXISTS (
+             SELECT 1 FROM owned_games o
+             WHERE o.appid = c.appid
+               AND (${only}::text IS NULL OR o.steamid = ${only})
+           ) AS owned_by_someone
     FROM wishlist_items w
     JOIN game_cache c ON c.appid = w.appid
     WHERE c.release_date IS NOT NULL
       AND c.is_software = false
+      AND (${only}::text IS NULL OR w.steamid = ${only})
     GROUP BY c.appid, c.name, c.header_image, c.release_date,
              c.steam_price, c.steam_currency, c.steam_discount
   `);

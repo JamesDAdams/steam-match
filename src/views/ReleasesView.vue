@@ -32,6 +32,10 @@ function onImageError(appid: number) {
 
 const loading = ref(true);
 const error = ref<string | null>(null);
+/** 'all' = les wishlists de tout le serveur ; 'mine' = la mienne. */
+const scope = ref<'all' | 'mine'>('all');
+/** Faux quand on demande « mes sorties » sans compte Steam relié. */
+const hasSteam = ref(true);
 const upcoming = ref<Release[]>([]);
 const recent = ref<Release[]>([]);
 const later = ref<Release[]>([]);
@@ -52,18 +56,20 @@ function when(entry: Release): string {
 
 async function load() {
   loading.value = true;
+  error.value = null;
   try {
     const r = await apiGet<{
       upcoming: Release[];
       recent: Release[];
       later: Release[];
       undated: Release[];
-    }>('/api/releases');
+      hasSteam?: boolean;
+    }>('/api/releases', { scope: scope.value });
     upcoming.value = r.upcoming ?? [];
     recent.value = r.recent ?? [];
     later.value = r.later ?? [];
     undated.value = r.undated ?? [];
-    error.value = null;
+    hasSteam.value = r.hasSteam !== false;
   } catch (e: any) {
     error.value = e.message;
   } finally {
@@ -71,17 +77,54 @@ async function load() {
   }
 }
 
+function setScope(next: 'all' | 'mine') {
+  if (scope.value === next) return;
+  scope.value = next;
+  load();
+}
+
 onMounted(load);
 </script>
 
 <template>
   <div>
-    <div class="mb-6">
-      <h1 class="font-display text-3xl font-bold text-fg-strong">Calendrier des sorties</h1>
-      <p class="mt-1 max-w-2xl text-sm text-fg-muted">
-        Les jeux que le groupe attend, d'après vos wishlists Steam — avec leurs
-        dates de sortie. Ceux que quelqu'un possède déjà sont signalés.
-      </p>
+    <div class="mb-6 flex flex-wrap items-end justify-between gap-4">
+      <div>
+        <h1 class="font-display text-3xl font-bold text-fg-strong">Calendrier des sorties</h1>
+        <p class="mt-1 max-w-2xl text-sm text-fg-muted">
+          <template v-if="scope === 'mine'">
+            Les jeux de <strong>ta</strong> wishlist Steam et leurs dates de sortie.
+          </template>
+          <template v-else>
+            Les jeux que le groupe attend, d'après vos wishlists Steam — avec leurs
+            dates de sortie. Ceux que quelqu'un possède déjà sont signalés.
+          </template>
+        </p>
+      </div>
+
+      <!-- Bascule : mes sorties / celles de tout le monde -->
+      <div class="flex rounded border border-line p-0.5 text-sm" role="tablist">
+        <button
+          type="button"
+          role="tab"
+          :aria-selected="scope === 'mine'"
+          class="rounded px-3 py-1.5 transition"
+          :class="scope === 'mine' ? 'bg-brand-soft text-fg-strong' : 'text-fg-muted hover:text-fg'"
+          @click="setScope('mine')"
+        >
+          Mes sorties
+        </button>
+        <button
+          type="button"
+          role="tab"
+          :aria-selected="scope === 'all'"
+          class="rounded px-3 py-1.5 transition"
+          :class="scope === 'all' ? 'bg-brand-soft text-fg-strong' : 'text-fg-muted hover:text-fg'"
+          @click="setScope('all')"
+        >
+          Tout le serveur
+        </button>
+      </div>
     </div>
 
     <div v-if="error" class="card mb-4 border-danger bg-danger-soft text-sm text-danger">
@@ -93,6 +136,7 @@ onMounted(load);
     </div>
 
     <template v-else>
+      <template v-if="scope !== 'mine' || hasSteam">
       <!-- À venir -->
       <section class="mb-10">
         <div class="mb-3 flex items-center gap-2">
@@ -133,7 +177,7 @@ onMounted(load);
                 v-if="e.ownedBySomeone"
                 class="absolute right-2 top-2 rounded bg-ok px-2 py-0.5 text-[10px] font-semibold text-white"
               >
-                déjà possédé
+                {{ scope === 'mine' ? 'déjà dans ma ludothèque' : 'déjà possédé' }}
               </span>
             </div>
             <div class="p-3">
@@ -271,14 +315,31 @@ onMounted(load);
         </ul>
       </section>
 
+      </template>
+
+      <div v-if="scope === 'mine' && !hasSteam" class="card py-12 text-center">
+        <p class="text-lg font-semibold text-fg-strong">Aucun compte Steam relié</p>
+        <p class="mx-auto mt-2 max-w-md text-sm text-fg-muted">
+          Relie ton compte Steam depuis ton profil pour voir les sorties de ta
+          propre wishlist.
+        </p>
+        <router-link to="/profil" class="btn-primary mt-4 text-sm">Mon profil</router-link>
+      </div>
+
       <div
-        v-if="!upcoming.length && !recent.length && !later.length && !undated.length"
+        v-else-if="!upcoming.length && !recent.length && !later.length && !undated.length"
         class="card py-12 text-center"
       >
         <p class="text-lg font-semibold text-fg-strong">Rien à afficher</p>
         <p class="mx-auto mt-2 max-w-md text-sm text-fg-muted">
-          Le calendrier se remplit avec les wishlists des membres. Synchronise la
-          tienne depuis ton profil pour le compléter.
+          <template v-if="scope === 'mine'">
+            Aucun jeu de ta wishlist n'a de date de sortie connue. Elle se
+            remplit depuis ton profil.
+          </template>
+          <template v-else>
+            Le calendrier se remplit avec les wishlists des membres. Synchronise
+            la tienne depuis ton profil pour le compléter.
+          </template>
         </p>
         <router-link to="/profil" class="btn-primary mt-4 text-sm">Mon profil</router-link>
       </div>
