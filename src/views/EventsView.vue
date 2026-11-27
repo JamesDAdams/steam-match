@@ -49,9 +49,39 @@ const interestWarning = ref<string | null>(null);
  * description de l'événement Discord.
  */
 async function toggleInterest(event: DiscordEvent, kind: 'interested' | 'maybe') {
-  const list = kind === 'maybe' ? event.maybeUsers : event.siteInterestedUsers;
   const meId = me.value.discord?.id;
-  const active = meId ? !list.some((u) => u.id === meId) : true;
+  if (!meId) return;
+
+  const isMaybe = kind === 'maybe';
+  const list = isMaybe ? event.maybeUsers : event.siteInterestedUsers;
+  const active = !list.some((u) => u.id === meId);
+
+  // ── Mise à jour OPTIMISTE ─────────────────────────────────────────
+  // L'aller-retour serveur prend ~1 s (base distante + Discord) : on affiche
+  // le résultat tout de suite, puis on le remplace par la réponse réelle.
+  const meUser = {
+    id: meId,
+    name: me.value.discord?.globalName || me.value.discord?.username || 'Moi',
+    avatarUrl: me.value.discord?.avatarUrl ?? null,
+  };
+  const previous = {
+    interested: event.siteInterestedUsers,
+    maybe: event.maybeUsers,
+  };
+
+  if (active) {
+    const next = [...list, meUser];
+    if (isMaybe) {
+      event.maybeUsers = next;
+      event.siteInterestedUsers = event.siteInterestedUsers.filter((u) => u.id !== meId);
+    } else {
+      event.siteInterestedUsers = next;
+      event.maybeUsers = event.maybeUsers.filter((u) => u.id !== meId);
+    }
+  } else {
+    if (isMaybe) event.maybeUsers = event.maybeUsers.filter((u) => u.id !== meId);
+    else event.siteInterestedUsers = event.siteInterestedUsers.filter((u) => u.id !== meId);
+  }
 
   busy.value = `${event.id}:${kind}`;
   interestWarning.value = null;
@@ -60,13 +90,14 @@ async function toggleInterest(event: DiscordEvent, kind: 'interested' | 'maybe')
       ok: boolean;
       interested: DiscordEvent['siteInterestedUsers'];
       maybe: DiscordEvent['maybeUsers'];
-      warning?: string | null;
     }>('/api/events/interest', { eventId: event.id, kind, active });
 
     event.siteInterestedUsers = r.interested ?? [];
     event.maybeUsers = r.maybe ?? [];
-    if (r.warning) interestWarning.value = r.warning;
   } catch (e: any) {
+    // Échec : on remet l'état d'avant et on explique.
+    event.siteInterestedUsers = previous.interested;
+    event.maybeUsers = previous.maybe;
     error.value = e.message;
   } finally {
     busy.value = null;
